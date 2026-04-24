@@ -47,6 +47,22 @@ export default async function HomePage() {
           </div>
         </div>
 
+        {/* Announcement Banner */}
+        <div className="bg-gradient-to-r from-green-600 to-emerald-500 rounded-xl p-4 shadow-md">
+          <div className="flex gap-3 items-start">
+            <span className="text-xl flex-shrink-0 mt-0.5">📢</span>
+            <div className="space-y-1">
+              <p className="text-white font-bold text-sm tracking-wide">
+                🏌️ テスト期間中 ― 現在は無料でご利用いただけます
+              </p>
+              <p className="text-green-100 text-xs leading-relaxed">
+                GW明けより本格スタート予定。アプリ内課金システムに移行します。
+                <span className="font-semibold text-white">今のうちにぜひお試しください！</span>
+              </p>
+            </div>
+          </div>
+        </div>
+
         {/* Quick actions */}
         <div className="grid grid-cols-2 gap-3">
           <Link
