@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
+import { RoundListClient } from "./RoundListClient";
 
 export default async function RoundListPage() {
   const supabase = await createClient();
@@ -20,38 +21,7 @@ export default async function RoundListPage() {
         </Link>
       </div>
 
-      {rounds?.length ? (
-        <div className="space-y-2">
-          {rounds.map((round) => (
-            <Link
-              key={round.id}
-              href={`/round/${round.id}`}
-              className="card flex items-center justify-between hover:border-green-300 transition-colors"
-            >
-              <div>
-                <p className="font-semibold text-green-800">{round.course_name}</p>
-                <p className="text-sm text-green-500">{new Date(round.date).toLocaleDateString("ja-JP")}</p>
-              </div>
-              <div className="text-right">
-                {round.total_score ? (
-                  <span className="text-2xl font-bold text-green-700">{round.total_score}</span>
-                ) : (
-                  <span className="badge bg-yellow-100 text-yellow-700">進行中</span>
-                )}
-              </div>
-            </Link>
-          ))}
-        </div>
-      ) : (
-        <div className="card text-center py-12">
-          <p className="text-4xl mb-3">⛳</p>
-          <p className="text-green-600 font-medium">まだラウンドがありません</p>
-          <p className="text-sm text-green-400 mt-1">新規ラウンドを開始しましょう</p>
-          <Link href="/round/new" className="btn-primary mt-4 inline-block" style={{ width: "auto", paddingLeft: "2rem", paddingRight: "2rem" }}>
-            ラウンド開始
-          </Link>
-        </div>
-      )}
+      <RoundListClient rounds={rounds ?? []} />
     </div>
   );
 }

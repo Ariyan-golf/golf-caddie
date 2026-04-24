@@ -28,15 +28,17 @@ export function HoleRecorder({ roundId, initialHoles }: HoleRecorderProps) {
   const [holes, setHoles] = useState<Hole[]>(initialHoles);
   const [activeHole, setActiveHole] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  const [selectingPar, setSelectingPar] = useState(false);
 
-  async function addHole() {
+  async function addHole(par: number) {
+    setSelectingPar(false);
     setCreating(true);
     const supabase = createClient();
     const nextNum = holes.length + 1;
 
     const { data, error } = await supabase
       .from("holes")
-      .insert({ round_id: roundId, hole_number: nextNum, par: 4 })
+      .insert({ round_id: roundId, hole_number: nextNum, par })
       .select("*, shots(*)")
       .single();
 
@@ -45,6 +47,20 @@ export function HoleRecorder({ roundId, initialHoles }: HoleRecorderProps) {
       setActiveHole(data.id);
     }
     setCreating(false);
+  }
+
+  async function updateHolePar(holeId: string, par: number) {
+    const supabase = createClient();
+    const { data } = await supabase
+      .from("holes")
+      .update({ par })
+      .eq("id", holeId)
+      .select("*, shots(*)")
+      .single();
+
+    if (data) {
+      setHoles((prev) => prev.map((h) => (h.id === holeId ? data : h)));
+    }
   }
 
   async function refreshHole(holeId: string) {
@@ -92,6 +108,22 @@ export function HoleRecorder({ roundId, initialHoles }: HoleRecorderProps) {
 
           {activeHole === hole.id && (
             <div className="mt-4 space-y-3 border-t border-green-100 pt-4">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-medium text-green-600">パー:</span>
+                {[3, 4, 5].map((p) => (
+                  <button
+                    key={p}
+                    onClick={() => updateHolePar(hole.id, p)}
+                    className={`w-8 h-8 rounded-full text-sm font-bold transition-colors ${
+                      hole.par === p
+                        ? "bg-green-600 text-white"
+                        : "bg-green-100 text-green-700 hover:bg-green-200"
+                    }`}
+                  >
+                    {p}
+                  </button>
+                ))}
+              </div>
               <ShotRecorder
                 holeId={hole.id}
                 roundId={roundId}
@@ -115,9 +147,36 @@ export function HoleRecorder({ roundId, initialHoles }: HoleRecorderProps) {
       ))}
 
       {holes.length < 18 && (
-        <button onClick={addHole} disabled={creating} className="btn-secondary">
-          {creating ? "追加中..." : `+ ホール ${holes.length + 1} を追加`}
-        </button>
+        selectingPar ? (
+          <div className="card">
+            <p className="text-sm font-medium text-green-700 mb-3">ホール {holes.length + 1} のパーを選択</p>
+            <div className="flex gap-3">
+              {[3, 4, 5].map((p) => (
+                <button
+                  key={p}
+                  onClick={() => addHole(p)}
+                  className="flex-1 py-3 rounded-xl bg-green-600 text-white font-bold text-lg hover:bg-green-700 transition-colors"
+                >
+                  パー {p}
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={() => setSelectingPar(false)}
+              className="w-full mt-2 text-xs text-green-500 hover:text-green-700"
+            >
+              キャンセル
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={() => setSelectingPar(true)}
+            disabled={creating}
+            className="btn-secondary"
+          >
+            {creating ? "追加中..." : `+ ホール ${holes.length + 1} を追加`}
+          </button>
+        )
       )}
 
       {holes.length === 18 && (
