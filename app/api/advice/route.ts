@@ -44,7 +44,7 @@ ${userStatsText}
   "tips": ["アドバイス1", "アドバイス2", "アドバイス3"]
 }
 
-番手キーは driver, 3wood, 5wood, 3iron, 4iron, 5iron, 6iron, 7iron, 8iron, 9iron, pw, aw, sw, lw, putter のいずれかを使用してください。`;
+番手キーは 1w, 3w, 5w, 7w, 9w, u2, u3, u4, u5, u6, u7, 2i, 3i, 4i, 5i, 6i, 7i, 8i, 9i, pw, aw, gw, sw, lw のいずれかを使用してください。`;
 
   const message = await anthropic.messages.create({
     model: "claude-sonnet-4-6",

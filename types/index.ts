@@ -1,37 +1,55 @@
+// ── Club types ──────────────────────────────────────────────────────
+
 export type Club =
-  | "driver"
-  | "3wood"
-  | "5wood"
-  | "3iron"
-  | "4iron"
-  | "5iron"
-  | "6iron"
-  | "7iron"
-  | "8iron"
-  | "9iron"
-  | "pw"
-  | "aw"
-  | "sw"
-  | "lw"
-  | "putter";
+  | "1w" | "3w" | "5w" | "7w" | "9w"
+  | "u2" | "u3" | "u4" | "u5" | "u6" | "u7"
+  | "2i" | "3i" | "4i" | "5i" | "6i" | "7i" | "8i" | "9i"
+  | "pw" | "aw" | "gw" | "sw" | "lw";
+
+export const CLUBS: Club[] = [
+  "1w", "3w", "5w", "7w", "9w",
+  "u2", "u3", "u4", "u5", "u6", "u7",
+  "2i", "3i", "4i", "5i", "6i", "7i", "8i", "9i",
+  "pw", "aw", "gw", "sw", "lw",
+];
 
 export const CLUB_LABELS: Record<Club, string> = {
-  driver: "ドライバー",
-  "3wood": "3W",
-  "5wood": "5W",
-  "3iron": "3I",
-  "4iron": "4I",
-  "5iron": "5I",
-  "6iron": "6I",
-  "7iron": "7I",
-  "8iron": "8I",
-  "9iron": "9I",
-  pw: "PW",
-  aw: "AW",
-  sw: "SW",
-  lw: "LW",
-  putter: "パター",
+  "1w": "1W",  "3w": "3W",  "5w": "5W",  "7w": "7W",  "9w": "9W",
+  "u2": "U2",  "u3": "U3",  "u4": "U4",  "u5": "U5",  "u6": "U6",  "u7": "U7",
+  "2i": "2I",  "3i": "3I",  "4i": "4I",  "5i": "5I",  "6i": "6I",
+  "7i": "7I",  "8i": "8I",  "9i": "9I",
+  "pw": "PW",  "aw": "AW",  "gw": "GW",  "sw": "SW",  "lw": "LW",
 };
+
+// ── Lie types ──────────────────────────────────────────────────────
+
+export type LieType = "tee" | "fw" | "rough" | "ob" | "bunker" | "trees" | "green" | "other";
+
+export const LIE_TYPES: LieType[] = ["tee", "fw", "rough", "ob", "bunker", "trees", "green", "other"];
+
+export const LIE_LABELS: Record<LieType, string> = {
+  tee:    "ティー",
+  fw:     "FW",
+  rough:  "ラフ",
+  ob:     "OB",
+  bunker: "バンカー",
+  trees:  "林",
+  green:  "グリーン",
+  other:  "その他",
+};
+
+export const LIE_SHORT: Record<LieType, string> = {
+  tee:    "T",
+  fw:     "FW",
+  rough:  "RF",
+  ob:     "OB",
+  bunker: "BK",
+  trees:  "林",
+  green:  "GR",
+  other:  "他",
+};
+
+// ── GPS ────────────────────────────────────────────────────────────
 
 export interface Location {
   latitude: number;
@@ -39,16 +57,13 @@ export interface Location {
   accuracy?: number;
 }
 
-// ── Database row types ──────────────────────────────────────────────
+// ── Database row types ─────────────────────────────────────────────
 
 export interface Profile {
   id: string;
   display_name: string | null;
   handicap: number | null;
-  is_beta_user: boolean;
-  beta_expires_at: string;
   created_at: string;
-  updated_at: string | null;
 }
 
 export interface Round {
@@ -67,6 +82,7 @@ export interface Hole {
   hole_number: number;
   par: number;
   score: number | null;
+  putts: number | null;
   distance_yards: number | null;
 }
 
@@ -82,6 +98,7 @@ export interface Shot {
   end_lng: number | null;
   distance_meters: number | null;
   distance_yards: number | null;
+  lie_type: LieType | null;
   notes: string | null;
   created_at: string;
 }
@@ -95,20 +112,7 @@ export interface ClubAverage {
   updated_at: string;
 }
 
-export interface SwingAnalysis {
-  id: string;
-  user_id: string;
-  shot_id: string | null;
-  analysis_result: string;
-  tips: string[];
-  created_at: string;
-}
-
-// ── Joined / enriched types ─────────────────────────────────────────
-
-export interface RoundWithHoles extends Round {
-  holes: Hole[];
-}
+// ── Joined types ───────────────────────────────────────────────────
 
 export interface HoleWithShots extends Hole {
   shots: Shot[];
@@ -122,7 +126,6 @@ export interface ClubAdviceRequest {
   windDirection?: string;
   elevation?: number;
   conditions?: string;
-  userClubAverages?: Partial<Record<Club, number>>;
 }
 
 export interface ClubAdviceResponse {
@@ -130,21 +133,4 @@ export interface ClubAdviceResponse {
   alternativeClub?: Club;
   reasoning: string;
   tips: string[];
-}
-
-export interface UserClubStats {
-  club: Club;
-  average_distance: number;
-  shot_count: number;
-}
-
-// ── Beta user helpers ───────────────────────────────────────────────
-
-export function isBetaValid(profile: Pick<Profile, "is_beta_user" | "beta_expires_at">): boolean {
-  return profile.is_beta_user && new Date(profile.beta_expires_at) > new Date();
-}
-
-export function betaDaysRemaining(profile: Pick<Profile, "beta_expires_at">): number {
-  const diff = new Date(profile.beta_expires_at).getTime() - Date.now();
-  return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
 }
