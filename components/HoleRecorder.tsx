@@ -294,8 +294,8 @@ function PuttSelector({
         <p className="text-lg font-bold text-green-800">パット数は？</p>
         <p className="text-sm text-green-500">ショット {shotCount}打 + パット</p>
       </div>
-      <div className="grid grid-cols-4 gap-3">
-        {[1, 2, 3, 4].map((putts) => {
+      <div className="grid grid-cols-4 gap-2">
+        {[1, 2, 3, 4, 5, 6, 7, 8].map((putts) => {
           const total = shotCount + putts;
           const diff = total - par;
           const label =
@@ -309,11 +309,11 @@ function PuttSelector({
             "border-gray-300 bg-gray-50 text-gray-700";
           return (
             <button key={putts} onClick={() => onSelect(putts)}
-              className={`flex flex-col items-center py-4 rounded-2xl border-2 font-bold
+              className={`flex flex-col items-center py-3 rounded-2xl border-2 font-bold
                           transition-all active:scale-95 ${color}`}>
-              <span className="text-3xl">{putts}</span>
-              <span className="text-xs mt-1 font-medium">{label}</span>
-              <span className="text-sm font-bold">{total}打</span>
+              <span className="text-2xl">{putts}</span>
+              <span className="text-xs mt-0.5 font-medium">{label}</span>
+              <span className="text-xs font-bold">{total}打</span>
             </button>
           );
         })}
