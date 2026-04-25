@@ -27,8 +27,8 @@ export function Navigation() {
                 isActive ? "text-green-600" : "text-green-400"
               }`}
             >
-              <span className="text-xl leading-none">{icon}</span>
-              <span className={`text-xs mt-1 font-medium ${isActive ? "text-green-600" : "text-green-400"}`}>
+              <span className="text-2xl leading-none">{icon}</span>
+              <span className={`text-sm mt-1 font-medium ${isActive ? "text-green-600" : "text-green-400"}`}>
                 {label}
               </span>
               {isActive && (

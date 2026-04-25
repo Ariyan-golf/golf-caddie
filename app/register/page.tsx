@@ -19,7 +19,7 @@ export default function RegisterPage() {
     setLoading(true);
 
     const supabase = createClient();
-    const { error } = await supabase.auth.signUp({
+    const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
@@ -31,6 +31,19 @@ export default function RegisterPage() {
       setError(error.message);
       setLoading(false);
       return;
+    }
+
+    // signUp がセッションを返さない場合（メール確認が有効な場合）は直接サインインする
+    if (!data.session) {
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+      if (signInError) {
+        setError("登録完了後の自動ログインに失敗しました。ログインページからサインインしてください。");
+        setLoading(false);
+        return;
+      }
     }
 
     router.push("/");
