@@ -1,143 +1,111 @@
 "use client";
 
 import { useState } from "react";
-import { GpsTracker } from "./GpsTracker";
-import type { Club, Location } from "@/types";
-import { CLUB_LABELS } from "@/types";
-import { metersToYards } from "@/lib/distance";
 import { createClient } from "@/lib/supabase/client";
+import { calculateDistance, metersToYards } from "@/lib/distance";
+
+interface PrevShot {
+  id: string;
+  start_lat: number;
+  start_lng: number;
+}
 
 interface ShotRecorderProps {
   holeId: string;
   roundId: string;
   shotNumber: number;
+  prevShot: PrevShot | null;
   onShotRecorded: () => void;
 }
 
-type Phase = "select" | "tracking" | "saving";
+type State = "idle" | "locating";
 
-const WOOD_CLUBS: Club[] = ["1w", "3w", "5w", "7w", "9w"];
-const UTIL_CLUBS: Club[] = ["u2", "u3", "u4", "u5", "u6", "u7"];
-const IRON_CLUBS: Club[] = ["2i", "3i", "4i", "5i", "6i", "7i", "8i", "9i"];
-const WEDGE_CLUBS: Club[] = ["pw", "aw", "gw", "sw", "lw"];
+export function ShotRecorder({
+  holeId, roundId, shotNumber, prevShot, onShotRecorded,
+}: ShotRecorderProps) {
+  const [state, setState] = useState<State>("idle");
+  const [error, setError] = useState<string | null>(null);
 
-export function ShotRecorder({ holeId, roundId, shotNumber, onShotRecorded }: ShotRecorderProps) {
-  const [phase, setPhase] = useState<Phase>("select");
-  const [selectedClub, setSelectedClub] = useState<Club | null>(null);
-  const [trackerKey, setTrackerKey] = useState(0);
-  const [lastResult, setLastResult] = useState<string | null>(null);
+  function record() {
+    setError(null);
+    setState("locating");
 
-  function tapClub(club: Club) {
-    setSelectedClub(club);
-    setLastResult(null);
-    setPhase("tracking");
-  }
-
-  async function handleShotRecorded(distMeters: number, start: Location, end: Location) {
-    if (!selectedClub) return;
-    setPhase("saving");
-
-    const supabase = createClient();
-    const { error } = await supabase.from("shots").insert({
-      hole_id: holeId,
-      round_id: roundId,
-      shot_number: shotNumber,
-      club: selectedClub,
-      start_lat: start.latitude,
-      start_lng: start.longitude,
-      end_lat: end.latitude,
-      end_lng: end.longitude,
-      distance_meters: distMeters,
-      distance_yards: metersToYards(distMeters),
-    });
-
-    if (!error) {
-      setLastResult(`${CLUB_LABELS[selectedClub]}  ${metersToYards(distMeters)}y`);
-      onShotRecorded();
+    if (!navigator.geolocation) {
+      setError("このデバイスはGPSに対応していません");
+      setState("idle");
+      return;
     }
-    setSelectedClub(null);
-    setTrackerKey((k) => k + 1);
-    setPhase("select");
-  }
 
-  function cancelTracking() {
-    setSelectedClub(null);
-    setTrackerKey((k) => k + 1);
-    setPhase("select");
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        const supabase = createClient();
+
+        // Retroactively set end position + distance of the previous shot
+        if (prevShot) {
+          const distM = calculateDistance(
+            { latitude: prevShot.start_lat, longitude: prevShot.start_lng },
+            { latitude: lat, longitude: lng },
+          );
+          await supabase
+            .from("shots")
+            .update({
+              end_lat: lat,
+              end_lng: lng,
+              distance_meters: distM,
+              distance_yards: metersToYards(distM),
+            })
+            .eq("id", prevShot.id);
+        }
+
+        // Insert new shot — club and lie filled in later
+        const { error: err } = await supabase.from("shots").insert({
+          hole_id: holeId,
+          round_id: roundId,
+          shot_number: shotNumber,
+          start_lat: lat,
+          start_lng: lng,
+        });
+
+        if (err) {
+          setError("保存に失敗しました");
+          setState("idle");
+          return;
+        }
+
+        setState("idle");
+        onShotRecorded();
+      },
+      () => {
+        setError("GPS取得失敗。位置情報の許可を確認してください。");
+        setState("idle");
+      },
+      { enableHighAccuracy: true, timeout: 15000 },
+    );
   }
 
   return (
-    <div className="space-y-3">
-      {/* Last result flash */}
-      {lastResult && phase === "select" && (
-        <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-2 text-center">
-          <p className="text-sm font-bold text-green-700">✓ {lastResult}</p>
-        </div>
+    <div className="space-y-2">
+      {error && (
+        <p className="text-sm text-red-500 bg-red-50 rounded-lg p-2">{error}</p>
       )}
-
-      {/* GPS tracking panel */}
-      {phase === "tracking" && selectedClub && (
-        <div className="bg-green-50 border-2 border-green-400 rounded-xl p-4">
-          <p className="text-center text-sm font-bold text-green-800 mb-3">
-            <span className="inline-block w-2 h-2 bg-green-500 rounded-full animate-pulse mr-1" />
-            {CLUB_LABELS[selectedClub]} — GPS計測中
-          </p>
-          <GpsTracker
-            key={trackerKey}
-            onShotRecorded={handleShotRecorded}
-            onCancel={cancelTracking}
-          />
-        </div>
-      )}
-
-      {phase === "saving" && (
-        <div className="text-center py-4">
-          <div className="w-6 h-6 border-2 border-green-600 border-t-transparent rounded-full animate-spin mx-auto" />
-          <p className="text-sm text-green-600 mt-2">保存中...</p>
-        </div>
-      )}
-
-      {/* Club grid */}
-      {phase === "select" && (
-        <div className="space-y-1.5">
-          <p className="text-xs font-semibold text-green-600 text-center">
-            第{shotNumber}打 — 番手をタップ → GPS自動記録
-          </p>
-
-          {/* Woods */}
-          <div className="grid grid-cols-5 gap-1.5">
-            {WOOD_CLUBS.map((c) => <ClubBtn key={c} club={c} onTap={tapClub} />)}
-          </div>
-
-          {/* Utilities */}
-          <div className="grid grid-cols-6 gap-1.5">
-            {UTIL_CLUBS.map((c) => <ClubBtn key={c} club={c} onTap={tapClub} />)}
-          </div>
-
-          {/* Irons */}
-          <div className="grid grid-cols-4 gap-1.5">
-            {IRON_CLUBS.map((c) => <ClubBtn key={c} club={c} onTap={tapClub} />)}
-          </div>
-
-          {/* Wedges */}
-          <div className="grid grid-cols-5 gap-1.5">
-            {WEDGE_CLUBS.map((c) => <ClubBtn key={c} club={c} onTap={tapClub} />)}
-          </div>
-        </div>
-      )}
+      <button
+        onClick={record}
+        disabled={state === "locating"}
+        className="w-full py-5 rounded-2xl font-bold text-xl transition-all
+                   bg-green-600 hover:bg-green-700 active:bg-green-800
+                   text-white shadow-md disabled:opacity-60 disabled:cursor-wait"
+      >
+        {state === "locating" ? (
+          <span className="flex items-center justify-center gap-2">
+            <span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+            GPS取得中...
+          </span>
+        ) : (
+          `ショット記録　第${shotNumber}打`
+        )}
+      </button>
     </div>
-  );
-}
-
-function ClubBtn({ club, onTap }: { club: Club; onTap: (c: Club) => void }) {
-  return (
-    <button
-      onClick={() => onTap(club)}
-      className="py-3 rounded-xl bg-white border border-green-200 text-green-800
-                 text-sm font-bold hover:bg-green-100 active:scale-95 transition-all
-                 shadow-sm"
-    >
-      {CLUB_LABELS[club]}
-    </button>
   );
 }

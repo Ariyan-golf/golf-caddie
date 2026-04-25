@@ -91,7 +91,7 @@ export interface Shot {
   hole_id: string;
   round_id: string;
   shot_number: number;
-  club: Club;
+  club: Club | null;
   start_lat: number | null;
   start_lng: number | null;
   end_lat: number | null;
