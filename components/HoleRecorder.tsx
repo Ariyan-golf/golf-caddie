@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { ShotRecorder } from "./ShotRecorder";
 import type { Club } from "@/types";
@@ -117,6 +117,14 @@ export function HoleRecorder({ roundId, initialHoles }: HoleRecorderProps) {
   const [editing, setEditing] = useState<{ id: string; type: "club" | "lie" | "direction" } | null>(null);
 
   const currentHole    = phase !== "par_select" ? holes.at(-1) ?? null : null;
+  const activeRef      = useRef<HTMLDivElement>(null);
+  const isFirstRender  = useRef(true);
+
+  useEffect(() => {
+    if (isFirstRender.current) { isFirstRender.current = false; return; }
+    activeRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [phase, currentHole?.id]);
+
   const completedHoles = holes.filter((h) => h.score !== null);
   const totalScore     = completedHoles.reduce((s, h) => s + (h.score ?? 0), 0);
   const totalPar       = completedHoles.reduce((s, h) => s + h.par, 0);
@@ -188,6 +196,15 @@ export function HoleRecorder({ roundId, initialHoles }: HoleRecorderProps) {
     setEditing(null);
   }
 
+  async function updateScore(holeId: string, newScore: number) {
+    const supabase = createClient();
+    await supabase.from("holes").update({ score: newScore }).eq("id", holeId);
+    const updated = holes.map((h) => h.id === holeId ? { ...h, score: newScore } : h);
+    setHoles(updated);
+    const total = updated.reduce((s, h) => s + (h.score ?? 0), 0);
+    await supabase.from("rounds").update({ total_score: total }).eq("id", roundId);
+  }
+
   function toggleEdit(id: string, type: "club" | "lie" | "direction") {
     setEditing((prev) =>
       prev?.id === id && prev.type === type ? null : { id, type }
@@ -225,35 +242,38 @@ export function HoleRecorder({ roundId, initialHoles }: HoleRecorderProps) {
           onUpdateClub={updateClub}
           onUpdateLie={updateLie}
           onUpdateBallDirection={updateBallDirection}
+          onUpdateScore={updateScore}
         />
       ))}
 
-      {phase === "par_select" && holes.length < 18 && (
-        <ParSelector holeNumber={holes.length + 1} onCreate={startHole} creating={creating} />
-      )}
+      <div ref={activeRef}>
+        {phase === "par_select" && holes.length < 18 && (
+          <ParSelector holeNumber={holes.length + 1} onCreate={startHole} creating={creating} />
+        )}
 
-      {phase === "shooting" && currentHole && (
-        <ActiveHoleCard
-          hole={currentHole}
-          roundId={roundId}
-          onShotRecorded={refreshCurrent}
-          onHoleout={() => setPhase("putt_select")}
-          editing={editing}
-          onToggleEdit={toggleEdit}
-          onUpdateClub={updateClub}
-          onUpdateLie={updateLie}
-          onUpdateBallDirection={updateBallDirection}
-        />
-      )}
+        {phase === "shooting" && currentHole && (
+          <ActiveHoleCard
+            hole={currentHole}
+            roundId={roundId}
+            onShotRecorded={refreshCurrent}
+            onHoleout={() => setPhase("putt_select")}
+            editing={editing}
+            onToggleEdit={toggleEdit}
+            onUpdateClub={updateClub}
+            onUpdateLie={updateLie}
+            onUpdateBallDirection={updateBallDirection}
+          />
+        )}
 
-      {phase === "putt_select" && currentHole && (
-        <PuttSelector
-          shotCount={currentHole.shots.length}
-          par={currentHole.par}
-          isLastHole={currentHole.hole_number === 18}
-          onSelect={completeHole}
-        />
-      )}
+        {phase === "putt_select" && currentHole && (
+          <PuttSelector
+            shotCount={currentHole.shots.length}
+            par={currentHole.par}
+            isLastHole={currentHole.hole_number === 18}
+            onSelect={completeHole}
+          />
+        )}
+      </div>
     </div>
   );
 }
@@ -421,7 +441,7 @@ function PuttSelector({
 }
 
 function CompletedHoleCard({
-  hole, expanded, editing, onToggle, onToggleEdit, onUpdateClub, onUpdateLie, onUpdateBallDirection,
+  hole, expanded, editing, onToggle, onToggleEdit, onUpdateClub, onUpdateLie, onUpdateBallDirection, onUpdateScore,
 }: {
   hole: Hole;
   expanded: boolean;
@@ -431,26 +451,51 @@ function CompletedHoleCard({
   onUpdateClub: (id: string, club: Club) => void;
   onUpdateLie: (id: string, lie: string) => void;
   onUpdateBallDirection: (id: string, dir: string) => void;
+  onUpdateScore: (holeId: string, newScore: number) => void;
 }) {
+  const [scoreEditing, setScoreEditing] = useState(false);
   const { text, cls } = scoreLabel(hole.score!, hole.par);
+
   return (
     <div className="card">
-      <button className="w-full flex items-center justify-between" onClick={onToggle}>
-        <div className="flex items-center gap-2">
+      {/* Header row */}
+      <div className="flex items-center justify-between gap-1">
+        <button onClick={onToggle} className="flex-1 flex items-center gap-2 min-w-0 text-left">
           <div className="w-7 h-7 bg-green-100 rounded-full flex items-center justify-center
-                          text-green-700 font-bold text-xs">
+                          text-green-700 font-bold text-xs shrink-0">
             {hole.hole_number}
           </div>
-          <span className="text-sm text-green-600 font-medium">
+          <span className="text-sm text-green-600 font-medium truncate">
             Par{hole.par} · {hole.shots.length}打+{hole.putts}P
           </span>
-        </div>
-        <div className="flex items-center gap-2">
+        </button>
+        <div className="flex items-center gap-1 shrink-0">
           <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${cls}`}>{text}</span>
-          <span className="text-green-300 text-xs">{expanded ? "▲" : "▼"}</span>
+          <button
+            onClick={() => setScoreEditing((v) => !v)}
+            className={`p-1 rounded-lg text-base leading-none transition-colors ${
+              scoreEditing ? "text-green-700 bg-green-100" : "text-green-300 hover:text-green-500"
+            }`}
+            aria-label="スコア修正"
+          >
+            ✏
+          </button>
+          <button onClick={onToggle} className="text-green-300 text-xs p-1">
+            {expanded ? "▲" : "▼"}
+          </button>
         </div>
-      </button>
+      </div>
 
+      {/* Inline score editor */}
+      {scoreEditing && (
+        <ScoreEditor
+          hole={hole}
+          onSave={onUpdateScore}
+          onClose={() => setScoreEditing(false)}
+        />
+      )}
+
+      {/* Shot detail (expandable) */}
       {expanded && hole.shots.length > 0 && (
         <div className="mt-3 pt-3 border-t border-green-50">
           <ShotList
@@ -463,6 +508,60 @@ function CompletedHoleCard({
           />
         </div>
       )}
+    </div>
+  );
+}
+
+// ── ScoreEditor ───────────────────────────────────────────────────────
+
+function ScoreEditor({ hole, onSave, onClose }: {
+  hole: Hole;
+  onSave: (holeId: string, newScore: number) => void;
+  onClose: () => void;
+}) {
+  const [value, setValue] = useState(hole.score ?? 1);
+
+  function clamp(n: number) { return Math.max(1, n); }
+
+  return (
+    <div className="flex items-center gap-2 py-3 mt-2 border-t border-green-50">
+      <button
+        onClick={() => setValue((v) => clamp(v - 1))}
+        className="w-10 h-10 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700
+                   font-bold text-xl transition-colors active:scale-95"
+      >
+        −
+      </button>
+      <input
+        type="number"
+        value={value}
+        min={1}
+        onChange={(e) => {
+          const n = parseInt(e.target.value);
+          if (!isNaN(n)) setValue(clamp(n));
+        }}
+        className="w-16 text-center text-2xl font-bold text-green-800
+                   border-b-2 border-green-400 bg-transparent outline-none"
+      />
+      <button
+        onClick={() => setValue((v) => v + 1)}
+        className="w-10 h-10 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700
+                   font-bold text-xl transition-colors active:scale-95"
+      >
+        ＋
+      </button>
+      <div className="flex gap-1.5 ml-auto">
+        <button onClick={onClose}
+          className="px-3 py-1.5 rounded-lg border border-gray-200 text-gray-500 text-xs font-bold">
+          閉じる
+        </button>
+        <button
+          onClick={() => { onSave(hole.id, value); onClose(); }}
+          className="px-3 py-1.5 rounded-lg bg-green-600 hover:bg-green-700 text-white text-xs font-bold transition-colors"
+        >
+          保存
+        </button>
+      </div>
     </div>
   );
 }
