@@ -802,20 +802,28 @@ function RoundComplete({
   totalScore: number;
   totalPar: number;
 }) {
-  const diff = totalScore - totalPar;
-  const out = holes.slice(0, 9).reduce((s, h) => s + (h.score ?? 0), 0);
-  const inn = holes.slice(9).reduce((s, h)  => s + (h.score ?? 0), 0);
+  const diff       = totalScore - totalPar;
+  const totalPutts = holes.reduce((s, h) => s + (h.putts ?? 0), 0);
+  const out        = holes.slice(0, 9).reduce((s, h) => s + (h.score ?? 0), 0);
+  const outPutts   = holes.slice(0, 9).reduce((s, h) => s + (h.putts ?? 0), 0);
+  const inn        = holes.slice(9).reduce((s, h)  => s + (h.score ?? 0), 0);
+  const innPutts   = holes.slice(9).reduce((s, h)  => s + (h.putts ?? 0), 0);
 
   return (
     <div className="space-y-4">
       <div className="bg-green-600 text-white rounded-2xl p-5 text-center">
         <p className="text-sm opacity-80">ラウンド完了</p>
-        <p className="text-6xl font-bold tabular-nums mt-1">{totalScore}</p>
+        <p className="text-5xl font-bold tabular-nums mt-1">
+          {totalScore}
+          <span className="text-2xl font-normal opacity-80 ml-2">/ {totalPutts}P</span>
+        </p>
         <p className="text-lg opacity-90">
           {diff === 0 ? "イーブン" : diff > 0 ? `+${diff}` : `${diff}`}
         </p>
         {holes.length === 18 && (
-          <p className="text-sm opacity-70 mt-2">OUT {out} / IN {inn}</p>
+          <p className="text-sm opacity-70 mt-2">
+            OUT {out} / {outPutts}P　IN {inn} / {innPutts}P
+          </p>
         )}
       </div>
 
