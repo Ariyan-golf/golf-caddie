@@ -3,8 +3,8 @@
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { ShotRecorder } from "./ShotRecorder";
-import type { Club, LieType } from "@/types";
-import { CLUB_LABELS, LIE_TYPES, LIE_LABELS, LIE_SHORT } from "@/types";
+import type { Club } from "@/types";
+import { CLUB_LABELS } from "@/types";
 
 // ── Local types ─────────────────────────────────────────────────────
 
@@ -49,6 +49,47 @@ const BALL_DIRECTION_LABELS: Record<string, string> = {
 const BALL_DIRECTION_SHORT: Record<string, string> = {
   hook: "フック", draw: "ドロー", straight: "ST", fade: "フェード", slice: "スライス",
 };
+
+// ── Lie: 2-stage system ──────────────────────────────────────────────
+
+const LIE_S1 = ["fairway", "right", "left", "short", "over"] as const;
+type LieS1 = typeof LIE_S1[number];
+const LIE_S1_LABEL: Record<LieS1, string> = {
+  fairway: "FW", right: "右", left: "左", short: "ショート", over: "オーバー",
+};
+
+const LIE_S2 = ["ob", "penalty", "bunker", "rough"] as const;
+type LieS2 = typeof LIE_S2[number];
+const LIE_S2_LABEL: Record<LieS2, string> = {
+  ob: "OB", penalty: "ペナ", bunker: "バンカー", rough: "ラフ",
+};
+
+// Legacy lie_type values from old system
+const LEGACY_LIE_SHORT: Record<string, string> = {
+  tee: "T", fw: "FW", rough: "RF", ob: "OB", bunker: "BK", trees: "林", green: "GR", other: "他",
+};
+
+function lieLabelShort(lieType: string | null): string {
+  if (!lieType) return "ライ";
+  if (lieType === "fairway") return "FW";
+  const parts = lieType.split(":");
+  if (parts.length >= 2) {
+    const [s1, s2, count] = parts;
+    const s1label = LIE_S1_LABEL[s1 as LieS1] ?? s1;
+    const s2label = LIE_S2_LABEL[s2 as LieS2] ?? s2;
+    return count ? `${s1label}${s2label}×${count}` : `${s1label}${s2label}`;
+  }
+  return LEGACY_LIE_SHORT[lieType] ?? lieType;
+}
+
+function parseLieParts(lieType: string | null): { s1: LieS1 | null; s2: LieS2 | null; count: number | null } {
+  if (!lieType) return { s1: null, s2: null, count: null };
+  const parts = lieType.split(":");
+  const s1 = LIE_S1.includes(parts[0] as LieS1) ? (parts[0] as LieS1) : null;
+  const s2 = parts[1] && LIE_S2.includes(parts[1] as LieS2) ? (parts[1] as LieS2) : null;
+  const count = parts[2] ? parseInt(parts[2]) : null;
+  return { s1, s2, count };
+}
 
 function scoreLabel(score: number, par: number) {
   const d = score - par;
@@ -129,7 +170,7 @@ export function HoleRecorder({ roundId, initialHoles }: HoleRecorderProps) {
     setEditing(null);
   }
 
-  async function updateLie(shotId: string, lie: LieType) {
+  async function updateLie(shotId: string, lie: string) {
     const supabase = createClient();
     await supabase.from("shots").update({ lie_type: lie }).eq("id", shotId);
     setHoles((prev) => prev.map((h) => ({
@@ -254,7 +295,7 @@ function ActiveHoleCard({
   editing: { id: string; type: "club" | "lie" | "direction" } | null;
   onToggleEdit: (id: string, type: "club" | "lie" | "direction") => void;
   onUpdateClub: (id: string, club: Club) => void;
-  onUpdateLie: (id: string, lie: LieType) => void;
+  onUpdateLie: (id: string, lie: string) => void;
   onUpdateBallDirection: (id: string, dir: string) => void;
 }) {
   const lastShot = hole.shots.at(-1);
@@ -283,14 +324,7 @@ function ActiveHoleCard({
         </button>
       </div>
 
-      <ShotRecorder
-        holeId={hole.id}
-        roundId={roundId}
-        shotNumber={hole.shots.length + 1}
-        prevShot={prevShot}
-        onShotRecorded={onShotRecorded}
-      />
-
+      {/* Shot list shown above the record button */}
       {hole.shots.length > 0 && (
         <ShotList
           shots={hole.shots}
@@ -301,6 +335,14 @@ function ActiveHoleCard({
           onUpdateBallDirection={onUpdateBallDirection}
         />
       )}
+
+      <ShotRecorder
+        holeId={hole.id}
+        roundId={roundId}
+        shotNumber={hole.shots.length + 1}
+        prevShot={prevShot}
+        onShotRecorded={onShotRecorded}
+      />
     </div>
   );
 }
@@ -355,7 +397,7 @@ function CompletedHoleCard({
   onToggle: () => void;
   onToggleEdit: (id: string, type: "club" | "lie" | "direction") => void;
   onUpdateClub: (id: string, club: Club) => void;
-  onUpdateLie: (id: string, lie: LieType) => void;
+  onUpdateLie: (id: string, lie: string) => void;
   onUpdateBallDirection: (id: string, dir: string) => void;
 }) {
   const { text, cls } = scoreLabel(hole.score!, hole.par);
@@ -393,7 +435,8 @@ function CompletedHoleCard({
   );
 }
 
-// ── ShotList: club + lie + ball direction editing inline ─────────────
+// ── ShotList ─────────────────────────────────────────────────────────
+// Button order: 番手 → 球筋 → ライ
 
 function ShotList({
   shots, editing, onToggleEdit, onUpdateClub, onUpdateLie, onUpdateBallDirection,
@@ -402,22 +445,20 @@ function ShotList({
   editing: { id: string; type: "club" | "lie" | "direction" } | null;
   onToggleEdit: (id: string, type: "club" | "lie" | "direction") => void;
   onUpdateClub: (id: string, club: Club) => void;
-  onUpdateLie: (id: string, lie: LieType) => void;
+  onUpdateLie: (id: string, lie: string) => void;
   onUpdateBallDirection: (id: string, dir: string) => void;
 }) {
   return (
     <div className="space-y-1">
-      {shots.map((shot) => {
+      {[...shots].sort((a, b) => a.shot_number - b.shot_number).map((shot) => {
         const clubOpen = editing?.id === shot.id && editing.type === "club";
-        const lieOpen  = editing?.id === shot.id && editing.type === "lie";
         const dirOpen  = editing?.id === shot.id && editing.type === "direction";
-        const clubLabel = shot.club
-          ? (CLUB_LABELS[shot.club as Club] ?? shot.club)
-          : null;
+        const lieOpen  = editing?.id === shot.id && editing.type === "lie";
+        const clubLabel = shot.club ? (CLUB_LABELS[shot.club as Club] ?? shot.club) : null;
 
         return (
           <div key={shot.id} className="border-b border-green-50 last:border-0">
-            {/* Row */}
+            {/* Row: 番手 → 球筋 → ライ */}
             <div className="flex items-center justify-between py-1.5">
               <span className="text-sm font-medium text-green-700">
                 第{shot.shot_number}打
@@ -428,7 +469,7 @@ function ShotList({
                     {shot.distance_yards}y
                   </span>
                 )}
-                {/* Club button */}
+                {/* ① 番手 */}
                 <button
                   onClick={() => onToggleEdit(shot.id, "club")}
                   className={`text-xs px-2.5 py-1 rounded-lg border font-bold transition-colors ${
@@ -443,22 +484,7 @@ function ShotList({
                 >
                   {clubLabel ?? "番手"}
                 </button>
-                {/* Lie button */}
-                <button
-                  onClick={() => onToggleEdit(shot.id, "lie")}
-                  className={`text-xs px-2.5 py-1 rounded-lg border font-bold transition-colors ${
-                    shot.lie_type
-                      ? lieOpen
-                        ? "bg-green-700 border-green-700 text-white"
-                        : "bg-green-100 border-green-300 text-green-700"
-                      : lieOpen
-                        ? "bg-green-100 border-green-400 text-green-700"
-                        : "bg-gray-50 border-gray-200 text-gray-400"
-                  }`}
-                >
-                  {shot.lie_type ? LIE_SHORT[shot.lie_type as LieType] : "ライ"}
-                </button>
-                {/* Ball direction button */}
+                {/* ② 球筋 */}
                 <button
                   onClick={() => onToggleEdit(shot.id, "direction")}
                   className={`text-xs px-2.5 py-1 rounded-lg border font-bold transition-colors ${
@@ -472,6 +498,21 @@ function ShotList({
                   }`}
                 >
                   {shot.ball_direction ? BALL_DIRECTION_SHORT[shot.ball_direction] : "球筋"}
+                </button>
+                {/* ③ ライ */}
+                <button
+                  onClick={() => onToggleEdit(shot.id, "lie")}
+                  className={`text-xs px-2.5 py-1 rounded-lg border font-bold transition-colors ${
+                    shot.lie_type
+                      ? lieOpen
+                        ? "bg-green-700 border-green-700 text-white"
+                        : "bg-green-100 border-green-300 text-green-700"
+                      : lieOpen
+                        ? "bg-green-100 border-green-400 text-green-700"
+                        : "bg-gray-50 border-gray-200 text-gray-400"
+                  }`}
+                >
+                  {lieLabelShort(shot.lie_type)}
                 </button>
               </div>
             </div>
@@ -500,22 +541,6 @@ function ShotList({
               </div>
             )}
 
-            {/* Lie picker */}
-            {lieOpen && (
-              <div className="grid grid-cols-4 gap-1 pb-2">
-                {LIE_TYPES.map((lie) => (
-                  <button key={lie} onClick={() => onUpdateLie(shot.id, lie)}
-                    className={`py-2 rounded-lg text-xs font-bold border transition-colors ${
-                      shot.lie_type === lie
-                        ? "bg-green-600 border-green-600 text-white"
-                        : "bg-white border-green-200 text-green-700 hover:bg-green-50"
-                    }`}>
-                    {LIE_LABELS[lie]}
-                  </button>
-                ))}
-              </div>
-            )}
-
             {/* Ball direction picker */}
             {dirOpen && (
               <div className="grid grid-cols-5 gap-1 pb-2">
@@ -531,9 +556,108 @@ function ShotList({
                 ))}
               </div>
             )}
+
+            {/* Lie picker (2-stage) */}
+            {lieOpen && (
+              <LiePicker
+                shotId={shot.id}
+                currentLie={shot.lie_type}
+                onSave={onUpdateLie}
+              />
+            )}
           </div>
         );
       })}
+    </div>
+  );
+}
+
+// ── LiePicker: 2-stage lie selection ─────────────────────────────────
+// Stage 1: FW / 右 / 左 / ショート / オーバー
+// Stage 2 (non-FW): OB / ペナ / バンカー / ラフ → count 1-8
+
+function LiePicker({
+  shotId, currentLie, onSave,
+}: {
+  shotId: string;
+  currentLie: string | null;
+  onSave: (shotId: string, lie: string) => void;
+}) {
+  const init = parseLieParts(currentLie);
+  const [s1, setS1] = useState<LieS1 | null>(init.s1);
+  const [s2, setS2] = useState<LieS2 | null>(init.s2);
+  const [count, setCount] = useState<number | null>(init.count);
+
+  function selectS1(val: LieS1) {
+    setS1(val);
+    setS2(null);
+    setCount(null);
+    if (val === "fairway") {
+      onSave(shotId, "fairway");
+    }
+  }
+
+  function selectS2(val: LieS2) {
+    setS2(val);
+    setCount(null);
+  }
+
+  function selectCount(n: number) {
+    setCount(n);
+    if (!s1 || !s2) return;
+    onSave(shotId, `${s1}:${s2}:${n}`);
+  }
+
+  return (
+    <div className="pb-2 space-y-2">
+      {/* Stage 1 */}
+      <div className="grid grid-cols-5 gap-1">
+        {LIE_S1.map((val) => (
+          <button key={val} onClick={() => selectS1(val)}
+            className={`py-2 rounded-lg text-xs font-bold border transition-colors ${
+              s1 === val
+                ? "bg-green-600 border-green-600 text-white"
+                : "bg-white border-green-200 text-green-700 hover:bg-green-50"
+            }`}>
+            {LIE_S1_LABEL[val]}
+          </button>
+        ))}
+      </div>
+
+      {/* Stage 2: shown when non-fairway selected */}
+      {s1 && s1 !== "fairway" && (
+        <div className="grid grid-cols-4 gap-1">
+          {LIE_S2.map((val) => (
+            <button key={val} onClick={() => selectS2(val)}
+              className={`py-2 rounded-lg text-xs font-bold border transition-colors ${
+                s2 === val
+                  ? "bg-orange-500 border-orange-500 text-white"
+                  : "bg-white border-orange-200 text-orange-700 hover:bg-orange-50"
+              }`}>
+              {LIE_S2_LABEL[val]}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Count 1-8: shown when stage 2 selected */}
+      {s1 && s1 !== "fairway" && s2 && (
+        <>
+          <p className="text-xs text-gray-400 font-medium">回数</p>
+          <div className="grid grid-cols-4 gap-1">
+            {[1, 2, 3, 4, 5, 6, 7, 8].map((n) => (
+              <button key={n} onClick={() => selectCount(n)}
+                className={`py-2 rounded-lg text-sm font-bold border transition-colors ${
+                  count === n
+                    ? "bg-gray-600 border-gray-600 text-white"
+                    : "bg-white border-gray-200 text-gray-700 hover:bg-gray-50"
+                }`}>
+                {n}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   );
 }
