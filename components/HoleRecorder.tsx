@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { ShotRecorder } from "./ShotRecorder";
 import type { Club, LieType } from "@/types";
@@ -14,6 +14,7 @@ interface Shot {
   club: string | null;
   distance_yards: number | null;
   lie_type: string | null;
+  ball_direction: string | null;
   start_lat: number | null;
   start_lng: number | null;
 }
@@ -34,12 +35,20 @@ interface HoleRecorderProps {
 
 type Phase = "par_select" | "shooting" | "putt_select";
 
-// ── Helpers ──────────────────────────────────────────────────���──────
+// ── Helpers ──────────────────────────────────────────────────────────
 
 const WOOD_CLUBS:  Club[] = ["1w", "3w", "5w", "7w", "9w"];
 const UTIL_CLUBS:  Club[] = ["u2", "u3", "u4", "u5", "u6", "u7"];
 const IRON_CLUBS:  Club[] = ["2i", "3i", "4i", "5i", "6i", "7i", "8i", "9i"];
 const WEDGE_CLUBS: Club[] = ["pw", "aw", "gw", "sw", "lw"];
+
+const BALL_DIRECTION_OPTIONS = ["hook", "draw", "straight", "fade", "slice"] as const;
+const BALL_DIRECTION_LABELS: Record<string, string> = {
+  hook: "フック", draw: "ドロー", straight: "ストレート", fade: "フェード", slice: "スライス",
+};
+const BALL_DIRECTION_SHORT: Record<string, string> = {
+  hook: "フック", draw: "ドロー", straight: "ST", fade: "フェード", slice: "スライス",
+};
 
 function scoreLabel(score: number, par: number) {
   const d = score - par;
@@ -64,8 +73,9 @@ export function HoleRecorder({ roundId, initialHoles }: HoleRecorderProps) {
   const [phase, setPhase]           = useState<Phase>(initPhase);
   const [creating, setCreating]     = useState(false);
   const [expandedHole, setExpanded] = useState<string | null>(null);
-  // Only one picker open at a time across all shots
-  const [editing, setEditing] = useState<{ id: string; type: "club" | "lie" } | null>(null);
+  const [editing, setEditing] = useState<{ id: string; type: "club" | "lie" | "direction" } | null>(null);
+  const [ballDirection, setBallDirection] = useState<string>('');
+  const ballDirectionRef = useRef<string>('');
 
   const currentHole    = phase !== "par_select" ? holes.at(-1) ?? null : null;
   const completedHoles = holes.filter((h) => h.score !== null);
@@ -73,7 +83,12 @@ export function HoleRecorder({ roundId, initialHoles }: HoleRecorderProps) {
   const totalPar       = completedHoles.reduce((s, h) => s + h.par, 0);
   const isRoundDone    = holes.length === 18 && holes.every((h) => h.score !== null);
 
-  // ── Actions ────────────────────────────────────────────────────���───
+  function handleSetBallDirection(dir: string) {
+    setBallDirection(dir);
+    ballDirectionRef.current = dir;
+  }
+
+  // ── Actions ─────────────────────────────────────────────────────────
 
   async function startHole(par: number) {
     setCreating(true);
@@ -95,7 +110,21 @@ export function HoleRecorder({ roundId, initialHoles }: HoleRecorderProps) {
     const supabase = createClient();
     const { data } = await supabase
       .from("holes").select("*, shots(*)").eq("id", currentHole.id).single();
-    if (data) setHoles((prev) => prev.map((h) => (h.id === data.id ? (data as Hole) : h)));
+    if (data) {
+      const freshHole = data as Hole;
+      const pendingDir = ballDirectionRef.current;
+      if (pendingDir && freshHole.shots.length > 0) {
+        const sorted = [...freshHole.shots].sort((a, b) => a.shot_number - b.shot_number);
+        const lastShot = sorted.at(-1);
+        if (lastShot) {
+          await supabase.from("shots").update({ ball_direction: pendingDir }).eq("id", lastShot.id);
+          lastShot.ball_direction = pendingDir;
+        }
+        ballDirectionRef.current = '';
+        setBallDirection('');
+      }
+      setHoles((prev) => prev.map((h) => (h.id === freshHole.id ? freshHole : h)));
+    }
   }
 
   async function completeHole(putts: number) {
@@ -128,7 +157,16 @@ export function HoleRecorder({ roundId, initialHoles }: HoleRecorderProps) {
     setEditing(null);
   }
 
-  function toggleEdit(id: string, type: "club" | "lie") {
+  async function updateBallDirection(shotId: string, dir: string) {
+    const supabase = createClient();
+    await supabase.from("shots").update({ ball_direction: dir }).eq("id", shotId);
+    setHoles((prev) => prev.map((h) => ({
+      ...h, shots: h.shots.map((s) => s.id === shotId ? { ...s, ball_direction: dir } : s),
+    })));
+    setEditing(null);
+  }
+
+  function toggleEdit(id: string, type: "club" | "lie" | "direction") {
     setEditing((prev) =>
       prev?.id === id && prev.type === type ? null : { id, type }
     );
@@ -164,6 +202,7 @@ export function HoleRecorder({ roundId, initialHoles }: HoleRecorderProps) {
           onToggleEdit={toggleEdit}
           onUpdateClub={updateClub}
           onUpdateLie={updateLie}
+          onUpdateBallDirection={updateBallDirection}
         />
       ))}
 
@@ -175,12 +214,15 @@ export function HoleRecorder({ roundId, initialHoles }: HoleRecorderProps) {
         <ActiveHoleCard
           hole={currentHole}
           roundId={roundId}
+          ballDirection={ballDirection}
+          onSetBallDirection={handleSetBallDirection}
           onShotRecorded={refreshCurrent}
           onHoleout={() => setPhase("putt_select")}
           editing={editing}
           onToggleEdit={toggleEdit}
           onUpdateClub={updateClub}
           onUpdateLie={updateLie}
+          onUpdateBallDirection={updateBallDirection}
         />
       )}
 
@@ -223,16 +265,20 @@ function ParSelector({
 }
 
 function ActiveHoleCard({
-  hole, roundId, onShotRecorded, onHoleout, editing, onToggleEdit, onUpdateClub, onUpdateLie,
+  hole, roundId, ballDirection, onSetBallDirection, onShotRecorded, onHoleout,
+  editing, onToggleEdit, onUpdateClub, onUpdateLie, onUpdateBallDirection,
 }: {
   hole: Hole;
   roundId: string;
+  ballDirection: string;
+  onSetBallDirection: (dir: string) => void;
   onShotRecorded: () => void;
   onHoleout: () => void;
-  editing: { id: string; type: "club" | "lie" } | null;
-  onToggleEdit: (id: string, type: "club" | "lie") => void;
+  editing: { id: string; type: "club" | "lie" | "direction" } | null;
+  onToggleEdit: (id: string, type: "club" | "lie" | "direction") => void;
   onUpdateClub: (id: string, club: Club) => void;
   onUpdateLie: (id: string, lie: LieType) => void;
+  onUpdateBallDirection: (id: string, dir: string) => void;
 }) {
   const lastShot = hole.shots.at(-1);
   const prevShot =
@@ -260,6 +306,24 @@ function ActiveHoleCard({
         </button>
       </div>
 
+      {/* Ball direction pre-selector */}
+      <div>
+        <p className="text-xs text-green-500 font-medium mb-1.5">球筋（任意）</p>
+        <div className="grid grid-cols-5 gap-1">
+          {BALL_DIRECTION_OPTIONS.map((dir) => (
+            <button key={dir}
+              onClick={() => onSetBallDirection(ballDirection === dir ? '' : dir)}
+              className={`py-1.5 rounded-lg text-xs font-bold border transition-colors ${
+                ballDirection === dir
+                  ? "bg-green-600 border-green-600 text-white"
+                  : "bg-white border-green-200 text-green-700 hover:bg-green-50"
+              }`}>
+              {BALL_DIRECTION_LABELS[dir]}
+            </button>
+          ))}
+        </div>
+      </div>
+
       <ShotRecorder
         holeId={hole.id}
         roundId={roundId}
@@ -275,6 +339,7 @@ function ActiveHoleCard({
           onToggleEdit={onToggleEdit}
           onUpdateClub={onUpdateClub}
           onUpdateLie={onUpdateLie}
+          onUpdateBallDirection={onUpdateBallDirection}
         />
       )}
     </div>
@@ -323,15 +388,16 @@ function PuttSelector({
 }
 
 function CompletedHoleCard({
-  hole, expanded, editing, onToggle, onToggleEdit, onUpdateClub, onUpdateLie,
+  hole, expanded, editing, onToggle, onToggleEdit, onUpdateClub, onUpdateLie, onUpdateBallDirection,
 }: {
   hole: Hole;
   expanded: boolean;
-  editing: { id: string; type: "club" | "lie" } | null;
+  editing: { id: string; type: "club" | "lie" | "direction" } | null;
   onToggle: () => void;
-  onToggleEdit: (id: string, type: "club" | "lie") => void;
+  onToggleEdit: (id: string, type: "club" | "lie" | "direction") => void;
   onUpdateClub: (id: string, club: Club) => void;
   onUpdateLie: (id: string, lie: LieType) => void;
+  onUpdateBallDirection: (id: string, dir: string) => void;
 }) {
   const { text, cls } = scoreLabel(hole.score!, hole.par);
   return (
@@ -360,6 +426,7 @@ function CompletedHoleCard({
             onToggleEdit={onToggleEdit}
             onUpdateClub={onUpdateClub}
             onUpdateLie={onUpdateLie}
+            onUpdateBallDirection={onUpdateBallDirection}
           />
         </div>
       )}
@@ -367,22 +434,24 @@ function CompletedHoleCard({
   );
 }
 
-// ── ShotList: club + lie editing inline ─────────────────────────────
+// ── ShotList: club + lie + ball direction editing inline ─────────────
 
 function ShotList({
-  shots, editing, onToggleEdit, onUpdateClub, onUpdateLie,
+  shots, editing, onToggleEdit, onUpdateClub, onUpdateLie, onUpdateBallDirection,
 }: {
   shots: Shot[];
-  editing: { id: string; type: "club" | "lie" } | null;
-  onToggleEdit: (id: string, type: "club" | "lie") => void;
+  editing: { id: string; type: "club" | "lie" | "direction" } | null;
+  onToggleEdit: (id: string, type: "club" | "lie" | "direction") => void;
   onUpdateClub: (id: string, club: Club) => void;
   onUpdateLie: (id: string, lie: LieType) => void;
+  onUpdateBallDirection: (id: string, dir: string) => void;
 }) {
   return (
     <div className="space-y-1">
       {shots.map((shot) => {
         const clubOpen = editing?.id === shot.id && editing.type === "club";
         const lieOpen  = editing?.id === shot.id && editing.type === "lie";
+        const dirOpen  = editing?.id === shot.id && editing.type === "direction";
         const clubLabel = shot.club
           ? (CLUB_LABELS[shot.club as Club] ?? shot.club)
           : null;
@@ -430,6 +499,21 @@ function ShotList({
                 >
                   {shot.lie_type ? LIE_SHORT[shot.lie_type as LieType] : "ライ"}
                 </button>
+                {/* Ball direction button */}
+                <button
+                  onClick={() => onToggleEdit(shot.id, "direction")}
+                  className={`text-xs px-2.5 py-1 rounded-lg border font-bold transition-colors ${
+                    shot.ball_direction
+                      ? dirOpen
+                        ? "bg-green-700 border-green-700 text-white"
+                        : "bg-green-100 border-green-300 text-green-700"
+                      : dirOpen
+                        ? "bg-green-100 border-green-400 text-green-700"
+                        : "bg-gray-50 border-gray-200 text-gray-400"
+                  }`}
+                >
+                  {shot.ball_direction ? BALL_DIRECTION_SHORT[shot.ball_direction] : "球筋"}
+                </button>
               </div>
             </div>
 
@@ -468,6 +552,22 @@ function ShotList({
                         : "bg-white border-green-200 text-green-700 hover:bg-green-50"
                     }`}>
                     {LIE_LABELS[lie]}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Ball direction picker */}
+            {dirOpen && (
+              <div className="grid grid-cols-5 gap-1 pb-2">
+                {BALL_DIRECTION_OPTIONS.map((dir) => (
+                  <button key={dir} onClick={() => onUpdateBallDirection(shot.id, dir)}
+                    className={`py-2 rounded-lg text-xs font-bold border transition-colors ${
+                      shot.ball_direction === dir
+                        ? "bg-green-600 border-green-600 text-white"
+                        : "bg-white border-green-200 text-green-700 hover:bg-green-50"
+                    }`}>
+                    {BALL_DIRECTION_LABELS[dir]}
                   </button>
                 ))}
               </div>
