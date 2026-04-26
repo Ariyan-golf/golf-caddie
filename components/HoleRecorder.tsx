@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { ShotRecorder } from "./ShotRecorder";
 import type { Club, LieType } from "@/types";
@@ -74,19 +74,12 @@ export function HoleRecorder({ roundId, initialHoles }: HoleRecorderProps) {
   const [creating, setCreating]     = useState(false);
   const [expandedHole, setExpanded] = useState<string | null>(null);
   const [editing, setEditing] = useState<{ id: string; type: "club" | "lie" | "direction" } | null>(null);
-  const [ballDirection, setBallDirection] = useState<string>('');
-  const ballDirectionRef = useRef<string>('');
 
   const currentHole    = phase !== "par_select" ? holes.at(-1) ?? null : null;
   const completedHoles = holes.filter((h) => h.score !== null);
   const totalScore     = completedHoles.reduce((s, h) => s + (h.score ?? 0), 0);
   const totalPar       = completedHoles.reduce((s, h) => s + h.par, 0);
   const isRoundDone    = holes.length === 18 && holes.every((h) => h.score !== null);
-
-  function handleSetBallDirection(dir: string) {
-    setBallDirection(dir);
-    ballDirectionRef.current = dir;
-  }
 
   // ── Actions ─────────────────────────────────────────────────────────
 
@@ -111,19 +104,7 @@ export function HoleRecorder({ roundId, initialHoles }: HoleRecorderProps) {
     const { data } = await supabase
       .from("holes").select("*, shots(*)").eq("id", currentHole.id).single();
     if (data) {
-      const freshHole = data as Hole;
-      const pendingDir = ballDirectionRef.current;
-      if (pendingDir && freshHole.shots.length > 0) {
-        const sorted = [...freshHole.shots].sort((a, b) => a.shot_number - b.shot_number);
-        const lastShot = sorted.at(-1);
-        if (lastShot) {
-          await supabase.from("shots").update({ ball_direction: pendingDir }).eq("id", lastShot.id);
-          lastShot.ball_direction = pendingDir;
-        }
-        ballDirectionRef.current = '';
-        setBallDirection('');
-      }
-      setHoles((prev) => prev.map((h) => (h.id === freshHole.id ? freshHole : h)));
+      setHoles((prev) => prev.map((h) => (h.id === (data as Hole).id ? (data as Hole) : h)));
     }
   }
 
@@ -214,8 +195,6 @@ export function HoleRecorder({ roundId, initialHoles }: HoleRecorderProps) {
         <ActiveHoleCard
           hole={currentHole}
           roundId={roundId}
-          ballDirection={ballDirection}
-          onSetBallDirection={handleSetBallDirection}
           onShotRecorded={refreshCurrent}
           onHoleout={() => setPhase("putt_select")}
           editing={editing}
@@ -265,13 +244,11 @@ function ParSelector({
 }
 
 function ActiveHoleCard({
-  hole, roundId, ballDirection, onSetBallDirection, onShotRecorded, onHoleout,
+  hole, roundId, onShotRecorded, onHoleout,
   editing, onToggleEdit, onUpdateClub, onUpdateLie, onUpdateBallDirection,
 }: {
   hole: Hole;
   roundId: string;
-  ballDirection: string;
-  onSetBallDirection: (dir: string) => void;
   onShotRecorded: () => void;
   onHoleout: () => void;
   editing: { id: string; type: "club" | "lie" | "direction" } | null;
@@ -304,24 +281,6 @@ function ActiveHoleCard({
                      px-4 py-2 rounded-xl text-sm transition-colors">
           ホールアウト
         </button>
-      </div>
-
-      {/* Ball direction pre-selector */}
-      <div>
-        <p className="text-xs text-green-500 font-medium mb-1.5">球筋（任意）</p>
-        <div className="grid grid-cols-5 gap-1">
-          {BALL_DIRECTION_OPTIONS.map((dir) => (
-            <button key={dir}
-              onClick={() => onSetBallDirection(ballDirection === dir ? '' : dir)}
-              className={`py-1.5 rounded-lg text-xs font-bold border transition-colors ${
-                ballDirection === dir
-                  ? "bg-green-600 border-green-600 text-white"
-                  : "bg-white border-green-200 text-green-700 hover:bg-green-50"
-              }`}>
-              {BALL_DIRECTION_LABELS[dir]}
-            </button>
-          ))}
-        </div>
       </div>
 
       <ShotRecorder
