@@ -250,6 +250,7 @@ export function HoleRecorder({ roundId, initialHoles }: HoleRecorderProps) {
         <PuttSelector
           shotCount={currentHole.shots.length}
           par={currentHole.par}
+          isLastHole={currentHole.hole_number === 18}
           onSelect={completeHole}
         />
       )}
@@ -320,7 +321,7 @@ function ActiveHoleCard({
         <button onClick={onHoleout}
           className="bg-green-600 hover:bg-green-700 text-white font-bold
                      px-4 py-2 rounded-xl text-sm transition-colors">
-          ホールアウト
+          グリーンオン
         </button>
       </div>
 
@@ -348,12 +349,23 @@ function ActiveHoleCard({
 }
 
 function PuttSelector({
-  shotCount, par, onSelect,
+  shotCount, par, isLastHole, onSelect,
 }: {
   shotCount: number;
   par: number;
+  isLastHole: boolean;
   onSelect: (putts: number) => void;
 }) {
+  const [selectedPutts, setSelectedPutts] = useState<number | null>(null);
+
+  const total       = selectedPutts != null ? shotCount + selectedPutts : null;
+  const diff        = total != null ? total - par : null;
+  const resultLabel = diff != null
+    ? diff <= -2 ? "イーグル" : diff === -1 ? "バーディ" :
+      diff === 0 ? "パー"     : diff === 1  ? "ボギー"   :
+      diff === 2 ? "ダブル"   : `+${diff}`
+    : null;
+
   return (
     <div className="card space-y-4">
       <div className="text-center">
@@ -362,28 +374,48 @@ function PuttSelector({
       </div>
       <div className="grid grid-cols-4 gap-2">
         {[1, 2, 3, 4, 5, 6, 7, 8].map((putts) => {
-          const total = shotCount + putts;
-          const diff = total - par;
+          const t = shotCount + putts;
+          const d = t - par;
           const label =
-            diff <= -2 ? "イーグル" : diff === -1 ? "バーディ" :
-            diff === 0 ? "パー"     : diff === 1  ? "ボギー"   :
-            diff === 2 ? "ダブル"   : `+${diff}`;
-          const color =
-            diff <= -1 ? "border-red-400 bg-red-50 text-red-700" :
-            diff === 0  ? "border-green-500 bg-green-50 text-green-700" :
-            diff === 1  ? "border-blue-400 bg-blue-50 text-blue-700" :
-            "border-gray-300 bg-gray-50 text-gray-700";
+            d <= -2 ? "イーグル" : d === -1 ? "バーディ" :
+            d === 0 ? "パー"     : d === 1  ? "ボギー"   :
+            d === 2 ? "ダブル"   : `+${d}`;
+          const isSelected = selectedPutts === putts;
+          const color = isSelected
+            ? "border-green-700 bg-green-700 text-white scale-105"
+            : d <= -1 ? "border-red-400 bg-red-50 text-red-700" :
+              d === 0  ? "border-green-500 bg-green-50 text-green-700" :
+              d === 1  ? "border-blue-400 bg-blue-50 text-blue-700" :
+              "border-gray-300 bg-gray-50 text-gray-700";
           return (
-            <button key={putts} onClick={() => onSelect(putts)}
+            <button key={putts} onClick={() => setSelectedPutts(putts)}
               className={`flex flex-col items-center py-3 rounded-2xl border-2 font-bold
                           transition-all active:scale-95 ${color}`}>
               <span className="text-2xl">{putts}</span>
               <span className="text-xs mt-0.5 font-medium">{label}</span>
-              <span className="text-xs font-bold">{total}打</span>
+              <span className="text-xs font-bold">{t}打</span>
             </button>
           );
         })}
       </div>
+
+      {selectedPutts != null && total != null && resultLabel != null && (
+        <div className="space-y-3">
+          <div className="text-center py-2 bg-green-50 rounded-xl">
+            <p className="text-sm text-green-600">
+              {shotCount}打 + {selectedPutts}パット ={" "}
+              <span className="font-bold">{total}打</span>
+            </p>
+            <p className="font-bold text-lg text-green-800">{resultLabel}</p>
+          </div>
+          <button
+            onClick={() => onSelect(selectedPutts)}
+            className="w-full py-4 rounded-2xl bg-green-600 hover:bg-green-700 active:bg-green-800
+                       text-white font-bold text-lg transition-colors">
+            {isLastHole ? "ラウンド終了" : "次のホールへ →"}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
