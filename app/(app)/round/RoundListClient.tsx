@@ -19,9 +19,48 @@ export function RoundListClient({ rounds: initialRounds }: { rounds: Round[] }) 
   async function deleteRound(id: string) {
     setDeletingId(id);
     const supabase = createClient();
-    // shots を先に明示削除（RLS の都合でカスケードが効かない場合の保険）
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) { setDeletingId(null); return; }
+
+    // 1. shots を先に明示削除（RLS カスケード保険）
     await supabase.from("shots").delete().eq("round_id", id);
+
+    // 2. round を削除（holes は FK cascade で連動削除）
     await supabase.from("rounds").delete().eq("id", id);
+
+    // 3. 残ったショットから club_averages を再計算
+    //    RLS により現ユーザーのショットのみ返る
+    const { data: remaining } = await supabase
+      .from("shots")
+      .select("club, distance_meters")
+      .not("club", "is", null)
+      .not("distance_meters", "is", null);
+
+    const clubMap = new Map<string, { total: number; count: number }>();
+    for (const s of remaining ?? []) {
+      const club = s.club as string;
+      const dist = s.distance_meters as number;
+      const entry = clubMap.get(club) ?? { total: 0, count: 0 };
+      entry.total += dist;
+      entry.count += 1;
+      clubMap.set(club, entry);
+    }
+
+    // 4. 一度全削除してから再挿入（shots がゼロになった番手も消える）
+    await supabase.from("club_averages").delete().eq("user_id", user.id);
+
+    if (clubMap.size > 0) {
+      await supabase.from("club_averages").insert(
+        Array.from(clubMap.entries()).map(([club, { total, count }]) => ({
+          user_id: user.id,
+          club,
+          average_distance_meters: parseFloat((total / count).toFixed(1)),
+          shot_count: count,
+        }))
+      );
+    }
+
     setRounds((prev) => prev.filter((r) => r.id !== id));
     setDeletingId(null);
     setConfirmId(null);
