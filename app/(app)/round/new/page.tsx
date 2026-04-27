@@ -1,38 +1,22 @@
-"use client";
+import { createClient } from "@/lib/supabase/server";
+import Link from "next/link";
+import { NewRoundForm } from "./NewRoundForm";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
+const FREE_ROUND_LIMIT = 5;
 
-export default function NewRoundPage() {
-  const router = useRouter();
-  const [courseName, setCourseName] = useState("");
-  const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+export default async function NewRoundPage() {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setError("");
-    setLoading(true);
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("plan, round_count")
+    .eq("id", user!.id)
+    .single();
 
-    const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-
-    const { data, error: err } = await supabase
-      .from("rounds")
-      .insert({ user_id: user!.id, course_name: courseName, date })
-      .select("id")
-      .single();
-
-    if (err) {
-      setError("ラウンドの作成に失敗しました");
-      setLoading(false);
-      return;
-    }
-
-    router.push(`/round/${data.id}`);
-  }
+  const plan = profile?.plan ?? "free";
+  const roundCount = profile?.round_count ?? 0;
+  const isBlocked = plan === "free" && roundCount >= FREE_ROUND_LIMIT;
 
   return (
     <div className="max-w-lg mx-auto p-4 space-y-4">
@@ -41,35 +25,42 @@ export default function NewRoundPage() {
         <p className="text-sm text-green-600 mt-1">コース情報を入力してください</p>
       </div>
 
-      <form onSubmit={handleSubmit} className="card space-y-4">
-        {error && (
-          <div className="bg-red-50 border border-red-200 text-red-600 rounded-xl p-3 text-sm">{error}</div>
-        )}
-        <div>
-          <label className="label">コース名 *</label>
-          <input
-            type="text"
-            className="input"
-            placeholder="例: 東京ゴルフクラブ"
-            value={courseName}
-            onChange={(e) => setCourseName(e.target.value)}
-            required
-          />
+      {isBlocked ? (
+        <div className="card space-y-4">
+          <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-xl p-4">
+            <span className="text-2xl flex-shrink-0">🔒</span>
+            <div>
+              <p className="font-semibold text-amber-800 text-sm">ラウンド上限に達しました</p>
+              <p className="text-amber-700 text-sm mt-1">
+                無料プランは{FREE_ROUND_LIMIT}ラウンドまでです。プランをアップグレードしてください。
+              </p>
+            </div>
+          </div>
+          <div className="text-center text-sm text-green-600">
+            現在のラウンド数：<span className="font-bold text-green-800">{roundCount}</span> / {FREE_ROUND_LIMIT}
+          </div>
+          <Link href="/plan" className="btn-primary text-center block">
+            プランをアップグレード
+          </Link>
+          <Link href="/round" className="block text-center text-sm text-green-500 underline">
+            ラウンド一覧に戻る
+          </Link>
         </div>
-        <div>
-          <label className="label">プレー日</label>
-          <input
-            type="date"
-            className="input"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-            required
-          />
-        </div>
-        <button type="submit" className="btn-primary" disabled={loading || !courseName}>
-          {loading ? "作成中..." : "ラウンドを開始する"}
-        </button>
-      </form>
+      ) : (
+        <>
+          {plan === "free" && (
+            <div className="flex items-center justify-between bg-green-50 border border-green-200 rounded-xl px-4 py-2 text-sm">
+              <span className="text-green-600">
+                残りラウンド数：<span className="font-bold text-green-800">{FREE_ROUND_LIMIT - roundCount}</span> / {FREE_ROUND_LIMIT}
+              </span>
+              <Link href="/plan" className="text-xs text-green-500 underline">
+                アップグレード
+              </Link>
+            </div>
+          )}
+          <NewRoundForm />
+        </>
+      )}
     </div>
   );
 }
