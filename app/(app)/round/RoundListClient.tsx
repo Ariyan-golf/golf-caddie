@@ -19,6 +19,8 @@ export function RoundListClient({ rounds: initialRounds }: { rounds: Round[] }) 
   async function deleteRound(id: string) {
     setDeletingId(id);
     const supabase = createClient();
+    // shots を先に明示削除（RLS の都合でカスケードが効かない場合の保険）
+    await supabase.from("shots").delete().eq("round_id", id);
     await supabase.from("rounds").delete().eq("id", id);
     setRounds((prev) => prev.filter((r) => r.id !== id));
     setDeletingId(null);
