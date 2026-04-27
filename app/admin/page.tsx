@@ -1,30 +1,43 @@
 import { createClient } from "@/lib/supabase/server";
+import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { redirect } from "next/navigation";
 
 const ADMIN_EMAIL = "t.a.0903076959@i.softbank.jp";
 
-type AdminUser = {
-  id: string;
-  display_name: string | null;
-  email: string;
-  invite_code: string | null;
-  graduation_year: number | null;
-  round_count: number;
-  plan: string;
-  role: string;
-  created_at: string;
-};
-
 export default async function AdminPage() {
+  // 通常クライアントでログイン中ユーザーを確認
   const supabase = await createClient();
-
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
   if (!user || user.email !== ADMIN_EMAIL) redirect("/");
 
-  const { data: users, error } = await supabase.rpc("get_admin_user_list");
+  // サービスロールクライアントで全データ取得（RLS バイパス）
+  const admin = createAdminClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
+
+  const [{ data: profiles }, { data: authData }] = await Promise.all([
+    admin
+      .from("profiles")
+      .select("id, display_name, role, invite_code, graduation_year, plan, round_count, created_at")
+      .order("created_at", { ascending: false }),
+    admin.auth.admin.listUsers({ perPage: 1000 }),
+  ]);
+
+  // email を auth.users から引く
+  const emailMap = new Map(
+    (authData?.users ?? []).map((u) => [u.id, u.email ?? "—"])
+  );
+
+  const users = (profiles ?? []).map((p) => ({
+    ...p,
+    email: emailMap.get(p.id) ?? "—",
+  }));
+
+  const studentCount = users.filter((u) => u.role === "student").length;
 
   return (
     <div className="min-h-screen p-4 max-w-5xl mx-auto">
@@ -32,12 +45,6 @@ export default async function AdminPage() {
         <h1 className="text-2xl font-bold text-green-800">管理画面</h1>
         <p className="text-green-600 text-sm mt-1">学生・ユーザー一覧</p>
       </div>
-
-      {error && (
-        <div className="bg-red-50 border border-red-200 text-red-600 rounded-xl p-4 mb-4 text-sm">
-          データの取得に失敗しました: {error.message}
-        </div>
-      )}
 
       <div className="card overflow-x-auto p-0">
         <table className="w-full text-sm">
@@ -54,15 +61,15 @@ export default async function AdminPage() {
             </tr>
           </thead>
           <tbody>
-            {users && users.length > 0 ? (
-              (users as AdminUser[]).map((u) => (
+            {users.length > 0 ? (
+              users.map((u) => (
                 <tr key={u.id} className="border-b border-green-50 last:border-0 hover:bg-green-50/50">
                   <td className="p-3 text-green-800 font-medium whitespace-nowrap">
                     {u.display_name ?? "—"}
                   </td>
                   <td className="p-3 text-green-700 whitespace-nowrap">{u.email}</td>
                   <td className="p-3 whitespace-nowrap">
-                    <RoleBadge role={u.role} />
+                    <RoleBadge role={u.role ?? "general"} />
                   </td>
                   <td className="p-3 text-green-700 whitespace-nowrap font-mono text-xs">
                     {u.invite_code ?? "—"}
@@ -71,10 +78,10 @@ export default async function AdminPage() {
                     {u.graduation_year ? `${u.graduation_year}年` : "—"}
                   </td>
                   <td className="p-3 text-right text-green-800 font-semibold whitespace-nowrap">
-                    {u.round_count}
+                    {u.round_count ?? 0}
                   </td>
                   <td className="p-3 whitespace-nowrap">
-                    <PlanBadge plan={u.plan} />
+                    <PlanBadge plan={u.plan ?? "free"} />
                   </td>
                   <td className="p-3 text-green-500 text-xs whitespace-nowrap">
                     {new Date(u.created_at).toLocaleDateString("ja-JP")}
@@ -92,21 +99,18 @@ export default async function AdminPage() {
         </table>
       </div>
 
-      {users && (
-        <p className="text-xs text-green-400 mt-3 text-right">
-          合計 {users.length} 名 （学生:{" "}
-          {(users as AdminUser[]).filter((u) => u.role === "student").length} 名）
-        </p>
-      )}
+      <p className="text-xs text-green-400 mt-3 text-right">
+        合計 {users.length} 名（学生: {studentCount} 名）
+      </p>
     </div>
   );
 }
 
 function RoleBadge({ role }: { role: string }) {
   const map: Record<string, { label: string; className: string }> = {
-    admin: { label: "管理者", className: "bg-purple-100 text-purple-700" },
-    student: { label: "学生", className: "bg-blue-100 text-blue-700" },
-    general: { label: "一般", className: "bg-gray-100 text-gray-600" },
+    admin:   { label: "管理者", className: "bg-purple-100 text-purple-700" },
+    student: { label: "学生",   className: "bg-blue-100 text-blue-700" },
+    general: { label: "一般",   className: "bg-gray-100 text-gray-600" },
   };
   const config = map[role] ?? map.general;
   return (
@@ -118,9 +122,9 @@ function RoleBadge({ role }: { role: string }) {
 
 function PlanBadge({ plan }: { plan: string }) {
   const map: Record<string, { label: string; className: string }> = {
-    premium: { label: "Premium", className: "bg-yellow-100 text-yellow-700" },
+    premium:  { label: "Premium",  className: "bg-yellow-100 text-yellow-700" },
     standard: { label: "Standard", className: "bg-green-100 text-green-700" },
-    free: { label: "Free", className: "bg-gray-100 text-gray-500" },
+    free:     { label: "Free",     className: "bg-gray-100 text-gray-500" },
   };
   const config = map[plan] ?? map.free;
   return (
