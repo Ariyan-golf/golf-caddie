@@ -5,13 +5,23 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 
+const INVITE_CODE_MAP: Record<string, { graduation_year: number }> = {
+  TOKAI2026: { graduation_year: 2026 },
+  TOKAI2027: { graduation_year: 2027 },
+  TOKAI2028: { graduation_year: 2028 },
+  TOKAI2029: { graduation_year: 2029 },
+};
+
 export default function RegisterPage() {
   const router = useRouter();
   const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [inviteCode, setInviteCode] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  const inviteInfo = INVITE_CODE_MAP[inviteCode.toUpperCase()] ?? null;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -19,11 +29,15 @@ export default function RegisterPage() {
     setLoading(true);
 
     const supabase = createClient();
+    const normalizedCode = inviteCode.trim().toUpperCase();
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
-        data: { display_name: displayName },
+        data: {
+          display_name: displayName,
+          ...(normalizedCode ? { invite_code: normalizedCode } : {}),
+        },
       },
     });
 
@@ -33,7 +47,6 @@ export default function RegisterPage() {
       return;
     }
 
-    // signUp がセッションを返さない場合（メール確認が有効な場合）は直接サインインする
     if (!data.session) {
       const { error: signInError } = await supabase.auth.signInWithPassword({
         email,
@@ -107,6 +120,33 @@ export default function RegisterPage() {
                 autoComplete="new-password"
               />
             </div>
+
+            {/* 招待コード */}
+            <div>
+              <label className="label">
+                招待コード
+                <span className="text-green-400 font-normal ml-1">（任意）</span>
+              </label>
+              <input
+                type="text"
+                className="input"
+                placeholder="例：TOKAI2026"
+                value={inviteCode}
+                onChange={(e) => setInviteCode(e.target.value)}
+                autoComplete="off"
+              />
+              {inviteCode && inviteInfo && (
+                <div className="mt-2 bg-green-50 border border-green-200 rounded-xl p-3 text-sm space-y-0.5">
+                  <p className="text-green-700 font-semibold">招待コードを確認しました</p>
+                  <p className="text-green-600">ロール：学生（student）</p>
+                  <p className="text-green-600">卒業予定年度：{inviteInfo.graduation_year}年</p>
+                </div>
+              )}
+              {inviteCode && !inviteInfo && (
+                <p className="mt-1 text-xs text-red-500">無効な招待コードです</p>
+              )}
+            </div>
+
             <button type="submit" className="btn-primary" disabled={loading}>
               {loading ? "登録中..." : "アカウント作成"}
             </button>
