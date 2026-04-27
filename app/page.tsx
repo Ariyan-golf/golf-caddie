@@ -17,6 +17,14 @@ export default async function HomePage() {
     .eq("id", user.id)
     .single();
 
+  // display_name が profiles に未保存の場合、user_metadata から補完して保存
+  if (profile && !profile.display_name && user.user_metadata?.display_name) {
+    await supabase
+      .from("profiles")
+      .update({ display_name: user.user_metadata.display_name })
+      .eq("id", user.id);
+  }
+
   const { data: recentRounds } = await supabase
     .from("rounds")
     .select("id, course_name, date, total_score")
@@ -31,7 +39,10 @@ export default async function HomePage() {
     .order("shot_count", { ascending: false })
     .limit(5);
 
-  const displayName = profile?.display_name ?? "ゴルファー";
+  const displayName =
+    profile?.display_name ??
+    (user.user_metadata?.display_name as string | undefined) ??
+    "ゴルファー";
 
   return (
     <div className="min-h-screen pb-20">
