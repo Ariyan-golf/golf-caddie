@@ -27,8 +27,16 @@ export function QrScanner() {
         { fps: 10, qrbox: { width: 250, height: 250 } },
         (text) => {
           scanner.stop().catch(() => {});
-          setCourseName(text.trim());
-          setPhase("confirm");
+          try {
+            const url = new URL(text.trim());
+            const course = url.searchParams.get("course");
+            if (!course) throw new Error("no course param");
+            setCourseName(course);
+            setPhase("confirm");
+          } catch {
+            setErrorMsg("このQRコードは対応していません。提携ゴルフ場のQRコードをスキャンしてください。");
+            setPhase("error");
+          }
         },
         () => {}
       );
