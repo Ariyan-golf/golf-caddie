@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { Navigation } from "@/components/Navigation";
+import { LogoutButton } from "@/components/LogoutButton";
 
 export default async function HomePage() {
   const supabase = await createClient();
@@ -53,8 +54,11 @@ export default async function HomePage() {
             <p className="text-green-600 text-sm">おかえりなさい</p>
             <h1 className="text-2xl font-bold text-green-800">{displayName} さん</h1>
           </div>
-          <div className="w-12 h-12 bg-green-600 rounded-full flex items-center justify-center">
-            <span className="text-2xl">⛳</span>
+          <div className="flex flex-col items-end gap-1">
+            <div className="w-12 h-12 bg-green-600 rounded-full flex items-center justify-center">
+              <span className="text-2xl">⛳</span>
+            </div>
+            <LogoutButton />
           </div>
         </div>
 
