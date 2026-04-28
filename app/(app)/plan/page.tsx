@@ -1,5 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
+import { createClient as createAdminClient } from "@supabase/supabase-js";
 import Link from "next/link";
+import { CheckoutButton } from "./CheckoutButton";
 
 const PLANS = [
   {
@@ -42,8 +44,9 @@ const PLANS = [
     description: "AIの力で一段上のゴルフへ",
     features: [
       "スタンダードの全機能",
-      "AIキャディ（番手アドバイス）",
-      "AIスイングコーチ",
+      "AIキャディ（ルール確認）",
+      "AIマネージャー（コース情報）",
+      "番手アドバイス（無制限）",
       "優先サポート",
     ],
     limits: [],
@@ -52,11 +55,22 @@ const PLANS = [
   },
 ] as const;
 
-export default async function PlanPage() {
+interface Props {
+  searchParams: Promise<{ success?: string; canceled?: string; plan?: string }>;
+}
+
+export default async function PlanPage({ searchParams }: Props) {
+  const params = await searchParams;
+
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
-  const { data: profile } = await supabase
+  // プラン取得はサービスロールで（RLSバイパス）
+  const admin = createAdminClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
+  const { data: profile } = await admin
     .from("profiles")
     .select("plan, round_count")
     .eq("id", user!.id)
@@ -65,12 +79,40 @@ export default async function PlanPage() {
   const currentPlan = profile?.plan ?? "free";
   const roundCount = profile?.round_count ?? 0;
 
+  const planLabel: Record<string, string> = {
+    standard: "スタンダード",
+    premium: "プレミアム",
+  };
+
   return (
-    <div className="max-w-lg mx-auto p-4 space-y-6">
+    <div className="max-w-lg mx-auto p-4 space-y-6 pb-24">
       <div className="pt-4">
         <h1 className="text-2xl font-bold text-green-800">プラン選択</h1>
         <p className="text-sm text-green-600 mt-1">あなたに合ったプランをお選びください</p>
       </div>
+
+      {/* 決済完了通知 */}
+      {params.success && (
+        <div className="bg-green-50 border border-green-300 rounded-xl p-4 flex items-start gap-3">
+          <span className="text-2xl shrink-0">🎉</span>
+          <div>
+            <p className="font-bold text-green-800">
+              {params.plan ? planLabel[params.plan] ?? "プラン" : "プラン"}へのアップグレード完了！
+            </p>
+            <p className="text-sm text-green-600 mt-0.5">
+              ご登録ありがとうございます。すべての機能をご利用いただけます。
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* キャンセル通知 */}
+      {params.canceled && (
+        <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 flex items-start gap-3">
+          <span className="text-xl shrink-0">ℹ️</span>
+          <p className="text-sm text-gray-600">決済がキャンセルされました。いつでもお申し込みいただけます。</p>
+        </div>
+      )}
 
       {currentPlan === "free" && roundCount >= 5 && (
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-center gap-2 text-sm">
@@ -114,13 +156,13 @@ export default async function PlanPage() {
               <ul className="space-y-1.5 mb-4">
                 {plan.features.map((f) => (
                   <li key={f} className="flex items-center gap-2 text-sm text-green-700">
-                    <span className="text-green-500 flex-shrink-0">✓</span>
+                    <span className="text-green-500 shrink-0">✓</span>
                     {f}
                   </li>
                 ))}
                 {plan.limits.map((l) => (
                   <li key={l} className="flex items-center gap-2 text-sm text-gray-400">
-                    <span className="flex-shrink-0">✕</span>
+                    <span className="shrink-0">✕</span>
                     {l}
                   </li>
                 ))}
@@ -135,21 +177,25 @@ export default async function PlanPage() {
                   ダウングレード不可
                 </div>
               ) : (
-                <button
-                  disabled
-                  className="w-full py-2.5 rounded-xl text-sm font-semibold bg-gray-100 text-gray-400 cursor-not-allowed"
-                >
-                  準備中
-                </button>
+                <CheckoutButton
+                  plan={plan.key as "standard" | "premium"}
+                  label={`${plan.name}プランに申し込む（${plan.price}${plan.period}）`}
+                />
               )}
             </div>
           );
         })}
       </div>
 
-      <p className="text-center text-xs text-green-400 pb-2">
-        決済システムは近日公開予定です。
-      </p>
+      <div className="card bg-gray-50 border-gray-200 space-y-2 text-sm text-gray-600">
+        <p className="font-semibold text-gray-700">お支払いについて</p>
+        <ul className="space-y-1">
+          <li>・クレジットカード（Visa/Mastercard/JCB等）でお支払いいただけます</li>
+          <li>・毎月自動更新されます</li>
+          <li>・解約はStripeカスタマーポータルからいつでも可能です</li>
+          <li>・決済はStripeで安全に処理されます</li>
+        </ul>
+      </div>
 
       <Link href="/" className="block text-center text-sm text-green-500 underline pb-4">
         ホームに戻る
