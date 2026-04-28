@@ -102,11 +102,12 @@ export default async function HomePage() {
             <span className="font-semibold text-green-700 text-sm">番手アドバイス</span>
           </Link>
           <Link
-            href="/swing"
+            href="/golf-qr"
             className="card flex flex-col items-center py-5 gap-2 hover:border-green-300 transition-colors"
           >
-            <span className="text-3xl">📊</span>
-            <span className="font-semibold text-green-700 text-sm">スイング分析</span>
+            <span className="text-3xl">⛳</span>
+            <span className="font-semibold text-green-700 text-sm">提携ゴルフ場と連携</span>
+            <span className="text-xs text-green-500">QRスキャン・330円／ラウンド</span>
           </Link>
           <Link
             href="/history"
