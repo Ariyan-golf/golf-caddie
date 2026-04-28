@@ -63,7 +63,7 @@ export default async function HomePage() {
         </div>
 
         {/* Announcement Banner */}
-        <div className="bg-gradient-to-r from-green-600 to-emerald-500 rounded-xl p-4 shadow-md">
+        <div className="bg-gradient-to-r from-green-600 to-emerald-500 rounded-xl p-4 shadow-md space-y-3">
           <div className="flex gap-3 items-start">
             <span className="text-xl flex-shrink-0 mt-0.5">📢</span>
             <div className="space-y-1">
@@ -76,6 +76,13 @@ export default async function HomePage() {
               </p>
             </div>
           </div>
+          <Link
+            href="/plan"
+            className="block w-full text-center bg-white text-green-700 font-semibold
+                       text-sm py-2.5 rounded-lg hover:bg-green-50 transition-colors"
+          >
+            プランを変更する →
+          </Link>
         </div>
 
         {/* Quick actions */}
