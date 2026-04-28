@@ -104,8 +104,8 @@ export function ShotRecorder({
           </span>
         ) : (
           <span className="flex flex-col items-center gap-1">
-            <span>ショット記録　第{shotNumber}打</span>
-            <span className="text-sm font-normal opacity-80">打つ前に押してね</span>
+            <span>第{shotNumber}打　打つ前に押してね</span>
+            <span className="text-sm font-normal opacity-80">（ショット記録です）</span>
           </span>
         )}
       </button>
