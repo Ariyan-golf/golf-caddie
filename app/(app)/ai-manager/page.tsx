@@ -1,13 +1,18 @@
 import { createClient } from "@/lib/supabase/server";
+import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { AiManagerClient } from "./AiManagerClient";
 
 export default async function AiManagerPage() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
-  const { data: profile } = await supabase
+  const admin = createAdminClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
+  const { data: profile } = await admin
     .from("profiles")
-    .select("plan, display_name")
+    .select("plan")
     .eq("id", user!.id)
     .single();
 
