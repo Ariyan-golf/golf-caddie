@@ -119,15 +119,8 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1 }: HoleRecor
   const [confirmGoBack, setConfirmGoBack] = useState(false);
   const [goingBack, setGoingBack]   = useState(false);
 
-  const currentHole    = phase !== "par_select" ? holes.at(-1) ?? null : null;
-  const activeRef      = useRef<HTMLDivElement>(null);
-  const isFirstRender  = useRef(true);
-  const holeCardRefs   = useRef<Record<number, HTMLDivElement | null>>({});
-
-  useEffect(() => {
-    if (isFirstRender.current) { isFirstRender.current = false; return; }
-    activeRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-  }, [phase, currentHole?.id]);
+  const currentHole  = phase !== "par_select" ? holes.at(-1) ?? null : null;
+  const holeCardRefs = useRef<Record<number, HTMLDivElement | null>>({});
 
   function scrollToHole(holeNumber: number) {
     const hole = holes.find((h) => h.hole_number === holeNumber);
@@ -135,7 +128,7 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1 }: HoleRecor
     if (hole.score !== null) {
       holeCardRefs.current[holeNumber]?.scrollIntoView({ behavior: "smooth", block: "start" });
     } else {
-      activeRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      window.scrollTo({ top: 0, behavior: "smooth" });
     }
   }
 
@@ -263,35 +256,8 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1 }: HoleRecor
         onTabClick={scrollToHole}
       />
 
-      {completedHoles.length > 0 && (
-        <div className="flex items-center justify-between bg-green-700 text-white rounded-xl px-4 py-2">
-          <span className="text-sm font-medium">{completedHoles.length}H 終了</span>
-          <span className="text-lg font-bold tabular-nums">
-            {totalScore}
-            <span className="text-sm font-normal ml-1 opacity-80">
-              ({totalScore - totalPar >= 0 ? "+" : ""}{totalScore - totalPar})
-            </span>
-          </span>
-        </div>
-      )}
-
-      {completedHoles.map((hole) => (
-        <div key={hole.id} ref={(el) => { holeCardRefs.current[hole.hole_number] = el; }}>
-          <CompletedHoleCard
-            hole={hole}
-            expanded={expandedHole === hole.id}
-            editing={editing}
-            onToggle={() => setExpanded(expandedHole === hole.id ? null : hole.id)}
-            onToggleEdit={toggleEdit}
-            onUpdateClub={updateClub}
-            onUpdateLie={updateLie}
-            onUpdateBallDirection={updateBallDirection}
-            onUpdateScore={updateScore}
-          />
-        </div>
-      ))}
-
-      <div ref={activeRef}>
+      {/* ① 現在ホールの入力エリア — タブ直下に固定 */}
+      <div>
         {phase === "par_select" && holes.length < 18 && (
           <div className="space-y-3">
             <ParSelector holeNumber={nextHoleNumber(holes.length)} onCreate={handleStartHole} creating={creating} />
@@ -302,8 +268,8 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1 }: HoleRecor
                   <div className="flex items-start gap-2">
                     <span className="text-xl flex-shrink-0">↩️</span>
                     <div>
-                      <p className="font-semibold text-amber-800 text-sm">前のホールに戻りますか？</p>
-                      <p className="text-amber-700 text-xs mt-0.5">
+                      <p className="font-semibold text-amber-800 text-base">前のホールに戻りますか？</p>
+                      <p className="text-amber-700 text-sm mt-1">
                         ホール {holes.at(-1)?.hole_number} のスコアがリセットされ、パット数を再入力できます。
                       </p>
                     </div>
@@ -359,6 +325,37 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1 }: HoleRecor
           />
         )}
       </div>
+
+      {/* ② 完了済みホール一覧 — 入力エリアの下にスクロール */}
+      {completedHoles.length > 0 && (
+        <>
+          <div className="flex items-center justify-between bg-green-700 text-white rounded-xl px-4 py-2">
+            <span className="text-base font-medium">{completedHoles.length}H 終了</span>
+            <span className="text-xl font-bold tabular-nums">
+              {totalScore}
+              <span className="text-base font-normal ml-1 opacity-80">
+                ({totalScore - totalPar >= 0 ? "+" : ""}{totalScore - totalPar})
+              </span>
+            </span>
+          </div>
+
+          {completedHoles.map((hole) => (
+            <div key={hole.id} ref={(el) => { holeCardRefs.current[hole.hole_number] = el; }}>
+              <CompletedHoleCard
+                hole={hole}
+                expanded={expandedHole === hole.id}
+                editing={editing}
+                onToggle={() => setExpanded(expandedHole === hole.id ? null : hole.id)}
+                onToggleEdit={toggleEdit}
+                onUpdateClub={updateClub}
+                onUpdateLie={updateLie}
+                onUpdateBallDirection={updateBallDirection}
+                onUpdateScore={updateScore}
+              />
+            </div>
+          ))}
+        </>
+      )}
     </div>
   );
 }
@@ -451,7 +448,7 @@ function ParSelector({
 }) {
   return (
     <div className="card">
-      <p className="text-sm font-bold text-green-700 mb-3 text-center">
+      <p className="text-lg font-bold text-green-700 mb-3 text-center">
         ホール {holeNumber} — パーを選択
       </p>
       <div className="grid grid-cols-3 gap-3">
@@ -496,14 +493,15 @@ function ActiveHoleCard({
             {hole.hole_number}
           </div>
           <div>
-            <p className="font-bold text-green-900">ホール {hole.hole_number}</p>
-            <p className="text-xs text-green-500">パー{hole.par} · {hole.shots.length}打記録済</p>
+            <p className="font-bold text-green-900 text-lg">ホール {hole.hole_number}</p>
+            <p className="text-sm text-green-500">パー{hole.par} · {hole.shots.length}打記録済</p>
           </div>
         </div>
         <button onClick={onHoleout}
           className="bg-green-600 hover:bg-green-700 text-white font-bold
-                     px-5 py-3 rounded-xl text-base transition-colors">
-          グリーンオン
+                     px-5 py-3 rounded-xl text-base transition-colors flex flex-col items-center gap-0.5">
+          <span>グリーンオン</span>
+          <span className="text-xs font-normal opacity-80">グリーンで押してね</span>
         </button>
       </div>
 
@@ -551,8 +549,8 @@ function PuttSelector({
   return (
     <div className="card space-y-4">
       <div className="text-center">
-        <p className="text-lg font-bold text-green-800">パット数は？</p>
-        <p className="text-sm text-green-500">ショット {shotCount}打 + パット</p>
+        <p className="text-xl font-bold text-green-800">パット数は？</p>
+        <p className="text-base text-green-500">ショット {shotCount}打 + パット</p>
       </div>
       <div className="grid grid-cols-4 gap-2">
         {[1, 2, 3, 4, 5, 6, 7, 8].map((putts) => {
@@ -584,16 +582,16 @@ function PuttSelector({
       {selectedPutts != null && total != null && resultLabel != null && (
         <div className="space-y-3">
           <div className="text-center py-2 bg-green-50 rounded-xl">
-            <p className="text-sm text-green-600">
+            <p className="text-base text-green-600">
               {shotCount}打 + {selectedPutts}パット ={" "}
               <span className="font-bold">{total}打</span>
             </p>
-            <p className="font-bold text-lg text-green-800">{resultLabel}</p>
+            <p className="font-bold text-xl text-green-800">{resultLabel}</p>
           </div>
           <button
             onClick={() => onSelect(selectedPutts)}
             className="w-full py-4 rounded-2xl bg-green-600 hover:bg-green-700 active:bg-green-800
-                       text-white font-bold text-lg transition-colors">
+                       text-white font-bold text-xl transition-colors">
             {isLastHole ? "ラウンド終了" : "次のホールへ →"}
           </button>
         </div>
@@ -623,16 +621,16 @@ function CompletedHoleCard({
       {/* Header row */}
       <div className="flex items-center justify-between gap-1">
         <button onClick={onToggle} className="flex-1 flex items-center gap-2 min-w-0 text-left">
-          <div className="w-7 h-7 bg-green-100 rounded-full flex items-center justify-center
-                          text-green-700 font-bold text-xs shrink-0">
+          <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center
+                          text-green-700 font-bold text-sm shrink-0">
             {hole.hole_number}
           </div>
-          <span className="text-sm text-green-600 font-medium truncate">
+          <span className="text-base text-green-600 font-medium truncate">
             Par{hole.par} · {hole.shots.length}打+{hole.putts}P
           </span>
         </button>
         <div className="flex items-center gap-1 shrink-0">
-          <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${cls}`}>{text}</span>
+          <span className={`px-2.5 py-1 rounded-full text-sm font-bold ${cls}`}>{text}</span>
           <button
             onClick={() => setScoreEditing((v) => !v)}
             className={`p-2.5 rounded-lg text-xl leading-none transition-colors ${

@@ -103,7 +103,10 @@ export function ShotRecorder({
             GPS取得中...
           </span>
         ) : (
-          `ショット記録　第${shotNumber}打`
+          <span className="flex flex-col items-center gap-1">
+            <span>ショット記録　第{shotNumber}打</span>
+            <span className="text-sm font-normal opacity-80">打つ前に押してね</span>
+          </span>
         )}
       </button>
     </div>
