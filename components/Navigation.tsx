@@ -8,8 +8,9 @@ const navItems = [
   { href: "/round", label: "ラウンド", icon: "⛳" },
   { href: "/advice", label: "番手", icon: "🏌️" },
   { href: "/ai-manager", label: "AIマネ", icon: "🤖" },
+  { href: "/ai-caddie", label: "AIキャディ", icon: "📋" },
   { href: "/swing", label: "スイング", icon: "📊" },
-  { href: "/history", label: "履歴", icon: "📋" },
+  { href: "/history", label: "履歴", icon: "🗂️" },
 ];
 
 export function Navigation() {
@@ -24,7 +25,7 @@ export function Navigation() {
             <Link
               key={href}
               href={href}
-              className={`flex flex-col items-center py-2 px-1 min-w-0 flex-1 transition-colors ${
+              className={`flex flex-col items-center py-1.5 px-0.5 min-w-0 flex-1 transition-colors ${
                 isActive ? "text-green-600" : "text-green-400"
               }`}
             >
