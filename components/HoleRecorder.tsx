@@ -122,11 +122,22 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1 }: HoleRecor
   const currentHole    = phase !== "par_select" ? holes.at(-1) ?? null : null;
   const activeRef      = useRef<HTMLDivElement>(null);
   const isFirstRender  = useRef(true);
+  const holeCardRefs   = useRef<Record<number, HTMLDivElement | null>>({});
 
   useEffect(() => {
     if (isFirstRender.current) { isFirstRender.current = false; return; }
     activeRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, [phase, currentHole?.id]);
+
+  function scrollToHole(holeNumber: number) {
+    const hole = holes.find((h) => h.hole_number === holeNumber);
+    if (!hole) return;
+    if (hole.score !== null) {
+      holeCardRefs.current[holeNumber]?.scrollIntoView({ behavior: "smooth", block: "start" });
+    } else {
+      activeRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }
 
   const completedHoles = holes.filter((h) => h.score !== null);
   const totalScore     = completedHoles.reduce((s, h) => s + (h.score ?? 0), 0);
@@ -245,6 +256,13 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1 }: HoleRecor
 
   return (
     <div className="space-y-3">
+      <HoleTabs
+        holes={holes}
+        startHole={startHole}
+        activeHoleNumber={currentHole?.hole_number ?? null}
+        onTabClick={scrollToHole}
+      />
+
       {completedHoles.length > 0 && (
         <div className="flex items-center justify-between bg-green-700 text-white rounded-xl px-4 py-2">
           <span className="text-sm font-medium">{completedHoles.length}H 終了</span>
@@ -258,18 +276,19 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1 }: HoleRecor
       )}
 
       {completedHoles.map((hole) => (
-        <CompletedHoleCard
-          key={hole.id}
-          hole={hole}
-          expanded={expandedHole === hole.id}
-          editing={editing}
-          onToggle={() => setExpanded(expandedHole === hole.id ? null : hole.id)}
-          onToggleEdit={toggleEdit}
-          onUpdateClub={updateClub}
-          onUpdateLie={updateLie}
-          onUpdateBallDirection={updateBallDirection}
-          onUpdateScore={updateScore}
-        />
+        <div key={hole.id} ref={(el) => { holeCardRefs.current[hole.hole_number] = el; }}>
+          <CompletedHoleCard
+            hole={hole}
+            expanded={expandedHole === hole.id}
+            editing={editing}
+            onToggle={() => setExpanded(expandedHole === hole.id ? null : hole.id)}
+            onToggleEdit={toggleEdit}
+            onUpdateClub={updateClub}
+            onUpdateLie={updateLie}
+            onUpdateBallDirection={updateBallDirection}
+            onUpdateScore={updateScore}
+          />
+        </div>
       ))}
 
       <div ref={activeRef}>
@@ -339,6 +358,83 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1 }: HoleRecor
             onSelect={completeHole}
           />
         )}
+      </div>
+    </div>
+  );
+}
+
+// ── HoleTabs ────────────────────────────────────────────────────────
+
+function HoleTabs({
+  holes, startHole, activeHoleNumber, onTabClick,
+}: {
+  holes: Hole[];
+  startHole: number;
+  activeHoleNumber: number | null;
+  onTabClick: (holeNumber: number) => void;
+}) {
+  const playOrder = Array.from({ length: 18 }, (_, i) => ((startHole - 1 + i) % 18) + 1);
+  const holeMap = Object.fromEntries(holes.map((h) => [h.hole_number, h]));
+  const tabRefs = useRef<Record<number, HTMLButtonElement | null>>({});
+
+  // Keep active tab in view
+  useEffect(() => {
+    const num = activeHoleNumber ?? holes.at(-1)?.hole_number;
+    if (num) tabRefs.current[num]?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+  }, [activeHoleNumber, holes.length]);
+
+  return (
+    <div className="sticky top-0 z-10 -mx-4 px-4 py-2 bg-white border-b border-green-100">
+      <div className="overflow-x-auto">
+        <div className="flex gap-1 min-w-max">
+          {playOrder.map((num) => {
+            const hole = holeMap[num] as Hole | undefined;
+            const isCompleted = hole?.score !== null && hole?.score !== undefined;
+            const isActive = hole && hole.score === null;
+            const isFuture = !hole;
+
+            let containerCls = "";
+            let numCls = "";
+            let scoreTxt: string | null = null;
+
+            if (isCompleted) {
+              const d = hole.score! - hole.par;
+              if (d <= -2) { containerCls = "bg-yellow-100 border-yellow-300"; numCls = "text-yellow-700"; }
+              else if (d === -1) { containerCls = "bg-red-100 border-red-300"; numCls = "text-red-600"; }
+              else if (d === 0)  { containerCls = "bg-green-100 border-green-300"; numCls = "text-green-700"; }
+              else if (d === 1)  { containerCls = "bg-blue-100 border-blue-300"; numCls = "text-blue-600"; }
+              else if (d === 2)  { containerCls = "bg-purple-100 border-purple-300"; numCls = "text-purple-600"; }
+              else               { containerCls = "bg-gray-100 border-gray-300"; numCls = "text-gray-600"; }
+              scoreTxt = String(hole.score);
+            } else if (isActive) {
+              containerCls = "bg-green-600 border-green-600 ring-2 ring-green-400 ring-offset-1";
+              numCls = "text-white";
+            } else {
+              containerCls = "bg-gray-50 border-gray-200";
+              numCls = "text-gray-300";
+            }
+
+            return (
+              <button
+                key={num}
+                ref={(el) => { tabRefs.current[num] = el; }}
+                disabled={isFuture}
+                onClick={() => onTabClick(num)}
+                className={`flex flex-col items-center rounded-lg border px-2 py-1 min-w-[2.25rem]
+                            transition-colors active:scale-95 ${containerCls}
+                            ${isFuture ? "cursor-default" : ""}`}
+              >
+                <span className={`text-xs font-bold leading-tight ${numCls}`}>{num}</span>
+                {scoreTxt && (
+                  <span className={`text-xs font-bold leading-none ${numCls}`}>{scoreTxt}</span>
+                )}
+                {isActive && (
+                  <span className="w-1 h-1 rounded-full bg-white mt-0.5 animate-pulse" />
+                )}
+              </button>
+            );
+          })}
+        </div>
       </div>
     </div>
   );
