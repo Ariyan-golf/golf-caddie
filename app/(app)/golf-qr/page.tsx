@@ -1,7 +1,13 @@
 import Link from "next/link";
 import { QrScanner } from "./QrScanner";
 
-export default function GolfQrPage() {
+interface Props {
+  searchParams: Promise<{ course?: string }>;
+}
+
+export default async function GolfQrPage({ searchParams }: Props) {
+  const { course } = await searchParams;
+
   return (
     <div className="max-w-lg mx-auto p-4 space-y-6 pb-24">
       <div className="pt-4">
@@ -9,7 +15,7 @@ export default function GolfQrPage() {
         <p className="text-sm text-green-600 mt-1">QRコードをスキャンして330円をお支払いください</p>
       </div>
 
-      <QrScanner />
+      <QrScanner initialCourse={course} />
 
       <Link href="/" className="block text-center text-sm text-green-500 underline">
         ホームに戻る

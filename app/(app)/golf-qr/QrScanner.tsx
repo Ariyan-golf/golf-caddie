@@ -5,10 +5,10 @@ import { Html5Qrcode } from "html5-qrcode";
 
 type Phase = "idle" | "scanning" | "confirm" | "loading" | "error";
 
-export function QrScanner() {
+export function QrScanner({ initialCourse }: { initialCourse?: string }) {
   const scannerRef = useRef<Html5Qrcode | null>(null);
-  const [phase, setPhase] = useState<Phase>("idle");
-  const [courseName, setCourseName] = useState("");
+  const [phase, setPhase] = useState<Phase>(initialCourse ? "confirm" : "idle");
+  const [courseName, setCourseName] = useState(initialCourse ?? "");
   const [errorMsg, setErrorMsg] = useState("");
 
   useEffect(() => {
