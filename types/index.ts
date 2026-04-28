@@ -49,6 +49,18 @@ export const LIE_SHORT: Record<LieType, string> = {
   other:  "他",
 };
 
+// ── Round metadata types ───────────────────────────────────────────
+
+export type StartHole = 1 | 10;
+
+export type Weather = '晴れ' | '曇り' | '小雨' | '雨';
+export const WEATHER_OPTIONS: Weather[] = ['晴れ', '曇り', '小雨', '雨'];
+
+export type WindSpeed = '無風' | '微風' | '普通' | '強風';
+export const WIND_SPEED_OPTIONS: WindSpeed[] = ['無風', '微風', '普通', '強風'];
+
+export type WindDirection = '北' | '東' | '南' | '西' | '北東' | '北西' | '南東' | '南西';
+
 // ── GPS ────────────────────────────────────────────────────────────
 
 export interface Location {
@@ -74,6 +86,10 @@ export interface Round {
   total_score: number | null;
   notes: string | null;
   created_at: string;
+  start_hole: StartHole;
+  weather: Weather | null;
+  wind_speed: WindSpeed | null;
+  wind_direction: WindDirection | null;
 }
 
 export interface Hole {

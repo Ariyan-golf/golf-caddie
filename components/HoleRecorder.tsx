@@ -31,6 +31,7 @@ interface Hole {
 interface HoleRecorderProps {
   roundId: string;
   initialHoles: Hole[];
+  startHole?: number;
 }
 
 type Phase = "par_select" | "shooting" | "putt_select";
@@ -103,7 +104,7 @@ function scoreLabel(score: number, par: number) {
 
 // ── Main component ──────────────────────────────────────────────────
 
-export function HoleRecorder({ roundId, initialHoles }: HoleRecorderProps) {
+export function HoleRecorder({ roundId, initialHoles, startHole = 1 }: HoleRecorderProps) {
   const lastHole = initialHoles.at(-1);
   const initPhase: Phase =
     initialHoles.length === 0          ? "par_select" :
@@ -134,12 +135,18 @@ export function HoleRecorder({ roundId, initialHoles }: HoleRecorderProps) {
 
   // ── Actions ─────────────────────────────────────────────────────────
 
-  async function startHole(par: number) {
+  // hole_number follows the start order: out(1→18) or in(10→18→1→9)
+  function nextHoleNumber(currentHoleCount: number) {
+    return ((startHole - 1 + currentHoleCount) % 18) + 1;
+  }
+
+  async function handleStartHole(par: number) {
     setCreating(true);
     const supabase = createClient();
+    const holeNumber = nextHoleNumber(holes.length);
     const { data, error } = await supabase
       .from("holes")
-      .insert({ round_id: roundId, hole_number: holes.length + 1, par })
+      .insert({ round_id: roundId, hole_number: holeNumber, par })
       .select("*, shots(*)")
       .single();
     if (!error && data) {
@@ -268,7 +275,7 @@ export function HoleRecorder({ roundId, initialHoles }: HoleRecorderProps) {
       <div ref={activeRef}>
         {phase === "par_select" && holes.length < 18 && (
           <div className="space-y-3">
-            <ParSelector holeNumber={holes.length + 1} onCreate={startHole} creating={creating} />
+            <ParSelector holeNumber={nextHoleNumber(holes.length)} onCreate={handleStartHole} creating={creating} />
 
             {holes.length > 0 && (
               confirmGoBack ? (
@@ -328,7 +335,7 @@ export function HoleRecorder({ roundId, initialHoles }: HoleRecorderProps) {
           <PuttSelector
             shotCount={currentHole.shots.length}
             par={currentHole.par}
-            isLastHole={currentHole.hole_number === 18}
+            isLastHole={holes.length === 18}
             onSelect={completeHole}
           />
         )}
