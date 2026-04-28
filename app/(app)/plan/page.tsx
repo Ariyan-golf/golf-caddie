@@ -56,7 +56,7 @@ const PLANS = [
 ] as const;
 
 interface Props {
-  searchParams: Promise<{ success?: string; canceled?: string; plan?: string }>;
+  searchParams: Promise<{ success?: string; canceled?: string; plan?: string; golf_success?: string }>;
 }
 
 export default async function PlanPage({ searchParams }: Props) {
@@ -102,6 +102,17 @@ export default async function PlanPage({ searchParams }: Props) {
             <p className="text-sm text-green-600 mt-0.5">
               ご登録ありがとうございます。すべての機能をご利用いただけます。
             </p>
+          </div>
+        </div>
+      )}
+
+      {/* ゴルフ場提携決済完了通知 */}
+      {params.golf_success && (
+        <div className="bg-blue-50 border border-blue-300 rounded-xl p-4 flex items-start gap-3">
+          <span className="text-2xl shrink-0">⛳</span>
+          <div>
+            <p className="font-bold text-blue-800">ラウンド利用料のお支払いが完了しました！</p>
+            <p className="text-sm text-blue-600 mt-0.5">330円のお支払いを受け付けました。楽しいゴルフを！</p>
           </div>
         </div>
       )}

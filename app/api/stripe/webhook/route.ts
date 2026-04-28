@@ -8,12 +8,26 @@ const PLAN_MAP: Record<string, "standard" | "premium"> = {
   premium: "premium",
 };
 
-async function updateUserPlan(userId: string, plan: "free" | "standard" | "premium") {
-  const admin = createAdminClient(
+function adminClient() {
+  return createAdminClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
-  await admin.from("profiles").update({ plan }).eq("id", userId);
+}
+
+async function updateUserPlan(userId: string, plan: "free" | "standard" | "premium") {
+  await adminClient().from("profiles").update({ plan }).eq("id", userId);
+}
+
+async function recordRoundPayment(session: Stripe.Checkout.Session) {
+  const userId = session.metadata?.user_id ?? session.client_reference_id;
+  if (!userId) return;
+  await adminClient().from("round_payments").insert({
+    user_id: userId,
+    amount: 330,
+    golf_course: session.metadata?.golf_course ?? null,
+    stripe_session_id: session.id,
+  });
 }
 
 export async function POST(request: Request) {
@@ -38,10 +52,14 @@ export async function POST(request: Request) {
   switch (event.type) {
     case "checkout.session.completed": {
       const session = event.data.object as Stripe.Checkout.Session;
-      const userId = session.metadata?.user_id ?? session.client_reference_id;
-      const plan = session.metadata?.plan;
-      if (userId && plan && PLAN_MAP[plan]) {
-        await updateUserPlan(userId, PLAN_MAP[plan]);
+      if (session.metadata?.type === "round_payment") {
+        await recordRoundPayment(session);
+      } else {
+        const userId = session.metadata?.user_id ?? session.client_reference_id;
+        const plan = session.metadata?.plan;
+        if (userId && plan && PLAN_MAP[plan]) {
+          await updateUserPlan(userId, PLAN_MAP[plan]);
+        }
       }
       break;
     }

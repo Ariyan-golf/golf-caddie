@@ -1,0 +1,39 @@
+import { stripe } from "@/lib/stripe";
+import { createClient } from "@/lib/supabase/server";
+import { NextResponse } from "next/server";
+
+const BASE_URL = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+
+export async function POST(request: Request) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const body = await request.json() as { golf_course?: string };
+  const golfCourse = body.golf_course ?? "";
+
+  const session = await stripe.checkout.sessions.create({
+    mode: "payment",
+    line_items: [
+      {
+        price_data: {
+          currency: "jpy",
+          unit_amount: 330,
+          product_data: {
+            name: "ラウンド利用料",
+            description: golfCourse ? `提携ゴルフ場：${golfCourse}` : "提携ゴルフ場でのご利用",
+          },
+        },
+        quantity: 1,
+      },
+    ],
+    client_reference_id: user.id,
+    customer_email: user.email,
+    metadata: { user_id: user.id, golf_course: golfCourse, type: "round_payment" },
+    success_url: `${BASE_URL}/plan?golf_success=1`,
+    cancel_url: `${BASE_URL}/plan?canceled=1`,
+    locale: "ja",
+  });
+
+  return NextResponse.json({ url: session.url });
+}
