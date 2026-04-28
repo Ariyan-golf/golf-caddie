@@ -420,16 +420,16 @@ function HoleTabs({
                 ref={(el) => { tabRefs.current[num] = el; }}
                 disabled={isFuture}
                 onClick={() => onTabClick(num)}
-                className={`flex flex-col items-center rounded-lg border px-2 py-1 min-w-[2.25rem]
+                className={`flex flex-col items-center rounded-xl border px-2.5 py-2 min-w-[3.5rem]
                             transition-colors active:scale-95 ${containerCls}
                             ${isFuture ? "cursor-default" : ""}`}
               >
-                <span className={`text-xs font-bold leading-tight ${numCls}`}>{num}</span>
+                <span className={`text-base font-bold leading-tight ${numCls}`}>{num}H</span>
                 {scoreTxt && (
-                  <span className={`text-xs font-bold leading-none ${numCls}`}>{scoreTxt}</span>
+                  <span className={`text-sm font-bold leading-none ${numCls}`}>{scoreTxt}</span>
                 )}
                 {isActive && (
-                  <span className="w-1 h-1 rounded-full bg-white mt-0.5 animate-pulse" />
+                  <span className="w-1.5 h-1.5 rounded-full bg-white mt-1 animate-pulse" />
                 )}
               </button>
             );
@@ -457,8 +457,8 @@ function ParSelector({
       <div className="grid grid-cols-3 gap-3">
         {[3, 4, 5].map((p) => (
           <button key={p} onClick={() => onCreate(p)} disabled={creating}
-            className="py-5 rounded-xl bg-green-600 hover:bg-green-700 active:bg-green-800
-                       text-white font-bold text-2xl transition-colors disabled:opacity-50">
+            className="py-8 rounded-xl bg-green-600 hover:bg-green-700 active:bg-green-800
+                       text-white font-bold text-5xl transition-colors disabled:opacity-50">
             {p}
           </button>
         ))}
@@ -571,9 +571,9 @@ function PuttSelector({
               "border-gray-300 bg-gray-50 text-gray-700";
           return (
             <button key={putts} onClick={() => setSelectedPutts(putts)}
-              className={`flex flex-col items-center py-4 rounded-2xl border-2 font-bold
+              className={`flex flex-col items-center py-5 rounded-2xl border-2 font-bold
                           transition-all active:scale-95 ${color}`}>
-              <span className="text-3xl">{putts}</span>
+              <span className="text-4xl">{putts}</span>
               <span className="text-sm mt-1 font-medium">{label}</span>
               <span className="text-sm font-bold">{t}打</span>
             </button>
