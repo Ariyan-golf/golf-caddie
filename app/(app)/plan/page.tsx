@@ -187,6 +187,12 @@ export default async function PlanPage({ searchParams }: Props) {
         })}
       </div>
 
+      <div className="card bg-blue-50 border-blue-200 space-y-2 text-sm text-blue-700">
+        <p className="font-semibold text-blue-800">⛳ 提携ゴルフ場でのご利用</p>
+        <p>330円/ラウンド（ゴルフ場110円・紹介者110円・健考社110円）</p>
+        <p>QRコードをスキャンするだけでOK。サブスクとは別料金です。</p>
+      </div>
+
       <div className="card bg-gray-50 border-gray-200 space-y-2 text-sm text-gray-600">
         <p className="font-semibold text-gray-700">お支払いについて</p>
         <ul className="space-y-1">
