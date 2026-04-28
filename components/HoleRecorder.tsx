@@ -312,13 +312,13 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1 }: HoleRecor
                     <button
                       onClick={goBackToPrevHole}
                       disabled={goingBack}
-                      className="flex-1 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold transition-colors disabled:opacity-50"
+                      className="flex-1 py-3.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-base font-semibold transition-colors disabled:opacity-50"
                     >
                       {goingBack ? "戻り中..." : "戻る"}
                     </button>
                     <button
                       onClick={() => setConfirmGoBack(false)}
-                      className="flex-1 py-2 rounded-xl bg-gray-100 text-gray-700 text-sm font-semibold hover:bg-gray-200 transition-colors"
+                      className="flex-1 py-3.5 rounded-xl bg-gray-100 text-gray-700 text-base font-semibold hover:bg-gray-200 transition-colors"
                     >
                       キャンセル
                     </button>
@@ -327,7 +327,7 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1 }: HoleRecor
               ) : (
                 <button
                   onClick={() => setConfirmGoBack(true)}
-                  className="w-full py-2.5 rounded-xl border border-gray-200 text-gray-500 text-sm font-medium hover:bg-gray-50 transition-colors"
+                  className="w-full py-4 rounded-xl border border-gray-200 text-gray-500 text-base font-medium hover:bg-gray-50 transition-colors"
                 >
                   ← 前のホールに戻る
                 </button>
@@ -502,7 +502,7 @@ function ActiveHoleCard({
         </div>
         <button onClick={onHoleout}
           className="bg-green-600 hover:bg-green-700 text-white font-bold
-                     px-4 py-2 rounded-xl text-sm transition-colors">
+                     px-5 py-3 rounded-xl text-base transition-colors">
           グリーンオン
         </button>
       </div>
@@ -571,11 +571,11 @@ function PuttSelector({
               "border-gray-300 bg-gray-50 text-gray-700";
           return (
             <button key={putts} onClick={() => setSelectedPutts(putts)}
-              className={`flex flex-col items-center py-3 rounded-2xl border-2 font-bold
+              className={`flex flex-col items-center py-4 rounded-2xl border-2 font-bold
                           transition-all active:scale-95 ${color}`}>
-              <span className="text-2xl">{putts}</span>
-              <span className="text-xs mt-0.5 font-medium">{label}</span>
-              <span className="text-xs font-bold">{t}打</span>
+              <span className="text-3xl">{putts}</span>
+              <span className="text-sm mt-1 font-medium">{label}</span>
+              <span className="text-sm font-bold">{t}打</span>
             </button>
           );
         })}
@@ -635,14 +635,14 @@ function CompletedHoleCard({
           <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${cls}`}>{text}</span>
           <button
             onClick={() => setScoreEditing((v) => !v)}
-            className={`p-1 rounded-lg text-base leading-none transition-colors ${
+            className={`p-2.5 rounded-lg text-xl leading-none transition-colors ${
               scoreEditing ? "text-green-700 bg-green-100" : "text-green-300 hover:text-green-500"
             }`}
             aria-label="スコア修正"
           >
             ✏
           </button>
-          <button onClick={onToggle} className="text-green-300 text-xs p-1">
+          <button onClick={onToggle} className="text-green-300 text-base p-2.5">
             {expanded ? "▲" : "▼"}
           </button>
         </div>
@@ -689,8 +689,8 @@ function ScoreEditor({ hole, onSave, onClose }: {
     <div className="flex items-center gap-2 py-3 mt-2 border-t border-green-50">
       <button
         onClick={() => setValue((v) => clamp(v - 1))}
-        className="w-10 h-10 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700
-                   font-bold text-xl transition-colors active:scale-95"
+        className="w-14 h-14 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700
+                   font-bold text-2xl transition-colors active:scale-95"
       >
         −
       </button>
@@ -707,19 +707,19 @@ function ScoreEditor({ hole, onSave, onClose }: {
       />
       <button
         onClick={() => setValue((v) => v + 1)}
-        className="w-10 h-10 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700
-                   font-bold text-xl transition-colors active:scale-95"
+        className="w-14 h-14 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700
+                   font-bold text-2xl transition-colors active:scale-95"
       >
         ＋
       </button>
       <div className="flex gap-1.5 ml-auto">
         <button onClick={onClose}
-          className="px-3 py-1.5 rounded-lg border border-gray-200 text-gray-500 text-xs font-bold">
+          className="px-4 py-3 rounded-lg border border-gray-200 text-gray-500 text-sm font-bold">
           閉じる
         </button>
         <button
           onClick={() => { onSave(hole.id, value); onClose(); }}
-          className="px-3 py-1.5 rounded-lg bg-green-600 hover:bg-green-700 text-white text-xs font-bold transition-colors"
+          className="px-4 py-3 rounded-lg bg-green-600 hover:bg-green-700 text-white text-sm font-bold transition-colors"
         >
           保存
         </button>
@@ -752,20 +752,20 @@ function ShotList({
         return (
           <div key={shot.id} className="border-b border-green-50 last:border-0">
             {/* Row: 番手 → 球筋 → ライ */}
-            <div className="flex items-center justify-between py-1.5">
-              <span className="text-sm font-medium text-green-700">
+            <div className="flex items-center justify-between py-3">
+              <span className="text-base font-medium text-green-700">
                 第{shot.shot_number}打
               </span>
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-2">
                 {shot.distance_yards && (
-                  <span className="text-xs font-semibold text-green-600 tabular-nums">
+                  <span className="text-sm font-semibold text-green-600 tabular-nums">
                     {shot.distance_yards}y
                   </span>
                 )}
                 {/* ① 番手 */}
                 <button
                   onClick={() => onToggleEdit(shot.id, "club")}
-                  className={`text-xs px-2.5 py-1 rounded-lg border font-bold transition-colors ${
+                  className={`text-sm px-3 py-2.5 rounded-lg border font-bold transition-colors ${
                     clubLabel
                       ? clubOpen
                         ? "bg-green-700 border-green-700 text-white"
@@ -780,7 +780,7 @@ function ShotList({
                 {/* ② 球筋 */}
                 <button
                   onClick={() => onToggleEdit(shot.id, "direction")}
-                  className={`text-xs px-2.5 py-1 rounded-lg border font-bold transition-colors ${
+                  className={`text-sm px-3 py-2.5 rounded-lg border font-bold transition-colors ${
                     shot.ball_direction
                       ? dirOpen
                         ? "bg-green-700 border-green-700 text-white"
@@ -795,7 +795,7 @@ function ShotList({
                 {/* ③ ライ */}
                 <button
                   onClick={() => onToggleEdit(shot.id, "lie")}
-                  className={`text-xs px-2.5 py-1 rounded-lg border font-bold transition-colors ${
+                  className={`text-sm px-3 py-2.5 rounded-lg border font-bold transition-colors ${
                     shot.lie_type
                       ? lieOpen
                         ? "bg-green-700 border-green-700 text-white"
@@ -812,16 +812,16 @@ function ShotList({
 
             {/* Club picker */}
             {clubOpen && (
-              <div className="pb-2 space-y-1">
+              <div className="pb-2 space-y-1.5">
                 {[WOOD_CLUBS, UTIL_CLUBS, IRON_CLUBS, WEDGE_CLUBS].map((row, i) => (
                   <div
                     key={i}
-                    className="grid gap-1"
+                    className="grid gap-1.5"
                     style={{ gridTemplateColumns: `repeat(${row.length}, minmax(0, 1fr))` }}
                   >
                     {row.map((c) => (
                       <button key={c} onClick={() => onUpdateClub(shot.id, c)}
-                        className={`py-2 rounded-lg text-xs font-bold border transition-colors ${
+                        className={`py-3.5 rounded-lg text-sm font-bold border transition-colors ${
                           shot.club === c
                             ? "bg-green-600 border-green-600 text-white"
                             : "bg-white border-green-200 text-green-800 hover:bg-green-50"
@@ -836,10 +836,10 @@ function ShotList({
 
             {/* Ball direction picker */}
             {dirOpen && (
-              <div className="grid grid-cols-5 gap-1 pb-2">
+              <div className="grid grid-cols-5 gap-1.5 pb-2">
                 {BALL_DIRECTION_OPTIONS.map((dir) => (
                   <button key={dir} onClick={() => onUpdateBallDirection(shot.id, dir)}
-                    className={`py-2 rounded-lg text-xs font-bold border transition-colors ${
+                    className={`py-3.5 rounded-lg text-sm font-bold border transition-colors ${
                       shot.ball_direction === dir
                         ? "bg-green-600 border-green-600 text-white"
                         : "bg-white border-green-200 text-green-700 hover:bg-green-50"
@@ -904,10 +904,10 @@ function LiePicker({
   return (
     <div className="pb-2 space-y-2">
       {/* Stage 1 */}
-      <div className="grid grid-cols-5 gap-1">
+      <div className="grid grid-cols-5 gap-1.5">
         {LIE_S1.map((val) => (
           <button key={val} onClick={() => selectS1(val)}
-            className={`py-2 rounded-lg text-xs font-bold border transition-colors ${
+            className={`py-3.5 rounded-lg text-sm font-bold border transition-colors ${
               s1 === val
                 ? "bg-green-600 border-green-600 text-white"
                 : "bg-white border-green-200 text-green-700 hover:bg-green-50"
@@ -919,10 +919,10 @@ function LiePicker({
 
       {/* Stage 2: shown when non-fairway selected */}
       {s1 && s1 !== "fairway" && (
-        <div className="grid grid-cols-4 gap-1">
+        <div className="grid grid-cols-4 gap-1.5">
           {LIE_S2.map((val) => (
             <button key={val} onClick={() => selectS2(val)}
-              className={`py-2 rounded-lg text-xs font-bold border transition-colors ${
+              className={`py-3.5 rounded-lg text-sm font-bold border transition-colors ${
                 s2 === val
                   ? "bg-orange-500 border-orange-500 text-white"
                   : "bg-white border-orange-200 text-orange-700 hover:bg-orange-50"
@@ -936,11 +936,11 @@ function LiePicker({
       {/* Count 1-8: shown when stage 2 selected */}
       {s1 && s1 !== "fairway" && s2 && (
         <>
-          <p className="text-xs text-gray-400 font-medium">回数</p>
-          <div className="grid grid-cols-4 gap-1">
+          <p className="text-sm text-gray-400 font-medium">回数</p>
+          <div className="grid grid-cols-4 gap-1.5">
             {[1, 2, 3, 4, 5, 6, 7, 8].map((n) => (
               <button key={n} onClick={() => selectCount(n)}
-                className={`py-2 rounded-lg text-sm font-bold border transition-colors ${
+                className={`py-3.5 rounded-lg text-base font-bold border transition-colors ${
                   count === n
                     ? "bg-gray-600 border-gray-600 text-white"
                     : "bg-white border-gray-200 text-gray-700 hover:bg-gray-50"
