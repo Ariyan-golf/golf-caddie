@@ -50,6 +50,7 @@ export function NewRoundForm() {
   const [weather, setWeather]               = useState<Weather | null>(null);
   const [windSpeed, setWindSpeed]           = useState<WindSpeed | null>(null);
   const [windDirection, setWindDirection]   = useState<WindDirection | null>(null);
+  const [mode, setMode]                     = useState<"shot" | "score">("shot");
   const [loading, setLoading]               = useState(false);
   const [error, setError]                   = useState("");
 
@@ -68,6 +69,7 @@ export function NewRoundForm() {
         course_name:    courseName,
         date,
         start_hole:     startHole,
+        mode,
         weather:        weather ?? null,
         wind_speed:     windSpeed ?? null,
         wind_direction: windDirection ?? null,
@@ -148,6 +150,41 @@ export function NewRoundForm() {
             }`}
           >
             イン<span className="block text-xs font-normal opacity-80">10番スタート</span>
+          </button>
+        </div>
+      </div>
+
+      {/* 記録モード */}
+      <div>
+        <label className="label">記録モード *</label>
+        <div className="grid grid-cols-2 gap-3 mt-1">
+          <button
+            type="button"
+            onClick={() => setMode("shot")}
+            className={`py-4 px-4 rounded-xl border-2 text-left transition-colors active:scale-95 ${
+              mode === "shot"
+                ? "bg-green-600 border-green-600 text-white"
+                : "bg-white border-gray-200 text-gray-600 hover:border-green-300"
+            }`}
+          >
+            <span className="block font-bold text-sm">ショット記録</span>
+            <span className="block text-xs opacity-75 mt-0.5 leading-tight">
+              打つ前にボタンを押してGPS記録
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setMode("score")}
+            className={`py-4 px-4 rounded-xl border-2 text-left transition-colors active:scale-95 ${
+              mode === "score"
+                ? "bg-green-600 border-green-600 text-white"
+                : "bg-white border-gray-200 text-gray-600 hover:border-green-300"
+            }`}
+          >
+            <span className="block font-bold text-sm">スコア記録</span>
+            <span className="block text-xs opacity-75 mt-0.5 leading-tight">
+              ホール後にスコアを数字入力するだけ
+            </span>
           </button>
         </div>
       </div>

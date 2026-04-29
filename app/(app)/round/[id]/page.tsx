@@ -40,7 +40,12 @@ export default async function RoundDetailPage({ params }: Props) {
         </div>
       </div>
 
-      <HoleRecorder roundId={id} initialHoles={holes ?? []} startHole={round.start_hole ?? 1} />
+      <HoleRecorder
+        roundId={id}
+        initialHoles={holes ?? []}
+        startHole={round.start_hole ?? 1}
+        mode={(round.mode ?? "shot") as "shot" | "score"}
+      />
     </div>
   );
 }

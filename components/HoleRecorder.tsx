@@ -33,9 +33,10 @@ interface HoleRecorderProps {
   roundId: string;
   initialHoles: Hole[];
   startHole?: number;
+  mode?: "shot" | "score";
 }
 
-type Phase = "par_select" | "shooting" | "putt_select";
+type Phase = "par_select" | "shooting" | "putt_select" | "score_entry";
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -105,12 +106,13 @@ function scoreLabel(score: number, par: number) {
 
 // ── Main component ──────────────────────────────────────────────────
 
-export function HoleRecorder({ roundId, initialHoles, startHole = 1 }: HoleRecorderProps) {
+export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "shot" }: HoleRecorderProps) {
   const lastHole = initialHoles.at(-1);
   const initPhase: Phase =
-    initialHoles.length === 0          ? "par_select" :
-    lastHole?.score !== null           ? "par_select" :
-                                         "shooting";
+    initialHoles.length === 0 ? "par_select" :
+    lastHole?.score !== null  ? "par_select" :
+    mode === "score"          ? "score_entry" :
+                                "shooting";
 
   const [holes, setHoles]           = useState<Hole[]>(initialHoles);
   const [phase, setPhase]           = useState<Phase>(initPhase);
@@ -157,7 +159,7 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1 }: HoleRecor
       .single();
     if (!error && data) {
       setHoles((prev) => [...prev, data as Hole]);
-      setPhase("shooting");
+      setPhase(mode === "score" ? "score_entry" : "shooting");
     }
     setCreating(false);
   }
@@ -182,6 +184,17 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1 }: HoleRecor
     const total = updated.reduce((s, h) => s + (h.score ?? 0), 0);
     await supabase.from("rounds").update({ total_score: total }).eq("id", roundId);
     setPenalties(0);
+    setPhase("par_select");
+  }
+
+  async function completeHoleByScore(totalScore: number, putts: number) {
+    if (!currentHole) return;
+    const supabase = createClient();
+    await supabase.from("holes").update({ score: totalScore, putts, penalties: 0 }).eq("id", currentHole.id);
+    const updated = holes.map((h) => h.id === currentHole.id ? { ...h, score: totalScore, putts, penalties: 0 } : h);
+    setHoles(updated);
+    const total = updated.reduce((s, h) => s + (h.score ?? 0), 0);
+    await supabase.from("rounds").update({ total_score: total }).eq("id", roundId);
     setPhase("par_select");
   }
 
@@ -236,7 +249,7 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1 }: HoleRecor
     setPenalties(lastHole.penalties ?? 0);
     setConfirmGoBack(false);
     setGoingBack(false);
-    setPhase("putt_select");
+    setPhase(mode === "score" ? "score_entry" : "putt_select");
   }
 
   function toggleEdit(id: string, type: "club" | "lie" | "direction") {
@@ -248,7 +261,7 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1 }: HoleRecor
   // ── Render ─────────────────────────────────────────────────────────
 
   if (isRoundDone) {
-    return <RoundComplete holes={holes} totalScore={totalScore} totalPar={totalPar} />;
+    return <RoundComplete holes={holes} totalScore={totalScore} totalPar={totalPar} mode={mode} />;
   }
 
   return (
@@ -274,7 +287,8 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1 }: HoleRecor
                     <div>
                       <p className="font-semibold text-amber-800 text-base">前のホールに戻りますか？</p>
                       <p className="text-amber-700 text-sm mt-1">
-                        ホール {holes.at(-1)?.hole_number} のスコアがリセットされ、パット数を再入力できます。
+                        ホール {holes.at(-1)?.hole_number} のスコアがリセットされ、
+                        {mode === "score" ? "スコアを再入力できます。" : "パット数を再入力できます。"}
                       </p>
                     </div>
                   </div>
@@ -332,6 +346,14 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1 }: HoleRecor
             onSelect={completeHole}
           />
         )}
+
+        {phase === "score_entry" && currentHole && (
+          <ScoreEntryCard
+            hole={currentHole}
+            isLastHole={holes.length === 18}
+            onComplete={completeHoleByScore}
+          />
+        )}
       </div>
 
       {/* ② 完了済みホール一覧 — 入力エリアの下にスクロール */}
@@ -351,6 +373,7 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1 }: HoleRecor
             <div key={hole.id} ref={(el) => { holeCardRefs.current[hole.hole_number] = el; }}>
               <CompletedHoleCard
                 hole={hole}
+                mode={mode}
                 expanded={expandedHole === hole.id}
                 editing={editing}
                 onToggle={() => setExpanded(expandedHole === hole.id ? null : hole.id)}
@@ -656,9 +679,10 @@ function PuttSelector({
 }
 
 function CompletedHoleCard({
-  hole, expanded, editing, onToggle, onToggleEdit, onUpdateClub, onUpdateLie, onUpdateBallDirection, onUpdateScore,
+  hole, mode, expanded, editing, onToggle, onToggleEdit, onUpdateClub, onUpdateLie, onUpdateBallDirection, onUpdateScore,
 }: {
   hole: Hole;
+  mode: "shot" | "score";
   expanded: boolean;
   editing: { id: string; type: "club" | "lie" | "direction" } | null;
   onToggle: () => void;
@@ -681,9 +705,15 @@ function CompletedHoleCard({
             {hole.hole_number}
           </div>
           <span className="text-base text-green-600 font-medium truncate">
-            Par{hole.par} · {hole.shots.length}打
-            {(hole.penalties ?? 0) > 0 && <span className="text-red-500">+{hole.penalties}罰</span>}
-            +{hole.putts}P
+            {mode === "score" ? (
+              <>Par{hole.par} · {hole.score}打 / {hole.putts}P</>
+            ) : (
+              <>
+                Par{hole.par} · {hole.shots.length}打
+                {(hole.penalties ?? 0) > 0 && <span className="text-red-500">+{hole.penalties}罰</span>}
+                +{hole.putts}P
+              </>
+            )}
           </span>
         </button>
         <div className="flex items-center gap-1 shrink-0">
@@ -1010,14 +1040,110 @@ function LiePicker({
   );
 }
 
+// ── ScoreEntryCard: score mode hole completion ────────────────────────
+
+function ScoreEntryCard({
+  hole, isLastHole, onComplete,
+}: {
+  hole: Hole;
+  isLastHole: boolean;
+  onComplete: (score: number, putts: number) => void;
+}) {
+  const [strokes, setStrokes] = useState(hole.score ?? hole.par);
+  const [putts, setPutts]     = useState(hole.putts ?? 2);
+
+  const diff = strokes - hole.par;
+  const resultLabel =
+    diff <= -2 ? "イーグル" : diff === -1 ? "バーディ" :
+    diff === 0  ? "パー"     : diff === 1  ? "ボギー"   :
+    diff === 2  ? "ダブル"   : `+${diff}`;
+
+  const resultColor =
+    diff <= -2 ? "text-yellow-600" : diff === -1 ? "text-red-500" :
+    diff === 0  ? "text-green-600" : diff === 1  ? "text-blue-500" : "text-gray-500";
+
+  return (
+    <div className="card space-y-6">
+      <div className="text-center">
+        <div className="flex items-center justify-center gap-2 mb-1">
+          <div className="w-8 h-8 bg-green-600 rounded-full flex items-center justify-center
+                          text-white font-bold text-sm">
+            {hole.hole_number}
+          </div>
+          <p className="text-xl font-bold text-green-800">このホールのスコアを入力</p>
+        </div>
+        <p className="text-base text-green-500">パー {hole.par}</p>
+      </div>
+
+      {/* Stroke counter */}
+      <div className="space-y-2">
+        <p className="text-sm font-semibold text-green-600 text-center">スコア（打数）</p>
+        <div className="flex items-center justify-center gap-6">
+          <button
+            onClick={() => setStrokes((v) => Math.max(1, v - 1))}
+            className="w-14 h-14 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700
+                       font-bold text-2xl transition-colors active:scale-95"
+          >
+            −
+          </button>
+          <span className="text-6xl font-bold text-green-900 tabular-nums w-16 text-center">
+            {strokes}
+          </span>
+          <button
+            onClick={() => setStrokes((v) => v + 1)}
+            className="w-14 h-14 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700
+                       font-bold text-2xl transition-colors active:scale-95"
+          >
+            ＋
+          </button>
+        </div>
+        <p className={`text-center text-lg font-bold ${resultColor}`}>{resultLabel}</p>
+      </div>
+
+      {/* Putt counter */}
+      <div className="space-y-2">
+        <p className="text-sm font-semibold text-green-600 text-center">パット数</p>
+        <div className="flex items-center justify-center gap-6">
+          <button
+            onClick={() => setPutts((v) => Math.max(0, v - 1))}
+            className="w-14 h-14 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700
+                       font-bold text-2xl transition-colors active:scale-95"
+          >
+            −
+          </button>
+          <span className="text-6xl font-bold text-green-900 tabular-nums w-16 text-center">
+            {putts}
+          </span>
+          <button
+            onClick={() => setPutts((v) => v + 1)}
+            className="w-14 h-14 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700
+                       font-bold text-2xl transition-colors active:scale-95"
+          >
+            ＋
+          </button>
+        </div>
+      </div>
+
+      <button
+        onClick={() => onComplete(strokes, putts)}
+        className="w-full py-4 rounded-2xl bg-green-600 hover:bg-green-700 active:bg-green-800
+                   text-white font-bold text-xl transition-colors"
+      >
+        {isLastHole ? "ラウンド終了" : "次のホールへ →"}
+      </button>
+    </div>
+  );
+}
+
 // ── Round complete ──────────────────────────────────────────────────
 
 function RoundComplete({
-  holes, totalScore, totalPar,
+  holes, totalScore, totalPar, mode,
 }: {
   holes: Hole[];
   totalScore: number;
   totalPar: number;
+  mode: "shot" | "score";
 }) {
   const diff       = totalScore - totalPar;
   const totalPutts = holes.reduce((s, h) => s + (h.putts ?? 0), 0);
@@ -1067,7 +1193,11 @@ function RoundComplete({
                 <tr key={hole.id} className="border-b border-green-50">
                   <td className="py-1 text-green-700 font-medium">{hole.hole_number}</td>
                   <td className="py-1 text-center text-green-500">{hole.par}</td>
-                  <td className="py-1 text-center text-green-700">{hole.shots.length + (hole.penalties ?? 0)}</td>
+                  <td className="py-1 text-center text-green-700">
+                    {mode === "score"
+                      ? (hole.score ?? 0) - (hole.putts ?? 0)
+                      : hole.shots.length + (hole.penalties ?? 0)}
+                  </td>
                   <td className="py-1 text-center text-green-500">{hole.putts ?? "—"}</td>
                   <td className={`py-1 text-right font-bold ${color}`}>{hole.score}</td>
                 </tr>
