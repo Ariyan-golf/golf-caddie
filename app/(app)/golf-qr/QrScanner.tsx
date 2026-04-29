@@ -27,14 +27,17 @@ export function QrScanner({ initialCourse }: { initialCourse?: string }) {
         { fps: 10, qrbox: { width: 250, height: 250 } },
         (text) => {
           scanner.stop().catch(() => {});
+          let course: string | null = null;
           try {
-            const url = new URL(text.trim());
-            const course = url.searchParams.get("course");
-            if (!course) throw new Error("no course param");
+            course = new URL(text.trim()).searchParams.get("course");
+          } catch {
+            // URLとして解釈できない場合はcourse=nullのまま
+          }
+          if (course) {
             setCourseName(course);
             setPhase("confirm");
-          } catch {
-            setErrorMsg("このQRコードは対応していません。提携ゴルフ場のQRコードをスキャンしてください。");
+          } else {
+            setErrorMsg("courseパラメータが見つかりません。提携ゴルフ場のQRコードをスキャンしてください。");
             setPhase("error");
           }
         },
