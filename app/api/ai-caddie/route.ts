@@ -3,6 +3,14 @@ import { createClient } from "@/lib/supabase/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 
+function todayJSTBounds() {
+  const nowMs = Date.now();
+  const jstMs = nowMs + 9 * 60 * 60 * 1000;
+  const todayStr = new Date(jstMs).toISOString().slice(0, 10);
+  const nextStr = new Date(jstMs + 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  return { gte: `${todayStr}T00:00:00+09:00`, lt: `${nextStr}T00:00:00+09:00` };
+}
+
 const SYSTEM_PROMPT = `あなたはR&A・JGA公認の2024年版ゴルフ規則に精通したプロゴルフキャディです。
 プレイヤーからのルール質問に対して、以下のルールに基づいて正確・簡潔に日本語で回答してください。
 
@@ -40,8 +48,22 @@ export async function POST(request: Request) {
     .eq("id", user.id)
     .single();
 
-  if (profile?.plan !== "premium") {
-    return NextResponse.json({ error: "premium_required" }, { status: 403 });
+  const isPremium = profile?.plan === "premium";
+
+  if (!isPremium) {
+    const { gte, lt } = todayJSTBounds();
+    const { data: todayPayment } = await admin
+      .from("round_payments")
+      .select("id")
+      .eq("user_id", user.id)
+      .gte("created_at", gte)
+      .lt("created_at", lt)
+      .limit(1)
+      .maybeSingle();
+
+    if (!todayPayment) {
+      return NextResponse.json({ error: "premium_required" }, { status: 403 });
+    }
   }
 
   const { question } = await request.json();
