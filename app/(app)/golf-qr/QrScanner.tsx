@@ -69,8 +69,11 @@ export function QrScanner({ initialCourse }: { initialCourse?: string }) {
     }
   }
 
-  function reset() {
-    scannerRef.current?.stop().catch(() => {});
+  async function reset() {
+    try { await scannerRef.current?.stop(); } catch {}
+    const el = document.getElementById("qr-reader");
+    if (el) el.innerHTML = "";
+    scannerRef.current = null;
     setCourseName("");
     setErrorMsg("");
     setPhase("idle");
