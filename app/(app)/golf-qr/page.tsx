@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { QrScanner } from "./QrScanner";
 
 interface Props {
@@ -17,9 +16,9 @@ export default async function GolfQrPage({ searchParams }: Props) {
 
       <QrScanner initialCourse={course} />
 
-      <Link href="/" className="block text-center text-sm text-green-500 underline">
+      <a href="/" className="block text-center text-sm text-green-500 underline">
         ホームに戻る
-      </Link>
+      </a>
     </div>
   );
 }
