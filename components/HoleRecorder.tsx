@@ -25,6 +25,7 @@ interface Hole {
   par: number;
   score: number | null;
   putts: number | null;
+  penalties: number | null;
   shots: Shot[];
 }
 
@@ -118,6 +119,7 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1 }: HoleRecor
   const [editing, setEditing] = useState<{ id: string; type: "club" | "lie" | "direction" } | null>(null);
   const [confirmGoBack, setConfirmGoBack] = useState(false);
   const [goingBack, setGoingBack]   = useState(false);
+  const [penalties, setPenalties]   = useState(0);
 
   const currentHole  = phase !== "par_select" ? holes.at(-1) ?? null : null;
   const holeCardRefs = useRef<Record<number, HTMLDivElement | null>>({});
@@ -172,13 +174,14 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1 }: HoleRecor
 
   async function completeHole(putts: number) {
     if (!currentHole) return;
-    const score = currentHole.shots.length + putts;
+    const score = currentHole.shots.length + penalties + putts;
     const supabase = createClient();
-    await supabase.from("holes").update({ score, putts }).eq("id", currentHole.id);
-    const updated = holes.map((h) => h.id === currentHole.id ? { ...h, score, putts } : h);
+    await supabase.from("holes").update({ score, putts, penalties }).eq("id", currentHole.id);
+    const updated = holes.map((h) => h.id === currentHole.id ? { ...h, score, putts, penalties } : h);
     setHoles(updated);
     const total = updated.reduce((s, h) => s + (h.score ?? 0), 0);
     await supabase.from("rounds").update({ total_score: total }).eq("id", roundId);
+    setPenalties(0);
     setPhase("par_select");
   }
 
@@ -230,6 +233,7 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1 }: HoleRecor
     setHoles(updatedHoles);
     const total = updatedHoles.reduce((s, h) => s + (h.score ?? 0), 0);
     await supabase.from("rounds").update({ total_score: total }).eq("id", roundId);
+    setPenalties(lastHole.penalties ?? 0);
     setConfirmGoBack(false);
     setGoingBack(false);
     setPhase("putt_select");
@@ -306,6 +310,9 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1 }: HoleRecor
           <ActiveHoleCard
             hole={currentHole}
             roundId={roundId}
+            penalties={penalties}
+            onAddPenalty={() => setPenalties((p) => p + 1)}
+            onRemovePenalty={() => setPenalties((p) => Math.max(0, p - 1))}
             onShotRecorded={refreshCurrent}
             onHoleout={() => setPhase("putt_select")}
             editing={editing}
@@ -319,6 +326,7 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1 }: HoleRecor
         {phase === "putt_select" && currentHole && (
           <PuttSelector
             shotCount={currentHole.shots.length}
+            penalties={penalties}
             par={currentHole.par}
             isLastHole={holes.length === 18}
             onSelect={completeHole}
@@ -465,11 +473,15 @@ function ParSelector({
 }
 
 function ActiveHoleCard({
-  hole, roundId, onShotRecorded, onHoleout,
+  hole, roundId, penalties, onAddPenalty, onRemovePenalty,
+  onShotRecorded, onHoleout,
   editing, onToggleEdit, onUpdateClub, onUpdateLie, onUpdateBallDirection,
 }: {
   hole: Hole;
   roundId: string;
+  penalties: number;
+  onAddPenalty: () => void;
+  onRemovePenalty: () => void;
   onShotRecorded: () => void;
   onHoleout: () => void;
   editing: { id: string; type: "club" | "lie" | "direction" } | null;
@@ -494,7 +506,10 @@ function ActiveHoleCard({
           </div>
           <div>
             <p className="font-bold text-green-900 text-lg">ホール {hole.hole_number}</p>
-            <p className="text-sm text-green-500">パー{hole.par} · {hole.shots.length}打記録済</p>
+            <p className="text-sm text-green-500">
+              パー{hole.par} · {hole.shots.length}打記録済
+              {penalties > 0 && <span className="text-red-500"> +{penalties}罰</span>}
+            </p>
           </div>
         </div>
         <button onClick={onHoleout}
@@ -524,21 +539,55 @@ function ActiveHoleCard({
         prevShot={prevShot}
         onShotRecorded={onShotRecorded}
       />
+
+      {penalties > 0 ? (
+        <div className="flex items-center justify-between bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+          <span className="text-base font-semibold text-red-700">ペナルティ</span>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={onRemovePenalty}
+              className="w-10 h-10 rounded-lg bg-white border border-red-200 text-red-600
+                         font-bold text-xl transition-colors active:scale-95 hover:bg-red-50"
+            >
+              −
+            </button>
+            <span className="text-2xl font-bold text-red-700 tabular-nums w-8 text-center">
+              {penalties}
+            </span>
+            <button
+              onClick={onAddPenalty}
+              className="w-10 h-10 rounded-lg bg-red-500 hover:bg-red-600 text-white
+                         font-bold text-xl transition-colors active:scale-95"
+            >
+              ＋
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button
+          onClick={onAddPenalty}
+          className="w-full py-3 rounded-xl border border-dashed border-red-200 text-red-400
+                     text-base font-medium hover:bg-red-50 transition-colors active:scale-95"
+        >
+          ＋ ペナルティ追加（OB・前進4打など）
+        </button>
+      )}
     </div>
   );
 }
 
 function PuttSelector({
-  shotCount, par, isLastHole, onSelect,
+  shotCount, penalties, par, isLastHole, onSelect,
 }: {
   shotCount: number;
+  penalties: number;
   par: number;
   isLastHole: boolean;
   onSelect: (putts: number) => void;
 }) {
   const [selectedPutts, setSelectedPutts] = useState<number | null>(null);
 
-  const total       = selectedPutts != null ? shotCount + selectedPutts : null;
+  const total       = selectedPutts != null ? shotCount + penalties + selectedPutts : null;
   const diff        = total != null ? total - par : null;
   const resultLabel = diff != null
     ? diff <= -2 ? "イーグル" : diff === -1 ? "バーディ" :
@@ -550,11 +599,15 @@ function PuttSelector({
     <div className="card space-y-4">
       <div className="text-center">
         <p className="text-xl font-bold text-green-800">パット数は？</p>
-        <p className="text-base text-green-500">ショット {shotCount}打 + パット</p>
+        <p className="text-base text-green-500">
+          ショット {shotCount}打
+          {penalties > 0 && <span className="text-red-500"> +{penalties}罰</span>}
+          {" "}+ パット
+        </p>
       </div>
       <div className="grid grid-cols-4 gap-2">
         {[1, 2, 3, 4, 5, 6, 7, 8].map((putts) => {
-          const t = shotCount + putts;
+          const t = shotCount + penalties + putts;
           const d = t - par;
           const label =
             d <= -2 ? "イーグル" : d === -1 ? "バーディ" :
@@ -583,7 +636,9 @@ function PuttSelector({
         <div className="space-y-3">
           <div className="text-center py-2 bg-green-50 rounded-xl">
             <p className="text-base text-green-600">
-              {shotCount}打 + {selectedPutts}パット ={" "}
+              {shotCount}打
+              {penalties > 0 && <span className="text-red-500"> +{penalties}罰</span>}
+              {" "}+ {selectedPutts}パット ={" "}
               <span className="font-bold">{total}打</span>
             </p>
             <p className="font-bold text-xl text-green-800">{resultLabel}</p>
@@ -626,7 +681,9 @@ function CompletedHoleCard({
             {hole.hole_number}
           </div>
           <span className="text-base text-green-600 font-medium truncate">
-            Par{hole.par} · {hole.shots.length}打+{hole.putts}P
+            Par{hole.par} · {hole.shots.length}打
+            {(hole.penalties ?? 0) > 0 && <span className="text-red-500">+{hole.penalties}罰</span>}
+            +{hole.putts}P
           </span>
         </button>
         <div className="flex items-center gap-1 shrink-0">
@@ -1010,7 +1067,7 @@ function RoundComplete({
                 <tr key={hole.id} className="border-b border-green-50">
                   <td className="py-1 text-green-700 font-medium">{hole.hole_number}</td>
                   <td className="py-1 text-center text-green-500">{hole.par}</td>
-                  <td className="py-1 text-center text-green-700">{hole.shots.length}</td>
+                  <td className="py-1 text-center text-green-700">{hole.shots.length + (hole.penalties ?? 0)}</td>
                   <td className="py-1 text-center text-green-500">{hole.putts ?? "—"}</td>
                   <td className={`py-1 text-right font-bold ${color}`}>{hole.score}</td>
                 </tr>
