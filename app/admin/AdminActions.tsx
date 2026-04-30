@@ -1,10 +1,12 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 
 // ── Invite code creation form ─────────────────────────────────────
 
-export function InviteCodeForm({ onCreated }: { onCreated: () => void }) {
+export function InviteCodeForm() {
+  const router = useRouter();
   const [code,  setCode]  = useState("");
   const [role,  setRole]  = useState("pro");
   const [plan,  setPlan]  = useState("premium");
@@ -32,7 +34,7 @@ export function InviteCodeForm({ onCreated }: { onCreated: () => void }) {
       setSuccess(`コード「${code.toUpperCase()}」を発行しました`);
       setCode("");
       setLabel("");
-      onCreated();
+      router.refresh();
     }
     setLoading(false);
   }
@@ -109,7 +111,8 @@ export function InviteCodeForm({ onCreated }: { onCreated: () => void }) {
 
 // ── Invite code delete button ─────────────────────────────────────
 
-export function DeleteCodeButton({ code, onDeleted }: { code: string; onDeleted: () => void }) {
+export function DeleteCodeButton({ code }: { code: string }) {
+  const router = useRouter();
   const [loading, setLoading] = useState(false);
 
   async function handleDelete() {
@@ -120,7 +123,7 @@ export function DeleteCodeButton({ code, onDeleted }: { code: string; onDeleted:
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ code }),
     });
-    onDeleted();
+    router.refresh();
     setLoading(false);
   }
 

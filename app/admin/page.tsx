@@ -52,7 +52,7 @@ export default async function AdminPage() {
         {/* 発行フォーム */}
         <div className="bg-white border border-green-200 rounded-xl p-4 space-y-3">
           <p className="text-sm font-semibold text-green-700">新しい招待コードを発行</p>
-          <InviteCodeForm onCreated={() => {}} />
+          <InviteCodeForm />
         </div>
 
         {/* 既存コード一覧 */}
