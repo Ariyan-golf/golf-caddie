@@ -37,7 +37,7 @@ export default async function AiCaddiePage() {
       <div className="pt-4">
         <h1 className="text-2xl font-bold text-green-800">🏌️ AIキャディ</h1>
         <p className="text-base text-green-600 mt-1">
-          R&A/JGA 2024年版ゴルフ規則に準拠してルールを回答します
+          GPSで残り距離を計測してキャラクターがコースアドバイスをお届けします
         </p>
       </div>
 
