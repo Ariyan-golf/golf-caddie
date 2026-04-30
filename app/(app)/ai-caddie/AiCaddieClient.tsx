@@ -409,14 +409,19 @@ function CharacterIcon({
     return <span className={`${emojiSize} leading-none`}>{emoji}</span>;
   }
   return (
-    <Image
-      src={imgSrc}
-      alt={name}
-      width={size}
-      height={size}
-      className="object-contain"
-      onError={() => setFailed(true)}
-    />
+    <div
+      style={{ width: size, height: size }}
+      className="overflow-hidden rounded-xl shrink-0"
+    >
+      <Image
+        src={imgSrc}
+        alt={name}
+        width={size}
+        height={size}
+        className="w-full h-full object-cover object-top"
+        onError={() => setFailed(true)}
+      />
+    </div>
   );
 }
 
