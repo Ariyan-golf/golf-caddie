@@ -15,6 +15,7 @@ interface CharDef {
   id: CharacterId;
   name: string;
   imgSrc: string;
+  emoji: string;
   tagline: string;
   desc: string;
   card: string;
@@ -27,7 +28,8 @@ interface CharDef {
 
 const CHARS: CharDef[] = [
   {
-    id: "mika", name: "ミカちゃん", imgSrc: "/mika.png", tagline: "元気・初心者向け",
+    id: "mika", name: "ミカちゃん", imgSrc: "/characters/mika.png", emoji: "👧",
+    tagline: "元気・初心者向け",
     desc: "明るく優しく、初心者でもわかりやすく教えてくれる！",
     card: "bg-pink-50 border-pink-200 hover:border-pink-400",
     bubble: "bg-pink-50 border-pink-200", accent: "text-pink-700",
@@ -35,7 +37,8 @@ const CHARS: CharDef[] = [
     btn: "bg-pink-500 hover:bg-pink-600 active:bg-pink-700 text-white",
   },
   {
-    id: "yoshi", name: "ヨシさん", imgSrc: "/yoshi.png", tagline: "ベテラン・的確",
+    id: "yoshi", name: "ヨシさん", imgSrc: "/characters/yoshi.png", emoji: "👴",
+    tagline: "ベテラン・的確",
     desc: "20年の経験から的確なアドバイスをくれる頼れるキャディ",
     card: "bg-sky-50 border-sky-200 hover:border-sky-400",
     bubble: "bg-sky-50 border-sky-200", accent: "text-sky-700",
@@ -43,7 +46,8 @@ const CHARS: CharDef[] = [
     btn: "bg-sky-500 hover:bg-sky-600 active:bg-sky-700 text-white",
   },
   {
-    id: "sage", name: "ゴルフ仙人", imgSrc: "/sennin.png", tagline: "達人・独特の言い回し",
+    id: "sage", name: "ゴルフ仙人", imgSrc: "/characters/sennin.png", emoji: "🧙",
+    tagline: "達人・独特の言い回し",
     desc: "哲学的な言葉でゴルフの真髄を語りかける",
     card: "bg-violet-50 border-violet-200 hover:border-violet-400",
     bubble: "bg-violet-50 border-violet-200", accent: "text-violet-700",
@@ -51,7 +55,8 @@ const CHARS: CharDef[] = [
     btn: "bg-violet-500 hover:bg-violet-600 active:bg-violet-700 text-white",
   },
   {
-    id: "taka", name: "タカさん", imgSrc: "/taka.png", tagline: "プロ・コースマネジメント",
+    id: "taka", name: "タカさん", imgSrc: "/characters/taka.png", emoji: "🏌️",
+    tagline: "プロ・コースマネジメント",
     desc: "リスクとリターンを計算した戦略的アドバイスが得意",
     card: "bg-emerald-50 border-emerald-200 hover:border-emerald-400",
     bubble: "bg-emerald-50 border-emerald-200", accent: "text-emerald-700",
@@ -203,7 +208,7 @@ export function AiCaddieClient({ clubAverages, hasAccess }: Props) {
               className={`flex flex-col items-center text-center gap-2 p-4 rounded-2xl
                           border-2 transition-all duration-150 active:scale-95 ${c.card}`}
             >
-              <Image src={c.imgSrc} alt={c.name} width={80} height={80} className="object-contain" />
+              <CharacterIcon imgSrc={c.imgSrc} emoji={c.emoji} name={c.name} size={80} />
               <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${c.tag}`}>{c.tagline}</span>
               <span className={`font-bold text-base ${c.accent}`}>{c.name}</span>
               <span className="text-xs text-green-600 leading-snug">{c.desc}</span>
@@ -225,7 +230,7 @@ export function AiCaddieClient({ clubAverages, hasAccess }: Props) {
       {/* Header */}
       <div className={`flex items-center justify-between px-4 py-3 rounded-2xl border ${char.bubble}`}>
         <div className="flex items-center gap-3">
-          <Image src={char.imgSrc} alt={char.name} width={40} height={40} className="object-contain" />
+          <CharacterIcon imgSrc={char.imgSrc} emoji={char.emoji} name={char.name} size={40} />
           <div>
             <p className={`font-bold text-base ${char.accent}`}>{char.name}</p>
             <p className="text-xs text-green-500">{char.tagline}</p>
@@ -310,7 +315,7 @@ export function AiCaddieClient({ clubAverages, hasAccess }: Props) {
       {quickText && (
         <div>
           <div className="flex flex-col items-center gap-1 mb-1">
-            <Image src={char.imgSrc} alt={char.name} width={80} height={80} className="object-contain" />
+            <CharacterIcon imgSrc={char.imgSrc} emoji={char.emoji} name={char.name} size={80} />
             <span className={`text-sm font-bold ${char.accent}`}>{char.name}</span>
           </div>
           <div className="flex justify-center">
@@ -386,6 +391,32 @@ export function AiCaddieClient({ clubAverages, hasAccess }: Props) {
         </div>
       )}
     </div>
+  );
+}
+
+function CharacterIcon({
+  imgSrc, emoji, name, size,
+}: {
+  imgSrc: string;
+  emoji: string;
+  name: string;
+  size: number;
+}) {
+  const [failed, setFailed] = useState(false);
+  const emojiSize = size >= 70 ? "text-6xl" : size >= 50 ? "text-4xl" : "text-3xl";
+
+  if (failed) {
+    return <span className={`${emojiSize} leading-none`}>{emoji}</span>;
+  }
+  return (
+    <Image
+      src={imgSrc}
+      alt={name}
+      width={size}
+      height={size}
+      className="object-contain"
+      onError={() => setFailed(true)}
+    />
   );
 }
 
