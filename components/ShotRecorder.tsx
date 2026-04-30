@@ -81,7 +81,7 @@ export function ShotRecorder({
         setError("GPS取得失敗。位置情報の許可を確認してください。");
         setState("idle");
       },
-      { enableHighAccuracy: true, timeout: 15000 },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
     );
   }
 

@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { ShotRecorder } from "./ShotRecorder";
 import type { Club } from "@/types";
 import { CLUB_LABELS } from "@/types";
+import { calculateDistance, metersToYards } from "@/lib/distance";
 
 // ── Local types ─────────────────────────────────────────────────────
 
@@ -234,6 +235,36 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
     await supabase.from("rounds").update({ total_score: total }).eq("id", roundId);
   }
 
+  function handleHoleout() {
+    setPhase("putt_select");
+
+    // Record last shot's end position + distance in the background
+    const lastShot = currentHole?.shots.at(-1);
+    if (!lastShot?.start_lat || !lastShot?.start_lng || !navigator.geolocation) return;
+
+    const shotId   = lastShot.id;
+    const startLat = lastShot.start_lat;
+    const startLng = lastShot.start_lng;
+
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const supabase = createClient();
+        const distM = calculateDistance(
+          { latitude: startLat, longitude: startLng },
+          { latitude: pos.coords.latitude, longitude: pos.coords.longitude },
+        );
+        await supabase.from("shots").update({
+          end_lat: pos.coords.latitude,
+          end_lng: pos.coords.longitude,
+          distance_meters: distM,
+          distance_yards: metersToYards(distM),
+        }).eq("id", shotId);
+      },
+      () => { /* silent fail — last shot distance stays null */ },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 },
+    );
+  }
+
   async function goBackToPrevHole() {
     const lastHole = holes.at(-1);
     if (!lastHole) return;
@@ -328,7 +359,7 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
             onAddPenalty={() => setPenalties((p) => p + 1)}
             onRemovePenalty={() => setPenalties((p) => Math.max(0, p - 1))}
             onShotRecorded={refreshCurrent}
-            onHoleout={() => setPhase("putt_select")}
+            onHoleout={handleHoleout}
             editing={editing}
             onToggleEdit={toggleEdit}
             onUpdateClub={updateClub}
