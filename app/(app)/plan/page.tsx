@@ -2,7 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import Link from "next/link";
 import { CheckoutButton } from "./CheckoutButton";
-import { RoundPaymentButton } from "./RoundPaymentButton";
+import { RoundPaymentButton } from "@/components/RoundPaymentButton";
 
 const PLANS = [
   {

@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { Navigation } from "@/components/Navigation";
 import { LogoutButton } from "@/components/LogoutButton";
+import { RoundPaymentButton } from "@/components/RoundPaymentButton";
 
 export default async function HomePage() {
   const supabase = await createClient();
@@ -101,14 +102,14 @@ export default async function HomePage() {
             <span className="text-3xl">🎯</span>
             <span className="font-semibold text-green-700 text-sm">番手アドバイス</span>
           </Link>
-          <Link
-            href="/golf-qr"
-            className="card flex flex-col items-center py-5 gap-2 hover:border-green-300 transition-colors"
-          >
-            <span className="text-3xl">⛳</span>
-            <span className="font-semibold text-green-700 text-sm">提携ゴルフ場と連携</span>
-            <span className="text-xs text-green-500">QRスキャン・330円／ラウンド</span>
-          </Link>
+          <div className="card flex flex-col gap-2 py-4">
+            <div className="flex flex-col items-center gap-1">
+              <span className="text-3xl">⛳</span>
+              <span className="font-semibold text-green-700 text-sm">提携ゴルフ場と連携</span>
+              <span className="text-xs text-green-500">330円／ラウンド</span>
+            </div>
+            <RoundPaymentButton />
+          </div>
           <Link
             href="/history"
             className="card flex flex-col items-center py-5 gap-2 hover:border-green-300 transition-colors"
