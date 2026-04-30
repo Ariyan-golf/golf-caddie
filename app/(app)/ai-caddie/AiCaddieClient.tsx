@@ -205,13 +205,20 @@ export function AiCaddieClient({ clubAverages, hasAccess }: Props) {
           {CHARS.map((c) => (
             <button
               key={c.id} onClick={() => pickChar(c.id)}
-              className={`flex flex-col items-center text-center gap-2 p-4 rounded-2xl
-                          border-2 transition-all duration-150 active:scale-95 ${c.card}`}
+              className={`flex flex-col items-center text-center rounded-2xl overflow-hidden
+                          border-2 shadow-sm hover:shadow-md transition-all duration-150
+                          active:scale-95 ${c.card}`}
             >
-              <CharacterIcon imgSrc={c.imgSrc} emoji={c.emoji} name={c.name} size={80} />
-              <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${c.tag}`}>{c.tagline}</span>
-              <span className={`font-bold text-base ${c.accent}`}>{c.name}</span>
-              <span className="text-xs text-green-600 leading-snug">{c.desc}</span>
+              {/* Image section */}
+              <div className="w-full h-[210px] relative overflow-hidden flex items-center justify-center">
+                <CharacterIcon imgSrc={c.imgSrc} emoji={c.emoji} name={c.name} size={64} expand />
+              </div>
+              {/* Info section */}
+              <div className="w-full bg-white/60 px-3 pt-2 pb-4 space-y-1.5">
+                <p className={`font-bold text-base ${c.accent}`}>{c.name}</p>
+                <span className={`inline-block text-xs font-medium px-2 py-0.5 rounded-full ${c.tag}`}>{c.tagline}</span>
+                <p className="text-xs text-green-600 leading-snug">{c.desc}</p>
+              </div>
             </button>
           ))}
         </div>
@@ -395,18 +402,30 @@ export function AiCaddieClient({ clubAverages, hasAccess }: Props) {
 }
 
 function CharacterIcon({
-  imgSrc, emoji, name, size,
+  imgSrc, emoji, name, size, expand = false,
 }: {
   imgSrc: string;
   emoji: string;
   name: string;
   size: number;
+  expand?: boolean;
 }) {
   const [failed, setFailed] = useState(false);
   const emojiSize = size >= 70 ? "text-6xl" : size >= 50 ? "text-4xl" : "text-3xl";
 
   if (failed) {
     return <span className={`${emojiSize} leading-none`}>{emoji}</span>;
+  }
+  if (expand) {
+    return (
+      <Image
+        src={imgSrc}
+        alt={name}
+        fill
+        className="object-cover object-top"
+        onError={() => setFailed(true)}
+      />
+    );
   }
   return (
     <div
