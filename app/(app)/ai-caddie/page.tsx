@@ -1,38 +1,4 @@
-import { createClient } from "@/lib/supabase/server";
-import { createClient as createAdminClient } from "@supabase/supabase-js";
-import { AiCaddieClient } from "./AiCaddieClient";
-
-export default async function AiCaddiePage() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-
-  const admin = createAdminClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
-
-  const [{ data: profile }, todayPayment, { data: clubAverages }] = await Promise.all([
-    admin.from("profiles").select("plan").eq("id", user!.id).single(),
-    (async () => {
-      const nowMs = Date.now();
-      const jstMs = nowMs + 9 * 60 * 60 * 1000;
-      const todayStr = new Date(jstMs).toISOString().slice(0, 10);
-      const nextStr  = new Date(jstMs + 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-      const { data } = await admin
-        .from("round_payments")
-        .select("id")
-        .eq("user_id", user!.id)
-        .gte("created_at", `${todayStr}T00:00:00+09:00`)
-        .lt("created_at",  `${nextStr}T00:00:00+09:00`)
-        .limit(1)
-        .maybeSingle();
-      return data;
-    })(),
-    admin.from("club_averages").select("*").eq("user_id", user!.id),
-  ]);
-
-  const hasAccess = profile?.plan === "premium" || !!todayPayment;
-
+export default function AiCaddiePage() {
   return (
     <div className="max-w-lg mx-auto p-4 space-y-4">
       <div className="pt-4">
@@ -41,7 +7,11 @@ export default async function AiCaddiePage() {
           GPSで残り距離を計測してキャラクターがコースアドバイスをお届けします
         </p>
       </div>
-      <AiCaddieClient clubAverages={clubAverages ?? []} hasAccess={hasAccess} />
+      <div className="card text-center py-12 space-y-3">
+        <p className="text-5xl">🚧</p>
+        <p className="text-xl font-bold text-green-800">Coming Soon</p>
+        <p className="text-sm text-green-600">この機能は近日公開予定です。お楽しみに！</p>
+      </div>
     </div>
   );
 }
