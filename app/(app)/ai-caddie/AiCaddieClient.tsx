@@ -318,6 +318,14 @@ export function AiCaddieClient({ clubAverages, hasAccess }: Props) {
         </button>
       </div>
 
+      {/* Camera feature - Coming Soon */}
+      <button
+        disabled
+        className="w-full py-3 px-6 rounded-xl text-sm font-semibold bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed"
+      >
+        📷 スイング撮影・AI分析（近日公開）
+      </button>
+
       {/* Stage 1: speech bubble */}
       {quickText && (
         <div>

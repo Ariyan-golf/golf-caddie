@@ -99,8 +99,8 @@ export default async function HomePage() {
             href="/ai-caddie"
             className="card flex flex-col items-center py-5 gap-2 hover:border-green-300 transition-colors"
           >
-            <span className="text-3xl">🎯</span>
-            <span className="font-semibold text-green-700 text-sm">番手アドバイス</span>
+            <span className="text-3xl">🤖</span>
+            <span className="font-semibold text-green-700 text-sm">AIキャディ</span>
           </Link>
           <div className="card flex flex-col gap-2 py-4">
             <div className="flex flex-col items-center gap-1">
