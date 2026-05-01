@@ -96,7 +96,7 @@ export default async function HomePage() {
             <span className="font-semibold text-green-700 text-sm">ラウンド開始</span>
           </Link>
           <Link
-            href="/advice"
+            href="/ai-caddie"
             className="card flex flex-col items-center py-5 gap-2 hover:border-green-300 transition-colors"
           >
             <span className="text-3xl">🎯</span>
