@@ -3,6 +3,7 @@ import { createClient as createAdminClient } from "@supabase/supabase-js";
 import Link from "next/link";
 import { CheckoutButton } from "./CheckoutButton";
 import { RoundPaymentButton } from "@/components/RoundPaymentButton";
+import { CancelButton } from "./CancelButton";
 
 const PLANS = [
   {
@@ -73,12 +74,13 @@ export default async function PlanPage({ searchParams }: Props) {
   );
   const { data: profile } = await admin
     .from("profiles")
-    .select("plan, round_count")
+    .select("plan, round_count, cancelled_at")
     .eq("id", user!.id)
     .single();
 
   const currentPlan = profile?.plan ?? "free";
   const roundCount = profile?.round_count ?? 0;
+  const alreadyCancelled = !!profile?.cancelled_at;
 
   const planLabel: Record<string, string> = {
     standard: "スタンダード",
@@ -214,6 +216,20 @@ export default async function PlanPage({ searchParams }: Props) {
           <li>・解約はStripeカスタマーポータルからいつでも可能です</li>
           <li>・決済はStripeで安全に処理されます</li>
         </ul>
+      </div>
+
+      <div className="card bg-gray-50 border-gray-200 space-y-3">
+        <p className="text-sm font-semibold text-gray-700">退会について</p>
+        <p className="text-xs text-gray-500 leading-relaxed">
+          退会後30日間は引き続きサービスをご利用いただけます。翌月の請求は発生しません。
+        </p>
+        {alreadyCancelled ? (
+          <div className="w-full py-2.5 rounded-xl text-center text-sm font-medium bg-gray-100 text-gray-400">
+            退会申請済み
+          </div>
+        ) : (
+          <CancelButton />
+        )}
       </div>
 
       <Link href="/" className="block text-center text-sm text-green-500 underline pb-4">
