@@ -102,14 +102,13 @@ export default async function HomePage() {
             <span className="text-3xl">🤖</span>
             <span className="font-semibold text-green-700 text-sm">AIキャディ</span>
           </Link>
-          <div className="card flex flex-col gap-2 py-4">
-            <div className="flex flex-col items-center gap-1">
-              <span className="text-3xl">⛳</span>
-              <span className="font-semibold text-green-700 text-sm">提携ゴルフ場と連携</span>
-              <span className="text-xs text-green-500">330円／ラウンド</span>
-            </div>
-            <RoundPaymentButton />
-          </div>
+          <Link
+            href="/swing"
+            className="card flex flex-col items-center py-5 gap-2 hover:border-green-300 transition-colors"
+          >
+            <span className="text-3xl">📊</span>
+            <span className="font-semibold text-green-700 text-sm">スイング分析</span>
+          </Link>
           <Link
             href="/history"
             className="card flex flex-col items-center py-5 gap-2 hover:border-green-300 transition-colors"
@@ -117,6 +116,18 @@ export default async function HomePage() {
             <span className="text-3xl">📋</span>
             <span className="font-semibold text-green-700 text-sm">ショット履歴</span>
           </Link>
+        </div>
+
+        {/* Partnership payment - full width */}
+        <div className="card space-y-3">
+          <div className="flex items-center gap-3">
+            <span className="text-2xl">⛳</span>
+            <div>
+              <p className="font-semibold text-green-700 text-sm">提携ゴルフ場と連携</p>
+              <p className="text-xs text-green-500">330円／ラウンド</p>
+            </div>
+          </div>
+          <RoundPaymentButton />
         </div>
 
         {/* Recent rounds */}
