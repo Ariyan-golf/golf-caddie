@@ -5,6 +5,8 @@ import { Navigation } from "@/components/Navigation";
 import { LogoutButton } from "@/components/LogoutButton";
 import { RoundPaymentButton } from "@/components/RoundPaymentButton";
 
+export const dynamic = "force-dynamic";
+
 export default async function HomePage() {
   const supabase = await createClient();
   const {
@@ -13,11 +15,22 @@ export default async function HomePage() {
 
   if (!user) redirect("/login");
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("display_name")
-    .eq("id", user.id)
-    .single();
+  const [{ data: profile }, { data: recentRounds }, { data: clubStats }] =
+    await Promise.all([
+      supabase.from("profiles").select("display_name").eq("id", user.id).single(),
+      supabase
+        .from("rounds")
+        .select("id, course_name, date, total_score")
+        .eq("user_id", user.id)
+        .order("date", { ascending: false })
+        .limit(3),
+      supabase
+        .from("club_averages")
+        .select("club, average_distance_meters, shot_count")
+        .eq("user_id", user.id)
+        .order("shot_count", { ascending: false })
+        .limit(5),
+    ]);
 
   // display_name が profiles に未保存の場合、user_metadata から補完して保存
   if (profile && !profile.display_name && user.user_metadata?.display_name) {
@@ -26,20 +39,6 @@ export default async function HomePage() {
       .update({ display_name: user.user_metadata.display_name })
       .eq("id", user.id);
   }
-
-  const { data: recentRounds } = await supabase
-    .from("rounds")
-    .select("id, course_name, date, total_score")
-    .eq("user_id", user.id)
-    .order("date", { ascending: false })
-    .limit(3);
-
-  const { data: clubStats } = await supabase
-    .from("club_averages")
-    .select("club, average_distance_meters, shot_count")
-    .eq("user_id", user.id)
-    .order("shot_count", { ascending: false })
-    .limit(5);
 
   const displayName =
     profile?.display_name ??
@@ -72,7 +71,7 @@ export default async function HomePage() {
                 🏌️ テスト期間中 ― 現在は無料でご利用いただけます
               </p>
               <p className="text-green-100 text-xs leading-relaxed">
-                GW明けより本格スタート予定。アプリ内課金システムに移行します。
+                5月15日より本格スタート予定。アプリ内課金システムに移行します。
                 <span className="font-semibold text-white">今のうちにぜひお試しください！</span>
               </p>
             </div>
