@@ -50,7 +50,7 @@ export function NewRoundForm() {
   const [weather, setWeather]               = useState<Weather | null>(null);
   const [windSpeed, setWindSpeed]           = useState<WindSpeed | null>(null);
   const [windDirection, setWindDirection]   = useState<WindDirection | null>(null);
-  const [mode, setMode]                     = useState<"shot" | "score">("shot");
+  const [mode, setMode]                     = useState<"shot" | "score">("score");
   const [loading, setLoading]               = useState(false);
   const [error, setError]                   = useState("");
 

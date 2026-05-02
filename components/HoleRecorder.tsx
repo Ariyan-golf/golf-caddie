@@ -1113,6 +1113,76 @@ function ScoreEntryCard({
   const [strokes, setStrokes] = useState(hole.score ?? hole.par);
   const [putts, setPutts]     = useState(hole.putts ?? 2);
 
+  // GPS optional shot tracking
+  const sorted        = [...hole.shots].sort((a, b) => a.shot_number - b.shot_number);
+  const lastSaved     = sorted.at(-1);
+  const initPending   = lastSaved && lastSaved.distance_yards == null && lastSaved.start_lat != null
+    ? { id: lastSaved.id, shotNumber: lastSaved.shot_number,
+        startLat: lastSaved.start_lat!, startLng: lastSaved.start_lng! }
+    : null;
+
+  const [gpsState, setGpsState]         = useState<"idle" | "locating">("idle");
+  const [gpsShotCount, setGpsShotCount] = useState(sorted.length);
+  const [gpsShots, setGpsShots]         = useState(
+    sorted.map((s) => ({ shotNumber: s.shot_number, distanceYards: s.distance_yards }))
+  );
+  const [pendingGps, setPendingGps]     = useState<{
+    id: string; shotNumber: number; startLat: number; startLng: number;
+  } | null>(initPending);
+
+  async function handleGpsTap() {
+    if (!navigator.geolocation) return;
+    setGpsState("locating");
+    try {
+      const pos = await new Promise<GeolocationPosition>((resolve, reject) =>
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: true, timeout: 15000, maximumAge: 0,
+        })
+      );
+      const supabase = createClient();
+      const lat = pos.coords.latitude;
+      const lng = pos.coords.longitude;
+
+      if (pendingGps) {
+        const distM = calculateDistance(
+          { latitude: pendingGps.startLat, longitude: pendingGps.startLng },
+          { latitude: lat, longitude: lng }
+        );
+        const distY = metersToYards(distM);
+        await supabase.from("shots").update({
+          end_lat: lat, end_lng: lng,
+          distance_meters: distM, distance_yards: distY,
+        }).eq("id", pendingGps.id);
+        setGpsShots((prev) => prev.map((s) =>
+          s.shotNumber === pendingGps.shotNumber ? { ...s, distanceYards: distY } : s
+        ));
+      }
+
+      const newNum = gpsShotCount + 1;
+      const { data } = await supabase.from("shots").insert({
+        hole_id: hole.id,
+        shot_number: newNum,
+        start_lat: lat,
+        start_lng: lng,
+      }).select("id").single();
+
+      if (data) {
+        setPendingGps({
+          id: (data as { id: string }).id,
+          shotNumber: newNum,
+          startLat: lat,
+          startLng: lng,
+        });
+        setGpsShotCount(newNum);
+        setGpsShots((prev) => [...prev, { shotNumber: newNum, distanceYards: null }]);
+      }
+    } catch {
+      // GPS unavailable — silent fail
+    } finally {
+      setGpsState("idle");
+    }
+  }
+
   const diff = strokes - hole.par;
   const resultLabel =
     diff <= -2 ? "イーグル" : diff === -1 ? "バーディ" :
@@ -1124,14 +1194,15 @@ function ScoreEntryCard({
     diff === 0  ? "text-green-600" : diff === 1  ? "text-blue-500" : "text-gray-500";
 
   return (
-    <div className="card space-y-6">
+    <div className="card space-y-5">
+      {/* Header */}
       <div className="text-center">
         <div className="flex items-center justify-center gap-2 mb-1">
           <div className="w-8 h-8 bg-green-600 rounded-full flex items-center justify-center
                           text-white font-bold text-sm">
             {hole.hole_number}
           </div>
-          <p className="text-xl font-bold text-green-800">このホールのスコアを入力</p>
+          <p className="text-xl font-bold text-green-800">ホール {hole.hole_number}</p>
         </div>
         <p className="text-base text-green-500">パー {hole.par}</p>
         <button
@@ -1139,7 +1210,45 @@ function ScoreEntryCard({
           className="mt-2 text-xs px-3 py-1 rounded-full border border-gray-200 text-gray-400
                      hover:border-green-300 hover:text-green-600 transition-colors"
         >
-          📍 ショット記録に切替
+          📡 ショット記録モードに切替
+        </button>
+      </div>
+
+      {/* Optional GPS shot distance tracker */}
+      <div className="space-y-2">
+        {gpsShots.length > 0 && (
+          <div className="bg-green-50 rounded-xl px-4 py-3 space-y-1.5">
+            <p className="text-xs font-semibold text-green-500 mb-1">飛距離記録</p>
+            {gpsShots.map((s) => (
+              <div key={s.shotNumber} className="flex justify-between text-sm">
+                <span className="text-green-600 font-medium">第{s.shotNumber}打</span>
+                <span className="font-bold text-green-800 tabular-nums">
+                  {s.distanceYards != null ? `${s.distanceYards}y` : "—"}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+        <button
+          onClick={handleGpsTap}
+          disabled={gpsState === "locating"}
+          className={`w-full py-5 rounded-2xl border-2 font-bold text-base transition-colors
+                      active:scale-95 disabled:opacity-50 leading-snug ${
+            pendingGps
+              ? "border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100"
+              : "border-green-300 bg-green-50 text-green-700 hover:bg-green-100"
+          }`}
+        >
+          {gpsState === "locating" ? (
+            "📡 GPS取得中..."
+          ) : pendingGps ? (
+            <>
+              <span className="block">📍 着地点を記録する</span>
+              <span className="block text-sm font-medium opacity-75">第{pendingGps.shotNumber}打計測中</span>
+            </>
+          ) : (
+            "📍 このショットの飛距離を記録する"
+          )}
         </button>
       </div>
 
