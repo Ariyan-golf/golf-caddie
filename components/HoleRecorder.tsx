@@ -1100,6 +1100,23 @@ function LiePicker({
   );
 }
 
+// ── Distance measurement clubs ────────────────────────────────────────
+const DM_CLUBS = [
+  { value: "driver", label: "ドライバー" },
+  { value: "3w",     label: "3W" },
+  { value: "5w",     label: "5W" },
+  { value: "4i",     label: "4I" },
+  { value: "5i",     label: "5I" },
+  { value: "6i",     label: "6I" },
+  { value: "7i",     label: "7I" },
+  { value: "8i",     label: "8I" },
+  { value: "9i",     label: "9I" },
+  { value: "pw",     label: "PW" },
+  { value: "aw",     label: "AW" },
+  { value: "sw",     label: "SW" },
+  { value: "putter", label: "パター" },
+] as const;
+
 // ── ScoreEntryCard: score mode hole completion ────────────────────────
 
 function ScoreEntryCard({
@@ -1113,74 +1130,79 @@ function ScoreEntryCard({
   const [strokes, setStrokes] = useState(hole.score ?? hole.par);
   const [putts, setPutts]     = useState(hole.putts ?? 2);
 
-  // GPS optional shot tracking
-  const sorted        = [...hole.shots].sort((a, b) => a.shot_number - b.shot_number);
-  const lastSaved     = sorted.at(-1);
-  const initPending   = lastSaved && lastSaved.distance_yards == null && lastSaved.start_lat != null
-    ? { id: lastSaved.id, shotNumber: lastSaved.shot_number,
-        startLat: lastSaved.start_lat!, startLng: lastSaved.start_lng! }
-    : null;
+  // Distance measurement state
+  const [showDM, setShowDM]         = useState(false);
+  const [dmStart, setDmStart]       = useState<{lat: number; lng: number} | null>(null);
+  const [dmEnd, setDmEnd]           = useState<{lat: number; lng: number} | null>(null);
+  const [dmLoading, setDmLoading]   = useState<"idle" | "start" | "end">("idle");
+  const [dmDistance, setDmDistance] = useState<{yards: number; meters: number} | null>(null);
+  const [dmClub, setDmClub]         = useState("driver");
+  const [dmSaved, setDmSaved]       = useState(false);
+  const [dmHistory, setDmHistory]   = useState<Array<{club: string; yards: number; meters: number}>>([]);
 
-  const [gpsState, setGpsState]         = useState<"idle" | "locating">("idle");
-  const [gpsShotCount, setGpsShotCount] = useState(sorted.length);
-  const [gpsShots, setGpsShots]         = useState(
-    sorted.map((s) => ({ shotNumber: s.shot_number, distanceYards: s.distance_yards }))
-  );
-  const [pendingGps, setPendingGps]     = useState<{
-    id: string; shotNumber: number; startLat: number; startLng: number;
-  } | null>(initPending);
-
-  async function handleGpsTap() {
+  async function handleDmStart() {
     if (!navigator.geolocation) return;
-    setGpsState("locating");
+    setDmLoading("start");
     try {
       const pos = await new Promise<GeolocationPosition>((resolve, reject) =>
         navigator.geolocation.getCurrentPosition(resolve, reject, {
           enableHighAccuracy: true, timeout: 15000, maximumAge: 0,
         })
       );
-      const supabase = createClient();
-      const lat = pos.coords.latitude;
-      const lng = pos.coords.longitude;
-
-      if (pendingGps) {
-        const distM = calculateDistance(
-          { latitude: pendingGps.startLat, longitude: pendingGps.startLng },
-          { latitude: lat, longitude: lng }
-        );
-        const distY = metersToYards(distM);
-        await supabase.from("shots").update({
-          end_lat: lat, end_lng: lng,
-          distance_meters: distM, distance_yards: distY,
-        }).eq("id", pendingGps.id);
-        setGpsShots((prev) => prev.map((s) =>
-          s.shotNumber === pendingGps.shotNumber ? { ...s, distanceYards: distY } : s
-        ));
-      }
-
-      const newNum = gpsShotCount + 1;
-      const { data } = await supabase.from("shots").insert({
-        hole_id: hole.id,
-        shot_number: newNum,
-        start_lat: lat,
-        start_lng: lng,
-      }).select("id").single();
-
-      if (data) {
-        setPendingGps({
-          id: (data as { id: string }).id,
-          shotNumber: newNum,
-          startLat: lat,
-          startLng: lng,
-        });
-        setGpsShotCount(newNum);
-        setGpsShots((prev) => [...prev, { shotNumber: newNum, distanceYards: null }]);
-      }
+      setDmStart({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+      setDmEnd(null);
+      setDmDistance(null);
     } catch {
-      // GPS unavailable — silent fail
+      // GPS unavailable
     } finally {
-      setGpsState("idle");
+      setDmLoading("idle");
     }
+  }
+
+  async function handleDmEnd() {
+    if (!navigator.geolocation || !dmStart) return;
+    setDmLoading("end");
+    try {
+      const pos = await new Promise<GeolocationPosition>((resolve, reject) =>
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: true, timeout: 15000, maximumAge: 0,
+        })
+      );
+      const endLat = pos.coords.latitude;
+      const endLng = pos.coords.longitude;
+      setDmEnd({ lat: endLat, lng: endLng });
+      const distM = calculateDistance(
+        { latitude: dmStart.lat, longitude: dmStart.lng },
+        { latitude: endLat, longitude: endLng }
+      );
+      const distY = metersToYards(distM);
+      setDmDistance({ yards: distY, meters: Math.round(distM * 10) / 10 });
+    } catch {
+      // GPS unavailable
+    } finally {
+      setDmLoading("idle");
+    }
+  }
+
+  async function handleDmSave() {
+    if (!dmDistance) return;
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    await supabase.from("shot_distances").insert({
+      user_id: user.id,
+      club: dmClub,
+      distance_yards: dmDistance.yards,
+      distance_meters: dmDistance.meters,
+    });
+    setDmHistory((prev) => [...prev, { club: dmClub, yards: dmDistance.yards, meters: dmDistance.meters }]);
+    setDmSaved(true);
+    setTimeout(() => {
+      setDmStart(null);
+      setDmEnd(null);
+      setDmDistance(null);
+      setDmSaved(false);
+    }, 1500);
   }
 
   const diff = strokes - hole.par;
@@ -1214,42 +1236,105 @@ function ScoreEntryCard({
         </button>
       </div>
 
-      {/* Optional GPS shot distance tracker */}
+      {/* Shot distance measurement */}
       <div className="space-y-2">
-        {gpsShots.length > 0 && (
+        {dmHistory.length > 0 && (
           <div className="bg-green-50 rounded-xl px-4 py-3 space-y-1.5">
             <p className="text-xs font-semibold text-green-500 mb-1">飛距離記録</p>
-            {gpsShots.map((s) => (
-              <div key={s.shotNumber} className="flex justify-between text-sm">
-                <span className="text-green-600 font-medium">第{s.shotNumber}打</span>
+            {dmHistory.map((r, i) => (
+              <div key={i} className="flex justify-between text-sm">
+                <span className="text-green-600 font-medium">
+                  {DM_CLUBS.find((c) => c.value === r.club)?.label ?? r.club}
+                </span>
                 <span className="font-bold text-green-800 tabular-nums">
-                  {s.distanceYards != null ? `${s.distanceYards}y` : "—"}
+                  {r.yards}y ({Math.round(r.meters)}m)
                 </span>
               </div>
             ))}
           </div>
         )}
-        <button
-          onClick={handleGpsTap}
-          disabled={gpsState === "locating"}
-          className={`w-full py-5 rounded-2xl border-2 font-bold text-base transition-colors
-                      active:scale-95 disabled:opacity-50 leading-snug ${
-            pendingGps
-              ? "border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100"
-              : "border-green-300 bg-green-50 text-green-700 hover:bg-green-100"
-          }`}
-        >
-          {gpsState === "locating" ? (
-            "📡 GPS取得中..."
-          ) : pendingGps ? (
-            <>
-              <span className="block">📍 着地点を記録する</span>
-              <span className="block text-sm font-medium opacity-75">第{pendingGps.shotNumber}打計測中</span>
-            </>
-          ) : (
-            "📍 このショットの飛距離を記録する"
-          )}
-        </button>
+        {!showDM ? (
+          <button
+            onClick={() => setShowDM(true)}
+            className="w-full py-5 rounded-2xl border-2 border-green-300 bg-green-50 text-green-700
+                       hover:bg-green-100 font-bold text-base transition-colors active:scale-95"
+          >
+            📍 このショットの飛距離を記録する
+          </button>
+        ) : (
+          <div className="border-2 border-green-200 rounded-2xl p-4 space-y-3 bg-green-50">
+            <div>
+              <p className="text-xs font-semibold text-green-600 mb-1.5">使用クラブ</p>
+              <select
+                value={dmClub}
+                onChange={(e) => setDmClub(e.target.value)}
+                className="w-full px-3 py-2 rounded-xl border border-green-200 bg-white text-green-900
+                           text-sm font-medium focus:outline-none focus:ring-2 focus:ring-green-400"
+              >
+                {DM_CLUBS.map((c) => (
+                  <option key={c.value} value={c.value}>{c.label}</option>
+                ))}
+              </select>
+            </div>
+            <button
+              onClick={handleDmStart}
+              disabled={dmLoading !== "idle"}
+              className={`w-full py-4 rounded-2xl border-2 font-bold text-base transition-colors
+                          active:scale-95 disabled:opacity-50 ${
+                dmStart
+                  ? "border-green-500 bg-green-500 text-white"
+                  : "border-green-300 bg-white text-green-700 hover:bg-green-50"
+              }`}
+            >
+              {dmLoading === "start" ? "📡 GPS取得中..." : dmStart ? "✅ 打点を記録済み" : "📍 打つ前に押してね"}
+            </button>
+            <button
+              onClick={handleDmEnd}
+              disabled={dmLoading !== "idle" || !dmStart}
+              className={`w-full py-4 rounded-2xl border-2 font-bold text-base transition-colors
+                          active:scale-95 disabled:opacity-50 ${
+                dmEnd
+                  ? "border-blue-500 bg-blue-500 text-white"
+                  : "border-blue-300 bg-white text-blue-700 hover:bg-blue-50"
+              }`}
+            >
+              {dmLoading === "end" ? "📡 GPS取得中..." : dmEnd ? "✅ 着地点を記録済み" : "📍 止まった場所で押してね"}
+            </button>
+            {dmDistance && (
+              <div className="bg-white rounded-xl px-4 py-3 text-center border border-green-200">
+                <p className="text-xs text-green-500 mb-0.5">飛距離</p>
+                <p className="text-2xl font-bold text-green-900 tabular-nums">
+                  {dmDistance.yards}ヤード（{Math.round(dmDistance.meters)}m）
+                </p>
+              </div>
+            )}
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  setShowDM(false);
+                  setDmStart(null);
+                  setDmEnd(null);
+                  setDmDistance(null);
+                  setDmSaved(false);
+                }}
+                className="flex-1 py-3 rounded-xl border border-gray-200 text-gray-500
+                           hover:bg-gray-50 text-sm font-medium transition-colors active:scale-95"
+              >
+                閉じる
+              </button>
+              {dmDistance && (
+                <button
+                  onClick={handleDmSave}
+                  disabled={dmSaved}
+                  className="flex-1 py-3 rounded-xl bg-green-600 hover:bg-green-700 text-white
+                             font-bold text-sm transition-colors active:scale-95 disabled:opacity-60"
+                >
+                  {dmSaved ? "✅ 保存済み" : "記録する"}
+                </button>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Stroke counter */}
