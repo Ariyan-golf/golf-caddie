@@ -117,6 +117,7 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
 
   const [holes, setHoles]           = useState<Hole[]>(initialHoles);
   const [phase, setPhase]           = useState<Phase>(initPhase);
+  const [holeMode, setHoleMode]     = useState<"shot" | "score">(mode);
   const [creating, setCreating]     = useState(false);
   const [expandedHole, setExpanded] = useState<string | null>(null);
   const [editing, setEditing] = useState<{ id: string; type: "club" | "lie" | "direction" } | null>(null);
@@ -144,6 +145,13 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
 
   // ── Actions ─────────────────────────────────────────────────────────
 
+  function switchHoleMode() {
+    const newMode = holeMode === "shot" ? "score" : "shot";
+    setHoleMode(newMode);
+    if (phase === "shooting" && newMode === "score") setPhase("score_entry");
+    else if (phase === "score_entry" && newMode === "shot") setPhase("shooting");
+  }
+
   // hole_number follows the start order: out(1→18) or in(10→18→1→9)
   function nextHoleNumber(currentHoleCount: number) {
     return ((startHole - 1 + currentHoleCount) % 18) + 1;
@@ -160,7 +168,7 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
       .single();
     if (!error && data) {
       setHoles((prev) => [...prev, data as Hole]);
-      setPhase(mode === "score" ? "score_entry" : "shooting");
+      setPhase(holeMode === "score" ? "score_entry" : "shooting");
     }
     setCreating(false);
   }
@@ -280,7 +288,7 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
     setPenalties(lastHole.penalties ?? 0);
     setConfirmGoBack(false);
     setGoingBack(false);
-    setPhase(mode === "score" ? "score_entry" : "putt_select");
+    setPhase(holeMode === "score" ? "score_entry" : "putt_select");
   }
 
   function toggleEdit(id: string, type: "club" | "lie" | "direction") {
@@ -310,6 +318,16 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
           <div className="space-y-3">
             <ParSelector holeNumber={nextHoleNumber(holes.length)} onCreate={handleStartHole} creating={creating} />
 
+            <div className="flex justify-center">
+              <button
+                onClick={switchHoleMode}
+                className="text-xs px-3 py-1.5 rounded-full border border-gray-200 text-gray-400
+                           hover:border-green-300 hover:text-green-600 transition-colors"
+              >
+                {holeMode === "shot" ? "📋 スコア記録に切替" : "📍 ショット記録に切替"}
+              </button>
+            </div>
+
             {holes.length > 0 && (
               confirmGoBack ? (
                 <div className="card border-amber-200 bg-amber-50 space-y-3">
@@ -319,7 +337,7 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
                       <p className="font-semibold text-amber-800 text-base">前のホールに戻りますか？</p>
                       <p className="text-amber-700 text-sm mt-1">
                         ホール {holes.at(-1)?.hole_number} のスコアがリセットされ、
-                        {mode === "score" ? "スコアを再入力できます。" : "パット数を再入力できます。"}
+                        {holeMode === "score" ? "スコアを再入力できます。" : "パット数を再入力できます。"}
                       </p>
                     </div>
                   </div>
@@ -365,6 +383,7 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
             onUpdateClub={updateClub}
             onUpdateLie={updateLie}
             onUpdateBallDirection={updateBallDirection}
+            onSwitchMode={switchHoleMode}
           />
         )}
 
@@ -383,6 +402,7 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
             hole={currentHole}
             isLastHole={holes.length === 18}
             onComplete={completeHoleByScore}
+            onSwitchMode={switchHoleMode}
           />
         )}
       </div>
@@ -530,6 +550,7 @@ function ActiveHoleCard({
   hole, roundId, penalties, onAddPenalty, onRemovePenalty,
   onShotRecorded, onHoleout,
   editing, onToggleEdit, onUpdateClub, onUpdateLie, onUpdateBallDirection,
+  onSwitchMode,
 }: {
   hole: Hole;
   roundId: string;
@@ -543,6 +564,7 @@ function ActiveHoleCard({
   onUpdateClub: (id: string, club: Club) => void;
   onUpdateLie: (id: string, lie: string) => void;
   onUpdateBallDirection: (id: string, dir: string) => void;
+  onSwitchMode: () => void;
 }) {
   const lastShot = hole.shots.at(-1);
   const prevShot =
@@ -566,12 +588,19 @@ function ActiveHoleCard({
             </p>
           </div>
         </div>
-        <button onClick={onHoleout}
-          className="bg-green-600 hover:bg-green-700 text-white font-bold
-                     px-5 py-3 rounded-xl text-base transition-colors flex flex-col items-center gap-0.5">
-          <span>グリーンオン</span>
-          <span className="text-xs font-normal opacity-80">グリーンで押してね</span>
-        </button>
+        <div className="flex flex-col items-end gap-1.5">
+          <button onClick={onSwitchMode}
+            className="text-xs px-2.5 py-1 rounded-full border border-gray-200 text-gray-400
+                       hover:border-green-300 hover:text-green-600 transition-colors leading-tight">
+            📋 スコア記録に切替
+          </button>
+          <button onClick={onHoleout}
+            className="bg-green-600 hover:bg-green-700 text-white font-bold
+                       px-5 py-3 rounded-xl text-base transition-colors flex flex-col items-center gap-0.5">
+            <span>グリーンオン</span>
+            <span className="text-xs font-normal opacity-80">グリーンで押してね</span>
+          </button>
+        </div>
       </div>
 
       {/* Shot list shown above the record button */}
@@ -1074,11 +1103,12 @@ function LiePicker({
 // ── ScoreEntryCard: score mode hole completion ────────────────────────
 
 function ScoreEntryCard({
-  hole, isLastHole, onComplete,
+  hole, isLastHole, onComplete, onSwitchMode,
 }: {
   hole: Hole;
   isLastHole: boolean;
   onComplete: (score: number, putts: number) => void;
+  onSwitchMode: () => void;
 }) {
   const [strokes, setStrokes] = useState(hole.score ?? hole.par);
   const [putts, setPutts]     = useState(hole.putts ?? 2);
@@ -1104,6 +1134,13 @@ function ScoreEntryCard({
           <p className="text-xl font-bold text-green-800">このホールのスコアを入力</p>
         </div>
         <p className="text-base text-green-500">パー {hole.par}</p>
+        <button
+          onClick={onSwitchMode}
+          className="mt-2 text-xs px-3 py-1 rounded-full border border-gray-200 text-gray-400
+                     hover:border-green-300 hover:text-green-600 transition-colors"
+        >
+          📍 ショット記録に切替
+        </button>
       </div>
 
       {/* Stroke counter */}
