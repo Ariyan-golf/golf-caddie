@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import Image from "next/image";
 import type { Location, ClubAverage } from "@/types";
 import { calculateDistance, metersToYards } from "@/lib/distance";
+import { fetchWeather, windArrowRotation, type WeatherData } from "@/lib/weather";
 import { pickClub, getInstantAdvice, type CharacterId, type ClubInfo } from "./templates";
 
 interface Props {
@@ -101,6 +102,10 @@ export function AiCaddieClient({ clubAverages, hasAccess }: Props) {
   const [manualY, setManualY]   = useState("");
   const watchRef = useRef<number | null>(null);
 
+  // Weather (Open-Meteo)
+  const [weatherData, setWeatherData]       = useState<WeatherData | null>(null);
+  const weatherFetchedRef                   = useRef(false);
+
   // Stage 1
   const [clubInfo, setClubInfo]   = useState<ClubInfo | null>(null);
   const [quickText, setQuickText] = useState<string | null>(null);
@@ -123,6 +128,15 @@ export function AiCaddieClient({ clubAverages, hasAccess }: Props) {
   const effectiveYards = !manual
     ? distYards
     : (manualY ? parseInt(manualY, 10) : null);
+
+  // 天気の自動取得（GPS初回取得時に1回だけ実行）
+  useEffect(() => {
+    if (!pos || weatherFetchedRef.current) return;
+    weatherFetchedRef.current = true;
+    fetchWeather(pos.latitude, pos.longitude).then((data) => {
+      if (data) setWeatherData(data);
+    });
+  }, [pos]);
 
   // GPS watch
   useEffect(() => {
@@ -192,6 +206,8 @@ export function AiCaddieClient({ clubAverages, hasAccess }: Props) {
     setShowDetail(false); setDetailText(null); setDetailErr(null);
     setPinPos(null); setPos(null); setGpsErr(null);
     setManual(false); setManualY("");
+    setWeatherData(null);
+    weatherFetchedRef.current = false;
   }
 
   // ── Character selection ─────────────────────────────────────────────
@@ -250,6 +266,23 @@ export function AiCaddieClient({ clubAverages, hasAccess }: Props) {
           変更
         </button>
       </div>
+
+      {/* Wind & weather bar */}
+      {weatherData && (
+        <div className="flex items-center gap-3 px-3 py-2 bg-sky-50 border border-sky-100 rounded-xl text-sm">
+          <span
+            style={{ display: "inline-block", transform: `rotate(${windArrowRotation(weatherData.windDegrees)}deg)` }}
+            className="text-xl text-sky-500 leading-none"
+          >↑</span>
+          <span className="font-medium text-sky-700">{weatherData.windDirection}</span>
+          <span className="text-sky-600">{weatherData.windSpeedMs} m/s</span>
+          <span className="text-sky-500 text-xs">({weatherData.windSpeed})</span>
+          <span className="ml-auto text-sky-400 text-xs">🌡 {weatherData.temperature}°C</span>
+          {weatherData.weather && (
+            <span className="text-sky-400 text-xs">{weatherData.weather}</span>
+          )}
+        </div>
+      )}
 
       {/* Distance card */}
       <div className="card space-y-3">

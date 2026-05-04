@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { fetchWeather } from "@/lib/weather";
 import type { StartHole, Weather, WindSpeed, WindDirection } from "@/types";
 import { WEATHER_OPTIONS, WIND_SPEED_OPTIONS } from "@/types";
 
@@ -19,13 +20,9 @@ const WIND_DIRECTION_GRID: { dir: WindDirection; row: number; col: number }[] = 
 ];
 
 function ToggleButton({
-  label,
-  selected,
-  onClick,
+  label, selected, onClick,
 }: {
-  label: string;
-  selected: boolean;
-  onClick: () => void;
+  label: string; selected: boolean; onClick: () => void;
 }) {
   return (
     <button
@@ -42,17 +39,49 @@ function ToggleButton({
   );
 }
 
+type WeatherStatus = "idle" | "locating" | "fetching" | "ok" | "error";
+
 export function NewRoundForm() {
   const router = useRouter();
-  const [courseName, setCourseName]         = useState("");
-  const [date, setDate]                     = useState(new Date().toISOString().split("T")[0]);
-  const [startHole, setStartHole]           = useState<StartHole>(1);
-  const [weather, setWeather]               = useState<Weather | null>(null);
-  const [windSpeed, setWindSpeed]           = useState<WindSpeed | null>(null);
-  const [windDirection, setWindDirection]   = useState<WindDirection | null>(null);
-  const [mode, setMode]                     = useState<"shot" | "score">("score");
-  const [loading, setLoading]               = useState(false);
-  const [error, setError]                   = useState("");
+  const [courseName, setCourseName]       = useState("");
+  const [date, setDate]                   = useState(new Date().toISOString().split("T")[0]);
+  const [startHole, setStartHole]         = useState<StartHole>(1);
+  const [weather, setWeather]             = useState<Weather | null>(null);
+  const [windSpeed, setWindSpeed]         = useState<WindSpeed | null>(null);
+  const [windDirection, setWindDirection] = useState<WindDirection | null>(null);
+  const [mode, setMode]                   = useState<"shot" | "score">("score");
+  const [loading, setLoading]             = useState(false);
+  const [error, setError]                 = useState("");
+
+  // 天気自動取得
+  const [weatherStatus, setWeatherStatus] = useState<WeatherStatus>("idle");
+  const [temperature, setTemperature]     = useState<number | null>(null);
+
+  async function handleAutoWeather() {
+    if (!navigator.geolocation) {
+      setWeatherStatus("error");
+      return;
+    }
+    setWeatherStatus("locating");
+
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        setWeatherStatus("fetching");
+        const data = await fetchWeather(pos.coords.latitude, pos.coords.longitude);
+        if (!data) {
+          setWeatherStatus("error");
+          return;
+        }
+        setWeather(data.weather);
+        setWindSpeed(data.windSpeed);
+        setWindDirection(data.windDirection);
+        setTemperature(data.temperature);
+        setWeatherStatus("ok");
+      },
+      () => setWeatherStatus("error"),
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
+    );
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -92,6 +121,14 @@ export function NewRoundForm() {
     compassGrid[row][col] = dir;
   }
 
+  const autoLabel: Record<WeatherStatus, string | null> = {
+    idle:     null,
+    locating: "📡 GPS取得中...",
+    fetching: "🌐 天気取得中...",
+    ok:       null,
+    error:    null,
+  };
+
   return (
     <form onSubmit={handleSubmit} className="card space-y-5">
       {error && (
@@ -129,28 +166,23 @@ export function NewRoundForm() {
       <div>
         <label className="label">スタートホール *</label>
         <div className="grid grid-cols-2 gap-3 mt-1">
-          <button
-            type="button"
-            onClick={() => setStartHole(1)}
-            className={`py-3 rounded-xl border-2 font-bold text-sm transition-colors active:scale-95 ${
-              startHole === 1
-                ? "bg-green-600 border-green-600 text-white"
-                : "bg-white border-gray-200 text-gray-600 hover:border-green-300"
-            }`}
-          >
-            アウト<span className="block text-xs font-normal opacity-80">1番スタート</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setStartHole(10)}
-            className={`py-3 rounded-xl border-2 font-bold text-sm transition-colors active:scale-95 ${
-              startHole === 10
-                ? "bg-green-600 border-green-600 text-white"
-                : "bg-white border-gray-200 text-gray-600 hover:border-green-300"
-            }`}
-          >
-            イン<span className="block text-xs font-normal opacity-80">10番スタート</span>
-          </button>
+          {([1, 10] as StartHole[]).map((hole) => (
+            <button
+              key={hole}
+              type="button"
+              onClick={() => setStartHole(hole)}
+              className={`py-3 rounded-xl border-2 font-bold text-sm transition-colors active:scale-95 ${
+                startHole === hole
+                  ? "bg-green-600 border-green-600 text-white"
+                  : "bg-white border-gray-200 text-gray-600 hover:border-green-300"
+              }`}
+            >
+              {hole === 1 ? "アウト" : "イン"}
+              <span className="block text-xs font-normal opacity-80">
+                {hole === 1 ? "1番スタート" : "10番スタート"}
+              </span>
+            </button>
+          ))}
         </div>
       </div>
 
@@ -158,85 +190,127 @@ export function NewRoundForm() {
       <div>
         <label className="label">記録モード *</label>
         <div className="grid grid-cols-2 gap-3 mt-1">
-          <button
-            type="button"
-            onClick={() => setMode("shot")}
-            className={`py-4 px-4 rounded-xl border-2 text-left transition-colors active:scale-95 ${
-              mode === "shot"
-                ? "bg-green-600 border-green-600 text-white"
-                : "bg-white border-gray-200 text-gray-600 hover:border-green-300"
-            }`}
-          >
-            <span className="block font-bold text-sm">ショット記録</span>
-            <span className="block text-xs opacity-75 mt-0.5 leading-tight">
-              打つ前にボタンを押してGPS記録
-            </span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setMode("score")}
-            className={`py-4 px-4 rounded-xl border-2 text-left transition-colors active:scale-95 ${
-              mode === "score"
-                ? "bg-green-600 border-green-600 text-white"
-                : "bg-white border-gray-200 text-gray-600 hover:border-green-300"
-            }`}
-          >
-            <span className="block font-bold text-sm">スコア記録</span>
-            <span className="block text-xs opacity-75 mt-0.5 leading-tight">
-              ホール後にスコアを数字入力するだけ
-            </span>
-          </button>
-        </div>
-      </div>
-
-      {/* 天気 */}
-      <div>
-        <label className="label">天気</label>
-        <div className="grid grid-cols-4 gap-2 mt-1">
-          {WEATHER_OPTIONS.map((w) => (
-            <ToggleButton
-              key={w}
-              label={w}
-              selected={weather === w}
-              onClick={() => setWeather(weather === w ? null : w)}
-            />
+          {(["shot", "score"] as const).map((m) => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => setMode(m)}
+              className={`py-4 px-4 rounded-xl border-2 text-left transition-colors active:scale-95 ${
+                mode === m
+                  ? "bg-green-600 border-green-600 text-white"
+                  : "bg-white border-gray-200 text-gray-600 hover:border-green-300"
+              }`}
+            >
+              <span className="block font-bold text-sm">
+                {m === "shot" ? "ショット記録" : "スコア記録"}
+              </span>
+              <span className="block text-xs opacity-75 mt-0.5 leading-tight">
+                {m === "shot"
+                  ? "打つ前にボタンを押してGPS記録"
+                  : "ホール後にスコアを数字入力するだけ"}
+              </span>
+            </button>
           ))}
         </div>
       </div>
 
-      {/* 風速 */}
-      <div>
-        <label className="label">風速</label>
-        <div className="grid grid-cols-4 gap-2 mt-1">
-          {WIND_SPEED_OPTIONS.map((ws) => (
-            <ToggleButton
-              key={ws}
-              label={ws}
-              selected={windSpeed === ws}
-              onClick={() => setWindSpeed(windSpeed === ws ? null : ws)}
-            />
-          ))}
-        </div>
-      </div>
-
-      {/* 風向き (コンパスローズ) */}
-      <div>
-        <label className="label">風向き</label>
-        <div className="mt-1 grid grid-cols-3 gap-2 max-w-[240px] mx-auto">
-          {compassGrid.flatMap((row, ri) =>
-            row.map((dir, ci) =>
-              dir ? (
-                <ToggleButton
-                  key={dir}
-                  label={dir}
-                  selected={windDirection === dir}
-                  onClick={() => setWindDirection(windDirection === dir ? null : dir)}
-                />
-              ) : (
-                <div key={`empty-${ri}-${ci}`} />
-              )
-            )
+      {/* ── 天気・風 自動取得バナー ──────────────────────── */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <span className="label">天気・風（自動取得可）</span>
+          {weatherStatus === "ok" && temperature !== null && (
+            <span className="text-xs text-sky-600 font-medium">
+              🌡 {temperature}°C
+            </span>
           )}
+        </div>
+
+        {/* 自動取得ボタン */}
+        {weatherStatus === "ok" ? (
+          <div className="flex items-center justify-between bg-sky-50 border border-sky-200 rounded-xl px-3 py-2">
+            <span className="text-xs text-sky-700 font-medium">
+              ✅ 現在地の天気を自動取得済み（手動変更も可）
+            </span>
+            <button
+              type="button"
+              onClick={() => setWeatherStatus("idle")}
+              className="text-xs text-sky-500 underline ml-2"
+            >
+              再取得
+            </button>
+          </div>
+        ) : weatherStatus === "error" ? (
+          <div className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
+            <span className="text-xs text-amber-700">
+              ⚠️ 自動取得失敗 — 手動で入力してください
+            </span>
+            <button
+              type="button"
+              onClick={handleAutoWeather}
+              className="text-xs text-amber-600 underline ml-2"
+            >
+              再試行
+            </button>
+          </div>
+        ) : autoLabel[weatherStatus] ? (
+          <div className="flex items-center gap-2 bg-sky-50 border border-sky-200 rounded-xl px-3 py-2">
+            <span className="w-3.5 h-3.5 border-2 border-sky-500 border-t-transparent rounded-full animate-spin shrink-0" />
+            <span className="text-xs text-sky-700">{autoLabel[weatherStatus]}</span>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={handleAutoWeather}
+            className="w-full py-2.5 rounded-xl border-2 border-dashed border-sky-300
+                       text-sky-600 text-sm font-medium hover:bg-sky-50 transition-colors active:scale-95"
+          >
+            🌤 現在地の天気・風を自動入力
+          </button>
+        )}
+
+        {/* 天気 */}
+        <div>
+          <p className="text-xs text-green-600 font-medium mb-1.5">天気</p>
+          <div className="grid grid-cols-4 gap-2">
+            {WEATHER_OPTIONS.map((w) => (
+              <ToggleButton
+                key={w} label={w} selected={weather === w}
+                onClick={() => setWeather(weather === w ? null : w)}
+              />
+            ))}
+          </div>
+        </div>
+
+        {/* 風速 */}
+        <div>
+          <p className="text-xs text-green-600 font-medium mb-1.5">風速</p>
+          <div className="grid grid-cols-4 gap-2">
+            {WIND_SPEED_OPTIONS.map((ws) => (
+              <ToggleButton
+                key={ws} label={ws} selected={windSpeed === ws}
+                onClick={() => setWindSpeed(windSpeed === ws ? null : ws)}
+              />
+            ))}
+          </div>
+        </div>
+
+        {/* 風向き (コンパスローズ) */}
+        <div>
+          <p className="text-xs text-green-600 font-medium mb-1.5">風向き</p>
+          <div className="grid grid-cols-3 gap-2 max-w-[240px] mx-auto">
+            {compassGrid.flatMap((row, ri) =>
+              row.map((dir, ci) =>
+                dir ? (
+                  <ToggleButton
+                    key={dir} label={dir} selected={windDirection === dir}
+                    onClick={() => setWindDirection(windDirection === dir ? null : dir)}
+                  />
+                ) : (
+                  <div key={`empty-${ri}-${ci}`} />
+                )
+              )
+            )}
+          </div>
         </div>
       </div>
 
