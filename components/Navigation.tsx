@@ -6,10 +6,10 @@ import { usePathname } from "next/navigation";
 const navItems = [
   { href: "/", label: "ホーム", icon: "🏠" },
   { href: "/round", label: "ラウンド", icon: "⛳" },
-  { href: "/ai-manager", label: "AIマネ", icon: "🤖" },
+  { href: "/ai-manager", label: "マナー", icon: "🤖" },
   { href: "/ai-caddie", label: "AIキャディ", icon: "📋" },
-  { href: "/swing", label: "スイング", icon: "📊" },
-  { href: "/history", label: "履歴", icon: "🗂️" },
+  { href: "/swing", label: "球筋", icon: "📊" },
+  { href: "/history", label: "マナールール", icon: "🗂️" },
 ];
 
 export function Navigation() {

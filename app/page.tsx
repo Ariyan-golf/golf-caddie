@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Navigation } from "@/components/Navigation";
 import { LogoutButton } from "@/components/LogoutButton";
 import { RoundPaymentButton } from "@/components/RoundPaymentButton";
+import { ScoreGraph } from "@/components/ScoreGraph";
 
 export const dynamic = "force-dynamic";
 
@@ -23,7 +24,7 @@ export default async function HomePage() {
         .select("id, course_name, date, total_score")
         .eq("user_id", user.id)
         .order("date", { ascending: false })
-        .limit(3),
+        .limit(5),
       supabase
         .from("club_averages")
         .select("club, average_distance_meters, shot_count")
@@ -158,6 +159,7 @@ export default async function HomePage() {
                   )}
                 </Link>
               ))}
+              <ScoreGraph rounds={recentRounds} />
             </div>
           ) : (
             <p className="text-sm text-green-400 text-center py-4">

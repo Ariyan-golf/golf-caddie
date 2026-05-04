@@ -28,8 +28,8 @@ export default function SwingPage() {
   return (
     <div className="max-w-lg mx-auto p-4 space-y-4">
       <div className="pt-4">
-        <h1 className="text-2xl font-bold text-green-800">📊 スイング分析</h1>
-        <p className="text-sm text-green-600 mt-1">スイングの悩みをAIが分析・アドバイスします</p>
+        <h1 className="text-2xl font-bold text-green-800">📊 キャディアドバイス</h1>
+        <p className="text-sm text-green-600 mt-1">キャディがスイングの悩みをアドバイスします</p>
       </div>
 
       <form onSubmit={handleSubmit} className="card space-y-4">
