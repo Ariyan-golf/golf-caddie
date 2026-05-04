@@ -4,7 +4,7 @@ import Link from "next/link";
 import { Navigation } from "@/components/Navigation";
 import { LogoutButton } from "@/components/LogoutButton";
 import { RoundPaymentButton } from "@/components/RoundPaymentButton";
-import { ScoreGraph } from "@/components/ScoreGraph";
+import { RoundBarGraph } from "@/components/RoundBarGraph";
 
 export const dynamic = "force-dynamic";
 
@@ -16,15 +16,15 @@ export default async function HomePage() {
 
   if (!user) redirect("/login");
 
-  const [{ data: profile }, { data: recentRounds }, { data: clubStats }] =
+  const [{ data: profile }, { data: roundsRaw }, { data: clubStats }] =
     await Promise.all([
       supabase.from("profiles").select("display_name").eq("id", user.id).single(),
       supabase
         .from("rounds")
-        .select("id, course_name, date, total_score")
+        .select("id, course_name, date, total_score, holes(putts)")
         .eq("user_id", user.id)
         .order("date", { ascending: false })
-        .limit(5),
+        .limit(10),
       supabase
         .from("club_averages")
         .select("club, average_distance_meters, shot_count")
@@ -32,6 +32,21 @@ export default async function HomePage() {
         .order("shot_count", { ascending: false })
         .limit(5),
     ]);
+
+  // スコアあり10ラウンド分のグラフデータ（total_puttsをholes集計）
+  const graphData = (roundsRaw ?? []).map((r) => {
+    const holes = (r as { holes?: { putts: number | null }[] }).holes ?? [];
+    const hasPutts = holes.some((h) => h.putts != null);
+    return {
+      id: r.id,
+      course_name: r.course_name,
+      date: r.date,
+      total_score: r.total_score,
+      total_putts: hasPutts ? holes.reduce((s, h) => s + (h.putts ?? 0), 0) : null,
+    };
+  });
+
+  const recentRounds = graphData.slice(0, 5);
 
   // display_name が profiles に未保存の場合、user_metadata から補完して保存
   if (profile && !profile.display_name && user.user_metadata?.display_name) {
@@ -102,20 +117,6 @@ export default async function HomePage() {
             <span className="text-3xl">🤖</span>
             <span className="font-semibold text-green-700 text-sm">AIキャディ</span>
           </Link>
-          <Link
-            href="/swing"
-            className="card flex flex-col items-center py-5 gap-2 hover:border-green-300 transition-colors"
-          >
-            <span className="text-3xl">📊</span>
-            <span className="font-semibold text-green-700 text-sm">スイング分析</span>
-          </Link>
-          <Link
-            href="/history"
-            className="card flex flex-col items-center py-5 gap-2 hover:border-green-300 transition-colors"
-          >
-            <span className="text-3xl">📋</span>
-            <span className="font-semibold text-green-700 text-sm">ショット履歴</span>
-          </Link>
         </div>
 
         {/* Partnership payment - full width */}
@@ -138,7 +139,7 @@ export default async function HomePage() {
               すべて見る
             </Link>
           </div>
-          {recentRounds?.length ? (
+          {recentRounds.length ? (
             <div className="space-y-2">
               {recentRounds.map((round) => (
                 <Link
@@ -159,7 +160,6 @@ export default async function HomePage() {
                   )}
                 </Link>
               ))}
-              <ScoreGraph rounds={recentRounds} />
             </div>
           ) : (
             <p className="text-sm text-green-400 text-center py-4">
@@ -169,6 +169,9 @@ export default async function HomePage() {
             </p>
           )}
         </div>
+
+        {/* Score & putts bar graph */}
+        <RoundBarGraph data={graphData} />
 
         {/* Club averages */}
         {clubStats && clubStats.length > 0 && (
