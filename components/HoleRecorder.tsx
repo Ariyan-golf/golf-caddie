@@ -35,6 +35,8 @@ interface HoleRecorderProps {
   initialHoles: Hole[];
   startHole?: number;
   mode?: "shot" | "score";
+  windDirection?: string | null;
+  windSpeed?: string | null;
 }
 
 interface RoundShotEntry {
@@ -114,7 +116,7 @@ function scoreLabel(score: number, par: number) {
 
 // ── Main component ──────────────────────────────────────────────────
 
-export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "shot" }: HoleRecorderProps) {
+export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "shot", windDirection, windSpeed }: HoleRecorderProps) {
   const lastHole = initialHoles.at(-1);
   const initPhase: Phase =
     initialHoles.length === 0 ? "par_select" :
@@ -319,6 +321,8 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
         activeHoleNumber={currentHole?.hole_number ?? null}
         onTabClick={scrollToHole}
       />
+
+      <WindBar windDirection={windDirection} windSpeed={windSpeed} />
 
       {/* ① 現在ホールの入力エリア — タブ直下に固定 */}
       <div>
@@ -1417,6 +1421,31 @@ function ScoreEntryCard({
       >
         {isLastHole ? "ラウンド終了" : "次のホールへ →"}
       </button>
+    </div>
+  );
+}
+
+// ── WindBar ───────────────────────────────────────────────────────────
+
+const WIND_ARROWS: Record<string, string> = {
+  "北":   "↑",
+  "北東": "↗",
+  "東":   "→",
+  "南東": "↘",
+  "南":   "↓",
+  "南西": "↙",
+  "西":   "←",
+  "北西": "↖",
+};
+
+function WindBar({ windDirection, windSpeed }: { windDirection?: string | null; windSpeed?: string | null }) {
+  if (!windDirection && !windSpeed) return null;
+  const arrow = windDirection ? (WIND_ARROWS[windDirection] ?? "") : "";
+  return (
+    <div className="flex items-center gap-2 px-3 py-1.5 bg-sky-50 border border-sky-100 rounded-xl text-sm">
+      {arrow && <span className="text-sky-500 text-lg leading-none font-bold">{arrow}</span>}
+      {windDirection && <span className="font-medium text-sky-700">{windDirection}</span>}
+      {windSpeed && <span className="text-sky-500">/ {windSpeed}</span>}
     </div>
   );
 }
