@@ -37,6 +37,13 @@ interface HoleRecorderProps {
   mode?: "shot" | "score";
 }
 
+interface RoundShotEntry {
+  holeNumber: number;
+  club: string;
+  yards: number;
+  meters: number;
+}
+
 type Phase = "par_select" | "shooting" | "putt_select" | "score_entry";
 
 // ── Helpers ──────────────────────────────────────────────────────────
@@ -124,6 +131,7 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
   const [confirmGoBack, setConfirmGoBack] = useState(false);
   const [goingBack, setGoingBack]   = useState(false);
   const [penalties, setPenalties]   = useState(0);
+  const [roundShotHistory, setRoundShotHistory] = useState<RoundShotEntry[]>([]);
 
   const currentHole  = phase !== "par_select" ? holes.at(-1) ?? null : null;
   const holeCardRefs = useRef<Record<number, HTMLDivElement | null>>({});
@@ -318,16 +326,6 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
           <div className="space-y-3">
             <ParSelector holeNumber={nextHoleNumber(holes.length)} onCreate={handleStartHole} creating={creating} />
 
-            <div className="flex justify-center">
-              <button
-                onClick={switchHoleMode}
-                className="text-xs px-3 py-1.5 rounded-full border border-gray-200 text-gray-400
-                           hover:border-green-300 hover:text-green-600 transition-colors"
-              >
-                {holeMode === "shot" ? "📋 スコア記録に切替" : "📍 ショット記録に切替"}
-              </button>
-            </div>
-
             {holes.length > 0 && (
               confirmGoBack ? (
                 <div className="card border-amber-200 bg-amber-50 space-y-3">
@@ -383,7 +381,6 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
             onUpdateClub={updateClub}
             onUpdateLie={updateLie}
             onUpdateBallDirection={updateBallDirection}
-            onSwitchMode={switchHoleMode}
           />
         )}
 
@@ -402,7 +399,8 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
             hole={currentHole}
             isLastHole={holes.length === 18}
             onComplete={completeHoleByScore}
-            onSwitchMode={switchHoleMode}
+            roundShotHistory={roundShotHistory}
+            onShotDistanceRecorded={(entry) => setRoundShotHistory((prev) => [...prev, entry])}
           />
         )}
       </div>
@@ -550,7 +548,6 @@ function ActiveHoleCard({
   hole, roundId, penalties, onAddPenalty, onRemovePenalty,
   onShotRecorded, onHoleout,
   editing, onToggleEdit, onUpdateClub, onUpdateLie, onUpdateBallDirection,
-  onSwitchMode,
 }: {
   hole: Hole;
   roundId: string;
@@ -564,7 +561,6 @@ function ActiveHoleCard({
   onUpdateClub: (id: string, club: Club) => void;
   onUpdateLie: (id: string, lie: string) => void;
   onUpdateBallDirection: (id: string, dir: string) => void;
-  onSwitchMode: () => void;
 }) {
   const lastShot = hole.shots.at(-1);
   const prevShot =
@@ -589,11 +585,6 @@ function ActiveHoleCard({
           </div>
         </div>
         <div className="flex flex-col items-end gap-1.5">
-          <button onClick={onSwitchMode}
-            className="text-xs px-2.5 py-1 rounded-full border border-gray-200 text-gray-400
-                       hover:border-green-300 hover:text-green-600 transition-colors leading-tight">
-            📋 スコア記録に切替
-          </button>
           <button onClick={onHoleout}
             className="bg-green-600 hover:bg-green-700 text-white font-bold
                        px-5 py-3 rounded-xl text-base transition-colors flex flex-col items-center gap-0.5">
@@ -1120,18 +1111,20 @@ const DM_CLUBS = [
 // ── ScoreEntryCard: score mode hole completion ────────────────────────
 
 function ScoreEntryCard({
-  hole, isLastHole, onComplete, onSwitchMode,
+  hole, isLastHole, onComplete, roundShotHistory, onShotDistanceRecorded,
 }: {
   hole: Hole;
   isLastHole: boolean;
   onComplete: (score: number, putts: number) => void;
-  onSwitchMode: () => void;
+  roundShotHistory: RoundShotEntry[];
+  onShotDistanceRecorded: (entry: RoundShotEntry) => void;
 }) {
   const [strokes, setStrokes] = useState(hole.score ?? hole.par);
   const [putts, setPutts]     = useState(hole.putts ?? 2);
 
   // Distance measurement state
   const [showDM, setShowDM]         = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
   const [dmStart, setDmStart]       = useState<{lat: number; lng: number} | null>(null);
   const [dmEnd, setDmEnd]           = useState<{lat: number; lng: number} | null>(null);
   const [dmLoading, setDmLoading]   = useState<"idle" | "start" | "end">("idle");
@@ -1195,6 +1188,7 @@ function ScoreEntryCard({
       distance_yards: dmDistance.yards,
       distance_meters: dmDistance.meters,
     });
+    onShotDistanceRecorded({ holeNumber: hole.hole_number, club: dmClub, yards: dmDistance.yards, meters: dmDistance.meters });
     setDmHistory((prev) => [...prev, { club: dmClub, yards: dmDistance.yards, meters: dmDistance.meters }]);
     setDmSaved(true);
     setTimeout(() => {
@@ -1227,13 +1221,6 @@ function ScoreEntryCard({
           <p className="text-xl font-bold text-green-800">ホール {hole.hole_number}</p>
         </div>
         <p className="text-base text-green-500">パー {hole.par}</p>
-        <button
-          onClick={onSwitchMode}
-          className="mt-2 text-xs px-3 py-1 rounded-full border border-gray-200 text-gray-400
-                     hover:border-green-300 hover:text-green-600 transition-colors"
-        >
-          📡 ショット記録モードに切替
-        </button>
       </div>
 
       {/* Shot distance measurement */}
@@ -1254,13 +1241,50 @@ function ScoreEntryCard({
           </div>
         )}
         {!showDM ? (
-          <button
-            onClick={() => setShowDM(true)}
-            className="w-full py-5 rounded-2xl border-2 border-green-300 bg-green-50 text-green-700
-                       hover:bg-green-100 font-bold text-base transition-colors active:scale-95"
-          >
-            📍 このショットの飛距離を記録する
-          </button>
+          <>
+            <button
+              onClick={() => setShowDM(true)}
+              className="w-full py-5 rounded-2xl border-2 border-green-300 bg-green-50 text-green-700
+                         hover:bg-green-100 font-bold text-base transition-colors active:scale-95"
+            >
+              📍 このショットの飛距離を記録する
+            </button>
+            <button
+              onClick={() => setShowHistory((v) => !v)}
+              className="w-full py-1.5 text-sm text-green-600 font-medium text-center hover:underline"
+            >
+              📋 今日のショット記録を見る
+              {roundShotHistory.length > 0 && ` (${roundShotHistory.length}件)`}
+            </button>
+            {showHistory && (
+              <div className="bg-green-50 rounded-xl p-4 space-y-2">
+                <p className="text-sm font-semibold text-green-700 text-center">今日のショット記録</p>
+                {roundShotHistory.length === 0 ? (
+                  <p className="text-sm text-gray-400 text-center py-2">まだ記録がありません</p>
+                ) : (
+                  <div className="space-y-1.5">
+                    {roundShotHistory.map((entry, i) => (
+                      <div key={i} className="flex items-center justify-between text-sm border-b border-green-100 pb-1.5 last:border-0 last:pb-0">
+                        <span className="text-green-600 font-medium w-10">{entry.holeNumber}H</span>
+                        <span className="text-green-700 flex-1 text-center">
+                          {DM_CLUBS.find((c) => c.value === entry.club)?.label ?? entry.club}
+                        </span>
+                        <span className="font-bold text-green-900 tabular-nums">
+                          {entry.yards}y ({Math.round(entry.meters)}m)
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <button
+                  onClick={() => setShowHistory(false)}
+                  className="w-full pt-1 text-xs text-gray-400 text-center"
+                >
+                  閉じる
+                </button>
+              </div>
+            )}
+          </>
         ) : (
           <div className="border-2 border-green-200 rounded-2xl p-4 space-y-3 bg-green-50">
             <div>
