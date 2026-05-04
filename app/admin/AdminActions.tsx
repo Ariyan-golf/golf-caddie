@@ -139,6 +139,52 @@ export function DeleteCodeButton({ code }: { code: string }) {
   );
 }
 
+// ── Per-user role change selector ────────────────────────────────
+
+export function RoleSelector({ userId, currentRole }: { userId: string; currentRole: string }) {
+  const [role, setRole]     = useState(currentRole);
+  const [loading, setLoading] = useState(false);
+  const [saved, setSaved]   = useState(false);
+
+  async function handleChange(next: string) {
+    setLoading(true);
+    setSaved(false);
+    const res = await fetch("/api/admin/update-role", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, role: next }),
+    });
+    if (res.ok) { setRole(next); setSaved(true); setTimeout(() => setSaved(false), 2000); }
+    setLoading(false);
+  }
+
+  const colors: Record<string, string> = {
+    admin:   "bg-purple-100 text-purple-800 border-purple-300",
+    pro:     "bg-orange-100 text-orange-800 border-orange-300",
+    general: "bg-gray-100 text-gray-600 border-gray-200",
+    student: "bg-blue-100 text-blue-800 border-blue-200",
+  };
+
+  return (
+    <div className="flex items-center gap-1">
+      <select
+        value={role}
+        disabled={loading}
+        onChange={(e) => handleChange(e.target.value)}
+        className={`text-xs px-2 py-1 rounded border font-medium
+                    focus:outline-none cursor-pointer disabled:opacity-50
+                    ${colors[role] ?? colors.general}`}
+      >
+        <option value="general">general</option>
+        <option value="pro">pro</option>
+        <option value="admin">admin</option>
+        <option value="student">student</option>
+      </select>
+      {saved && <span className="text-xs text-green-600">✓</span>}
+    </div>
+  );
+}
+
 // ── Per-user plan change button ───────────────────────────────────
 
 export function PlanSelector({ userId, currentPlan }: { userId: string; currentPlan: string }) {

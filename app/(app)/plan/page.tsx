@@ -13,7 +13,7 @@ const PLANS = [
     period: "",
     description: "まずは試してみたい方へ",
     features: [
-      "ラウンド記録（5回まで）",
+      "ラウンド記録（3回まで）",
       "GPS飛距離計測",
       "番手別平均飛距離",
     ],
@@ -128,11 +128,11 @@ export default async function PlanPage({ searchParams }: Props) {
         </div>
       )}
 
-      {currentPlan === "free" && roundCount >= 5 && (
+      {currentPlan === "free" && roundCount >= 3 && (
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-center gap-2 text-sm">
           <span>🔒</span>
           <p className="text-amber-700">
-            無料プランの上限（5ラウンド）に達しています。アップグレードで無制限になります。
+            無料プランの上限（3ラウンド）に達しています。アップグレードで無制限になります。
           </p>
         </div>
       )}

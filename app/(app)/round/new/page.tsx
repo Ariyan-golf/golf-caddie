@@ -2,7 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
 import { NewRoundForm } from "./NewRoundForm";
 
-const FREE_ROUND_LIMIT = 5;
+const FREE_ROUND_LIMIT = 3;
 
 export default async function NewRoundPage() {
   const supabase = await createClient();
@@ -10,13 +10,15 @@ export default async function NewRoundPage() {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("plan, round_count")
+    .select("plan, round_count, role")
     .eq("id", user!.id)
     .single();
 
   const plan = profile?.plan ?? "free";
+  const role = profile?.role ?? "general";
   const roundCount = profile?.round_count ?? 0;
-  const isBlocked = plan === "free" && roundCount >= FREE_ROUND_LIMIT;
+  // pro ロールはラウンド上限なし・支払い不要
+  const isBlocked = plan === "free" && roundCount >= FREE_ROUND_LIMIT && role !== "pro";
 
   return (
     <div className="max-w-lg mx-auto p-4 space-y-4">
@@ -48,7 +50,7 @@ export default async function NewRoundPage() {
         </div>
       ) : (
         <>
-          {plan === "free" && (
+          {plan === "free" && role !== "pro" && (
             <div className="flex items-center justify-between bg-green-50 border border-green-200 rounded-xl px-4 py-2 text-sm">
               <span className="text-green-600">
                 残りラウンド数：<span className="font-bold text-green-800">{FREE_ROUND_LIMIT - roundCount}</span> / {FREE_ROUND_LIMIT}

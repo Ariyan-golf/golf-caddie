@@ -2,7 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { InviteCodeForm, PlanSelector } from "./AdminActions";
+import { InviteCodeForm, PlanSelector, RoleSelector } from "./AdminActions";
 
 const ADMIN_EMAIL = "t.a.0903076959@i.softbank.jp";
 
@@ -137,7 +137,7 @@ export default async function AdminPage({
                 <tr className="border-b border-green-100 text-green-600 text-xs">
                   <th className="text-left px-3 py-3 font-semibold whitespace-nowrap">名前</th>
                   <th className="text-left px-3 py-3 font-semibold whitespace-nowrap">メール</th>
-                  <th className="text-left px-3 py-3 font-semibold whitespace-nowrap">ロール</th>
+                  <th className="text-left px-3 py-3 font-semibold whitespace-nowrap">ロール変更</th>
                   <th className="text-left px-3 py-3 font-semibold whitespace-nowrap">招待コード</th>
                   <th className="text-right px-3 py-3 font-semibold whitespace-nowrap">R数</th>
                   <th className="text-left px-3 py-3 font-semibold whitespace-nowrap">プラン変更</th>
@@ -153,7 +153,7 @@ export default async function AdminPage({
                       </td>
                       <td className="px-3 py-3 text-green-700 whitespace-nowrap text-xs">{u.email}</td>
                       <td className="px-3 py-3 whitespace-nowrap">
-                        <RoleBadge role={u.role ?? "general"} />
+                        <RoleSelector userId={u.id} currentRole={u.role ?? "general"} />
                       </td>
                       <td className="px-3 py-3 text-green-600 whitespace-nowrap font-mono text-xs">
                         {u.invite_code ?? "—"}
