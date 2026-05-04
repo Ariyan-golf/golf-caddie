@@ -135,6 +135,16 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
   const [penalties, setPenalties]   = useState(0);
   const [roundShotHistory, setRoundShotHistory] = useState<RoundShotEntry[]>([]);
 
+  // Wind compass visibility — persisted to localStorage
+  const [windVisible, setWindVisible] = useState(true);
+  useEffect(() => {
+    const stored = localStorage.getItem(COMPASS_STORAGE_KEY);
+    if (stored !== null) setWindVisible(stored === "true");
+  }, []);
+  useEffect(() => {
+    localStorage.setItem(COMPASS_STORAGE_KEY, String(windVisible));
+  }, [windVisible]);
+
   const currentHole  = phase !== "par_select" ? holes.at(-1) ?? null : null;
   const holeCardRefs = useRef<Record<number, HTMLDivElement | null>>({});
 
@@ -152,6 +162,12 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
   const totalScore     = completedHoles.reduce((s, h) => s + (h.score ?? 0), 0);
   const totalPar       = completedHoles.reduce((s, h) => s + h.par, 0);
   const isRoundDone    = holes.length === 18 && holes.every((h) => h.score !== null);
+
+  // Cleanup when round finishes — GPS is released by ShotRecorder unmount
+  useEffect(() => {
+    if (!isRoundDone) return;
+    localStorage.removeItem(COMPASS_STORAGE_KEY);
+  }, [isRoundDone]);
 
   // ── Actions ─────────────────────────────────────────────────────────
 
@@ -322,7 +338,14 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
         onTabClick={scrollToHole}
       />
 
-      <WindBar windDirection={windDirection} windSpeed={windSpeed} />
+      {(windDirection || windSpeed) && (
+        <WindCompassSection
+          windDirection={windDirection}
+          windSpeed={windSpeed}
+          visible={windVisible}
+          onToggle={() => setWindVisible((v) => !v)}
+        />
+      )}
 
       {/* ① 現在ホールの入力エリア — タブ直下に固定 */}
       <div>
@@ -1425,27 +1448,114 @@ function ScoreEntryCard({
   );
 }
 
-// ── WindBar ───────────────────────────────────────────────────────────
+// ── Wind compass ──────────────────────────────────────────────────────
+
+const COMPASS_STORAGE_KEY = "golfCaddieWindCompass";
 
 const WIND_ARROWS: Record<string, string> = {
-  "北":   "↑",
-  "北東": "↗",
-  "東":   "→",
-  "南東": "↘",
-  "南":   "↓",
-  "南西": "↙",
-  "西":   "←",
-  "北西": "↖",
+  "北": "↑", "北東": "↗", "東": "→", "南東": "↘",
+  "南": "↓", "南西": "↙", "西": "←", "北西": "↖",
 };
 
-function WindBar({ windDirection, windSpeed }: { windDirection?: string | null; windSpeed?: string | null }) {
-  if (!windDirection && !windSpeed) return null;
-  const arrow = windDirection ? (WIND_ARROWS[windDirection] ?? "") : "";
+// Direction text → compass degrees (wind FROM this direction)
+const DIR_DEG: Record<string, number> = {
+  "北": 0, "北東": 45, "東": 90, "南東": 135,
+  "南": 180, "南西": 225, "西": 270, "北西": 315,
+};
+
+// Approximate m/s mid-value for each wind speed label
+const SPEED_MS: Record<string, string> = {
+  "無風": "1 m/s", "微風": "5 m/s", "普通": "9 m/s", "強風": "13 m/s",
+};
+
+function WindCompassSection({
+  windDirection, windSpeed, visible, onToggle,
+}: {
+  windDirection?: string | null;
+  windSpeed?: string | null;
+  visible: boolean;
+  onToggle: () => void;
+}) {
   return (
-    <div className="flex items-center gap-2 px-3 py-1.5 bg-sky-50 border border-sky-100 rounded-xl text-sm">
-      {arrow && <span className="text-sky-500 text-lg leading-none font-bold">{arrow}</span>}
-      {windDirection && <span className="font-medium text-sky-700">{windDirection}</span>}
-      {windSpeed && <span className="text-sky-500">/ {windSpeed}</span>}
+    <div className="space-y-2">
+      {/* Toggle row */}
+      <div className="flex items-center justify-between px-1">
+        <div className="flex items-center gap-1.5 text-sm text-sky-600">
+          <span className="text-base">{windDirection ? WIND_ARROWS[windDirection] ?? "🧭" : "🧭"}</span>
+          <span className="font-medium">{windDirection ?? "—"}</span>
+          <span className="text-sky-400 text-xs">/ {windSpeed ?? "—"}</span>
+        </div>
+        <button
+          onClick={onToggle}
+          className={`text-xs font-semibold px-3 py-1 rounded-full border transition-colors ${
+            visible
+              ? "bg-sky-100 border-sky-300 text-sky-700"
+              : "bg-gray-100 border-gray-200 text-gray-500"
+          }`}
+        >
+          🧭 {visible ? "OFF" : "ON"}
+        </button>
+      </div>
+
+      {/* Compass */}
+      {visible && <WindCompass windDirection={windDirection} windSpeed={windSpeed} />}
+    </div>
+  );
+}
+
+function WindCompass({
+  windDirection, windSpeed,
+}: {
+  windDirection?: string | null;
+  windSpeed?: string | null;
+}) {
+  const deg       = windDirection ? (DIR_DEG[windDirection] ?? 0) : 0;
+  const speedText = windSpeed ? (SPEED_MS[windSpeed] ?? windSpeed) : null;
+  // SVG constants
+  const cx = 100, cy = 100, r = 80;
+
+  return (
+    <div className="flex flex-col items-center gap-1 w-[62vw] max-w-[240px] mx-auto">
+      <svg viewBox="0 0 200 200" className="w-full">
+        {/* Outer ring */}
+        <circle cx={cx} cy={cy} r={r} fill="none" stroke="#bae6fd" strokeWidth="1.5" />
+        {/* Inner ring */}
+        <circle cx={cx} cy={cy} r={r * 0.4} fill="none" stroke="#e0f2fe" strokeWidth="1" strokeDasharray="3 3" />
+        {/* Crosshair — horizontal */}
+        <line x1={cx - r} y1={cy} x2={cx + r} y2={cy}
+              stroke="#7dd3fc" strokeWidth="1" strokeDasharray="5 4" />
+        {/* Crosshair — vertical */}
+        <line x1={cx} y1={cy - r} x2={cx} y2={cy + r}
+              stroke="#7dd3fc" strokeWidth="1" strokeDasharray="5 4" />
+        {/* Cardinal labels */}
+        <text x={cx}      y={cy - r - 7}  textAnchor="middle" fontSize="13" fill="#0ea5e9" fontWeight="700">北</text>
+        <text x={cx}      y={cy + r + 17} textAnchor="middle" fontSize="13" fill="#0ea5e9" fontWeight="700">南</text>
+        <text x={cx + r + 13} y={cy + 5}  textAnchor="middle" fontSize="13" fill="#0ea5e9" fontWeight="700">東</text>
+        <text x={cx - r - 13} y={cy + 5}  textAnchor="middle" fontSize="13" fill="#0ea5e9" fontWeight="700">西</text>
+        {/* Rotating wind arrow group */}
+        <g transform={`rotate(${deg} ${cx} ${cy})`}>
+          {/* Shaft */}
+          <line x1={cx} y1={cy + 48} x2={cx} y2={cy - 52}
+                stroke="#0284c7" strokeWidth="3" strokeLinecap="round" />
+          {/* Arrowhead pointing up (= wind origin direction) */}
+          <polygon
+            points={`${cx},${cy - 66} ${cx - 9},${cy - 50} ${cx + 9},${cy - 50}`}
+            fill="#0284c7"
+          />
+          {/* Tail feathers */}
+          <line x1={cx - 9} y1={cy + 48} x2={cx} y2={cy + 34}
+                stroke="#0284c7" strokeWidth="2.5" strokeLinecap="round" />
+          <line x1={cx + 9} y1={cy + 48} x2={cx} y2={cy + 34}
+                stroke="#0284c7" strokeWidth="2.5" strokeLinecap="round" />
+        </g>
+        {/* Center dot */}
+        <circle cx={cx} cy={cy} r={4} fill="#0284c7" />
+      </svg>
+
+      {/* Speed label */}
+      {speedText && (
+        <p className="text-sky-600 text-sm font-semibold tabular-nums">{speedText}</p>
+      )}
     </div>
   );
 }
