@@ -39,7 +39,7 @@ export function ScoreGraph({ rounds }: { rounds: Round[] }) {
           <XAxis dataKey="name" tick={{ fontSize: 11, fill: "#86efac" }} />
           <YAxis domain={[yMin, yMax]} tick={{ fontSize: 11, fill: "#86efac" }} />
           <Tooltip
-            formatter={(value: number) => [`${value}打`, "スコア"]}
+            formatter={(value) => [`${value}打`, "スコア"]}
             labelStyle={{ color: "#166534", fontSize: 12 }}
             contentStyle={{ borderColor: "#86efac", borderRadius: "8px", fontSize: 12 }}
           />
