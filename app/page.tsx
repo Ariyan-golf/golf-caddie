@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import Link from "next/link";
+import Image from "next/image";
 import { Navigation } from "@/components/Navigation";
 import { LogoutButton } from "@/components/LogoutButton";
 import { RoundPaymentButton } from "@/components/RoundPaymentButton";
@@ -101,7 +102,7 @@ export default async function HomePage() {
           </Link>
         </div>
 
-        {/* Quick actions */}
+        {/* ① Quick actions */}
         <div className="grid grid-cols-2 gap-3">
           <Link
             href="/round/new"
@@ -114,12 +115,23 @@ export default async function HomePage() {
             href="/ai-caddie"
             className="card flex flex-col items-center py-5 gap-2 hover:border-green-300 transition-colors"
           >
-            <span className="text-3xl">🤖</span>
+            <div className="w-12 h-12 overflow-hidden rounded-xl">
+              <Image
+                src="/characters/ai.png"
+                alt="AIちゃん"
+                width={48}
+                height={48}
+                className="w-full h-full object-cover object-top"
+              />
+            </div>
             <span className="font-semibold text-green-700 text-sm">AIキャディ</span>
           </Link>
         </div>
 
-        {/* Partnership payment - full width */}
+        {/* ② Score & putts bar graph */}
+        <RoundBarGraph data={graphData} />
+
+        {/* ③ Partnership payment */}
         <div className="card space-y-3">
           <div className="flex items-center gap-3">
             <span className="text-2xl">⛳</span>
@@ -131,7 +143,7 @@ export default async function HomePage() {
           <RoundPaymentButton />
         </div>
 
-        {/* Recent rounds */}
+        {/* ④ Recent rounds (5件) */}
         <div className="card">
           <div className="flex items-center justify-between mb-3">
             <h2 className="font-semibold text-green-800">最近のラウンド</h2>
@@ -169,9 +181,6 @@ export default async function HomePage() {
             </p>
           )}
         </div>
-
-        {/* Score & putts bar graph */}
-        <RoundBarGraph data={graphData} />
 
         {/* Club averages */}
         {clubStats && clubStats.length > 0 && (
