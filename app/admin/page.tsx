@@ -3,6 +3,7 @@ import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { InviteCodeForm, PlanSelector, RoleSelector } from "./AdminActions";
+import { GolfCourseForm } from "./GolfCourseForm";
 
 const ADMIN_EMAIL = "t.a.0903076959@i.softbank.jp";
 
@@ -49,9 +50,10 @@ export default async function AdminPage({
   }
 
   const tabs: { key: string; label: string }[] = [
-    { key: "invite", label: "招待コード" },
-    { key: "users",  label: "ユーザー管理" },
+    { key: "invite",  label: "招待コード" },
+    { key: "users",   label: "ユーザー管理" },
     { key: "revenue", label: "💰 収益管理" },
+    { key: "courses", label: "⛳ ゴルフ場登録" },
   ];
 
   return (
@@ -188,6 +190,13 @@ export default async function AdminPage({
       {/* ── 収益管理タブ ────────────────────────────────────── */}
       {tab === "revenue" && revenueStats && (
         <RevenueSection stats={revenueStats} />
+      )}
+
+      {/* ── ゴルフ場登録タブ ─────────────────────────────────── */}
+      {tab === "courses" && (
+        <section className="space-y-4">
+          <GolfCourseForm />
+        </section>
       )}
     </div>
   );

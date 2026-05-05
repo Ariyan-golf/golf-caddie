@@ -134,6 +134,7 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
   const [goingBack, setGoingBack]   = useState(false);
   const [penalties, setPenalties]   = useState(0);
   const [roundShotHistory, setRoundShotHistory] = useState<RoundShotEntry[]>([]);
+  const [roundEndConfirmed, setRoundEndConfirmed] = useState(false);
 
   // Wind compass visibility — persisted to localStorage
   const [windVisible, setWindVisible] = useState(true);
@@ -325,6 +326,9 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
 
   // ── Render ─────────────────────────────────────────────────────────
 
+  if (isRoundDone && !roundEndConfirmed) {
+    return <RoundEndScreen onConfirm={() => setRoundEndConfirmed(true)} />;
+  }
   if (isRoundDone) {
     return <RoundComplete holes={holes} totalScore={totalScore} totalPar={totalPar} mode={mode} />;
   }
@@ -1556,6 +1560,36 @@ function WindCompass({
       {speedText && (
         <p className="text-sky-600 text-sm font-semibold tabular-nums">{speedText}</p>
       )}
+    </div>
+  );
+}
+
+// ── Round end confirmation screen ───────────────────────────────────
+
+function RoundEndScreen({ onConfirm }: { onConfirm: () => void }) {
+  return (
+    <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-gradient-to-b from-green-50 to-white">
+      <div className="flex flex-col items-center gap-5 max-w-sm w-full">
+        <img
+          src="/characters/ai.png"
+          alt="AIキャディ"
+          className="w-28 h-28 object-contain drop-shadow-md"
+        />
+        <div className="bg-white border border-green-200 rounded-2xl p-5 shadow-sm text-center space-y-1">
+          <p className="text-green-800 text-base leading-relaxed">
+            今日はお疲れ様でした。ディボット跡やバンカーの足跡、グリーン上でのボールマークの修復、ありがとうございました！
+          </p>
+        </div>
+        <p className="text-green-500 text-sm text-center">
+          GPS機能とゴルフ場データとの接続を終了します。
+        </p>
+        <button
+          onClick={onConfirm}
+          className="w-full py-4 rounded-2xl bg-green-600 hover:bg-green-700 active:bg-green-800 text-white text-base font-bold transition-colors shadow-md"
+        >
+          ラウンド終了
+        </button>
+      </div>
     </div>
   );
 }
