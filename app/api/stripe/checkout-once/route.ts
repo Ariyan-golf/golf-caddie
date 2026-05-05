@@ -24,7 +24,9 @@ export async function POST(request: Request) {
       client_reference_id: user.id,
       customer_email: user.email,
       metadata: { user_id: user.id, golf_course: golfCourse, type: "round_payment" },
-      success_url: `${BASE_URL}/plan?golf_success=1`,
+      success_url: golfCourse
+        ? `${BASE_URL}/round/new?course=${golfCourse}`
+        : `${BASE_URL}/plan?golf_success=1`,
       cancel_url: `${BASE_URL}/plan?canceled=1`,
       locale: "ja",
     });

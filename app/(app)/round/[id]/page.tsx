@@ -47,6 +47,8 @@ export default async function RoundDetailPage({ params }: Props) {
         mode={(round.mode ?? "shot") as "shot" | "score"}
         windDirection={round.wind_direction ?? null}
         windSpeed={round.wind_speed ?? null}
+        courseRating={round.course_rating ?? null}
+        slopeRating={round.slope_rating ?? null}
       />
     </div>
   );

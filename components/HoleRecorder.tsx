@@ -37,6 +37,8 @@ interface HoleRecorderProps {
   mode?: "shot" | "score";
   windDirection?: string | null;
   windSpeed?: string | null;
+  courseRating?: number | null;
+  slopeRating?: number | null;
 }
 
 interface RoundShotEntry {
@@ -116,7 +118,7 @@ function scoreLabel(score: number, par: number) {
 
 // ── Main component ──────────────────────────────────────────────────
 
-export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "shot", windDirection, windSpeed }: HoleRecorderProps) {
+export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "shot", windDirection, windSpeed, courseRating, slopeRating }: HoleRecorderProps) {
   const lastHole = initialHoles.at(-1);
   const initPhase: Phase =
     initialHoles.length === 0 ? "par_select" :
@@ -135,6 +137,8 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
   const [penalties, setPenalties]   = useState(0);
   const [roundShotHistory, setRoundShotHistory] = useState<RoundShotEntry[]>([]);
   const [roundEndConfirmed, setRoundEndConfirmed] = useState(false);
+  const [handicapDiff, setHandicapDiff] = useState<number | null>(null);
+  const [confirmLoading, setConfirmLoading] = useState(false);
 
   // Wind compass visibility — persisted to localStorage
   const [windVisible, setWindVisible] = useState(true);
@@ -326,11 +330,24 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
 
   // ── Render ─────────────────────────────────────────────────────────
 
+  async function handleRoundEndConfirm() {
+    setConfirmLoading(true);
+    let diff: number | null = null;
+    if (courseRating != null && slopeRating != null && slopeRating !== 0) {
+      diff = Math.round(((totalScore - courseRating) * 113 / slopeRating) * 10) / 10;
+    }
+    const supabase = createClient();
+    await supabase.from("rounds").update({ handicap_differential: diff }).eq("id", roundId);
+    setHandicapDiff(diff);
+    setConfirmLoading(false);
+    setRoundEndConfirmed(true);
+  }
+
   if (isRoundDone && !roundEndConfirmed) {
-    return <RoundEndScreen onConfirm={() => setRoundEndConfirmed(true)} />;
+    return <RoundEndScreen onConfirm={handleRoundEndConfirm} confirming={confirmLoading} />;
   }
   if (isRoundDone) {
-    return <RoundComplete holes={holes} totalScore={totalScore} totalPar={totalPar} mode={mode} />;
+    return <RoundComplete holes={holes} totalScore={totalScore} totalPar={totalPar} mode={mode} handicapDiff={handicapDiff} />;
   }
 
   return (
@@ -1566,7 +1583,7 @@ function WindCompass({
 
 // ── Round end confirmation screen ───────────────────────────────────
 
-function RoundEndScreen({ onConfirm }: { onConfirm: () => void }) {
+function RoundEndScreen({ onConfirm, confirming }: { onConfirm: () => void; confirming?: boolean }) {
   return (
     <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-gradient-to-b from-green-50 to-white">
       <div className="flex flex-col items-center gap-5 max-w-sm w-full">
@@ -1585,9 +1602,10 @@ function RoundEndScreen({ onConfirm }: { onConfirm: () => void }) {
         </p>
         <button
           onClick={onConfirm}
-          className="w-full py-4 rounded-2xl bg-green-600 hover:bg-green-700 active:bg-green-800 text-white text-base font-bold transition-colors shadow-md"
+          disabled={confirming}
+          className="w-full py-4 rounded-2xl bg-green-600 hover:bg-green-700 active:bg-green-800 text-white text-base font-bold transition-colors shadow-md disabled:opacity-60"
         >
-          ラウンド終了
+          {confirming ? "集計中..." : "ラウンド終了"}
         </button>
       </div>
     </div>
@@ -1597,12 +1615,13 @@ function RoundEndScreen({ onConfirm }: { onConfirm: () => void }) {
 // ── Round complete ──────────────────────────────────────────────────
 
 function RoundComplete({
-  holes, totalScore, totalPar, mode,
+  holes, totalScore, totalPar, mode, handicapDiff,
 }: {
   holes: Hole[];
   totalScore: number;
   totalPar: number;
   mode: "shot" | "score";
+  handicapDiff?: number | null;
 }) {
   const diff       = totalScore - totalPar;
   const totalPutts = holes.reduce((s, h) => s + (h.putts ?? 0), 0);
@@ -1628,6 +1647,16 @@ function RoundComplete({
           </p>
         )}
       </div>
+
+      {handicapDiff != null && (
+        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-center space-y-1">
+          <p className="text-xs text-amber-600 font-medium">ハンディキャップ差分（参考）</p>
+          <p className="text-3xl font-bold tabular-nums text-amber-800">{handicapDiff}</p>
+          <p className="text-xs text-amber-500">
+            JGA方式に準じた計算です。公式ハンディキャップではありません。
+          </p>
+        </div>
+      )}
 
       <div className="card overflow-x-auto">
         <table className="w-full text-sm">

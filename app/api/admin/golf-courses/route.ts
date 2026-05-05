@@ -37,7 +37,7 @@ export async function POST(req: Request) {
 
   const admin = adminDb();
   const body = await req.json();
-  const { name, address, localRules, teeNames, holes } = body as {
+  const { name, address, localRules, teeNames, holes, tees } = body as {
     name: string;
     address: string;
     localRules: string;
@@ -50,6 +50,13 @@ export async function POST(req: Request) {
       distance_tee2: number | null;
       distance_tee3: number | null;
       distance_tee4: number | null;
+    }[];
+    tees?: {
+      green_type: string;
+      tee_name: string;
+      course_rating: number | null;
+      slope_rating: number | null;
+      distance: number | null;
     }[];
   };
 
@@ -90,6 +97,22 @@ export async function POST(req: Request) {
   if (holesErr) {
     await admin.from("golf_courses").delete().eq("id", course.id);
     return NextResponse.json({ error: holesErr.message }, { status: 500 });
+  }
+
+  if (tees && tees.length > 0) {
+    const teeRows = tees.map((t) => ({
+      course_id:     course.id,
+      green_type:    t.green_type,
+      tee_name:      t.tee_name,
+      course_rating: t.course_rating ?? null,
+      slope_rating:  t.slope_rating ?? null,
+      distance:      t.distance ?? null,
+    }));
+    const { error: teesErr } = await admin.from("course_tees").insert(teeRows);
+    if (teesErr) {
+      await admin.from("golf_courses").delete().eq("id", course.id);
+      return NextResponse.json({ error: teesErr.message }, { status: 500 });
+    }
   }
 
   return NextResponse.json({ course });

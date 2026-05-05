@@ -4,7 +4,12 @@ import { NewRoundForm } from "./NewRoundForm";
 
 const FREE_ROUND_LIMIT = 3;
 
-export default async function NewRoundPage() {
+interface PageProps {
+  searchParams: Promise<{ course?: string }>;
+}
+
+export default async function NewRoundPage({ searchParams }: PageProps) {
+  const { course } = await searchParams;
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
@@ -60,7 +65,7 @@ export default async function NewRoundPage() {
               </Link>
             </div>
           )}
-          <NewRoundForm />
+          <NewRoundForm linkedCourseId={course} />
         </>
       )}
     </div>

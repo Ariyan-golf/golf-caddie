@@ -1,13 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { fetchWeather } from "@/lib/weather";
 import type { StartHole, Weather, WindSpeed, WindDirection } from "@/types";
 import { WEATHER_OPTIONS, WIND_SPEED_OPTIONS } from "@/types";
 
-// Compass-rose layout: each entry is [row, col] in a 3×3 grid (0-indexed)
 const WIND_DIRECTION_GRID: { dir: WindDirection; row: number; col: number }[] = [
   { dir: "北西", row: 0, col: 0 },
   { dir: "北",   row: 0, col: 1 },
@@ -41,7 +40,16 @@ function ToggleButton({
 
 type WeatherStatus = "idle" | "locating" | "fetching" | "ok" | "error";
 
-export function NewRoundForm() {
+interface CourseTee {
+  id: string;
+  green_type: string;
+  tee_name: string;
+  course_rating: number | null;
+  slope_rating: number | null;
+  distance: number | null;
+}
+
+export function NewRoundForm({ linkedCourseId }: { linkedCourseId?: string }) {
   const router = useRouter();
   const [courseName, setCourseName]       = useState("");
   const [date, setDate]                   = useState(new Date().toISOString().split("T")[0]);
@@ -53,9 +61,32 @@ export function NewRoundForm() {
   const [loading, setLoading]             = useState(false);
   const [error, setError]                 = useState("");
 
+  // Linked course / tee state
+  const [tees, setTees]                   = useState<CourseTee[]>([]);
+  const [selectedTeeId, setSelectedTeeId] = useState<string>("");
+  const [teesLoading, setTeesLoading]     = useState(false);
+
   // 天気自動取得
   const [weatherStatus, setWeatherStatus] = useState<WeatherStatus>("idle");
   const [temperature, setTemperature]     = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!linkedCourseId) return;
+    setTeesLoading(true);
+    fetch(`/api/course-tees?courseId=${linkedCourseId}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.course?.name) setCourseName(data.course.name);
+        if (data.tees) {
+          setTees(data.tees);
+          if (data.tees.length > 0) setSelectedTeeId(data.tees[0].id);
+        }
+      })
+      .catch(() => {/* silent */})
+      .finally(() => setTeesLoading(false));
+  }, [linkedCourseId]);
+
+  const selectedTee = tees.find((t) => t.id === selectedTeeId) ?? null;
 
   async function handleAutoWeather() {
     if (!navigator.geolocation) {
@@ -102,6 +133,12 @@ export function NewRoundForm() {
         weather:        weather ?? null,
         wind_speed:     windSpeed ?? null,
         wind_direction: windDirection ?? null,
+        ...(linkedCourseId ? { golf_course_id: linkedCourseId } : {}),
+        ...(selectedTee ? {
+          course_tee_id:  selectedTee.id,
+          course_rating:  selectedTee.course_rating ?? null,
+          slope_rating:   selectedTee.slope_rating ?? null,
+        } : {}),
       })
       .select("id")
       .single();
@@ -115,7 +152,6 @@ export function NewRoundForm() {
     router.push(`/round/${data.id}`);
   }
 
-  // Build 3×3 compass grid cells (center cell is empty)
   const compassGrid: (WindDirection | null)[][] = Array.from({ length: 3 }, () => [null, null, null]);
   for (const { dir, row, col } of WIND_DIRECTION_GRID) {
     compassGrid[row][col] = dir;
@@ -149,6 +185,41 @@ export function NewRoundForm() {
           required
         />
       </div>
+
+      {/* グリーン・ティー選択（QR連携コースのみ） */}
+      {linkedCourseId && (
+        <div>
+          <label className="label">グリーン・ティー</label>
+          {teesLoading ? (
+            <p className="text-sm text-green-400">読み込み中...</p>
+          ) : tees.length === 0 ? (
+            <p className="text-sm text-green-400">ティー情報が登録されていません</p>
+          ) : (
+            <>
+              <select
+                className="input"
+                value={selectedTeeId}
+                onChange={(e) => setSelectedTeeId(e.target.value)}
+              >
+                {tees.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.green_type} / {t.tee_name}
+                    {t.course_rating != null ? ` (CR ${t.course_rating}` : ""}
+                    {t.slope_rating  != null ? ` / SR ${t.slope_rating})` : t.course_rating != null ? ")" : ""}
+                  </option>
+                ))}
+              </select>
+              {selectedTee && (selectedTee.course_rating != null || selectedTee.slope_rating != null) && (
+                <p className="text-xs text-green-500 mt-1">
+                  {selectedTee.course_rating != null && `コースレート: ${selectedTee.course_rating}`}
+                  {selectedTee.course_rating != null && selectedTee.slope_rating != null && "　"}
+                  {selectedTee.slope_rating != null && `スロープレート: ${selectedTee.slope_rating}`}
+                </p>
+              )}
+            </>
+          )}
+        </div>
+      )}
 
       {/* プレー日 */}
       <div>
@@ -225,7 +296,6 @@ export function NewRoundForm() {
           )}
         </div>
 
-        {/* 自動取得ボタン */}
         {weatherStatus === "ok" ? (
           <div className="flex items-center justify-between bg-sky-50 border border-sky-200 rounded-xl px-3 py-2">
             <span className="text-xs text-sky-700 font-medium">
