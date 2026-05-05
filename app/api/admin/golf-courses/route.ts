@@ -94,3 +94,20 @@ export async function POST(req: Request) {
 
   return NextResponse.json({ course });
 }
+
+export async function DELETE(req: Request) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user || user.email !== ADMIN_EMAIL) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const admin = adminDb();
+  const { courseId } = await req.json() as { courseId?: string };
+  if (!courseId) return NextResponse.json({ error: "courseId is required" }, { status: 400 });
+
+  // course_holes は ON DELETE CASCADE で自動削除される
+  const { error } = await admin.from("golf_courses").delete().eq("id", courseId);
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json({ ok: true });
+}

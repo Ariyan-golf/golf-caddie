@@ -93,16 +93,38 @@ function QrDisplay({ courseId, courseName }: { courseId: string; courseName: str
 
 // ── Registered course card ───────────────────────────────────────────
 
-function CourseCard({ course }: { course: RegisteredCourse }) {
+function CourseCard({
+  course,
+  onDelete,
+}: {
+  course: RegisteredCourse;
+  onDelete: (id: string) => void;
+}) {
   const [showQr, setShowQr] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const teeLabels = [
     course.tee1_name, course.tee2_name, course.tee3_name, course.tee4_name,
   ].filter(Boolean).join(" / ");
 
+  async function handleDelete() {
+    if (!confirm(`「${course.name}」を削除しますか？\nコース・全ホールデータが削除されます。`)) return;
+    setDeleting(true);
+    try {
+      const res = await fetch("/api/admin/golf-courses", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ courseId: course.id }),
+      });
+      if (res.ok) onDelete(course.id);
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   return (
     <div className="bg-white border border-green-200 rounded-xl p-4 space-y-3">
       <div className="flex items-start justify-between gap-3">
-        <div>
+        <div className="flex-1 min-w-0">
           <p className="font-semibold text-green-800">{course.name}</p>
           {course.address && <p className="text-xs text-green-500 mt-0.5">{course.address}</p>}
           {teeLabels && <p className="text-xs text-green-400 mt-0.5">ティー: {teeLabels}</p>}
@@ -110,12 +132,21 @@ function CourseCard({ course }: { course: RegisteredCourse }) {
             登録日: {new Date(course.created_at).toLocaleDateString("ja-JP")}
           </p>
         </div>
-        <button
-          onClick={() => setShowQr((v) => !v)}
-          className="shrink-0 px-3 py-1.5 rounded-lg border border-green-300 text-green-700 text-xs font-medium hover:bg-green-50 transition-colors"
-        >
-          {showQr ? "QRを閉じる" : "QRコード発行"}
-        </button>
+        <div className="flex gap-2 shrink-0">
+          <button
+            onClick={() => setShowQr((v) => !v)}
+            className="px-3 py-1.5 rounded-lg border border-green-300 text-green-700 text-xs font-medium hover:bg-green-50 transition-colors"
+          >
+            {showQr ? "QRを閉じる" : "QR発行"}
+          </button>
+          <button
+            onClick={handleDelete}
+            disabled={deleting}
+            className="px-3 py-1.5 rounded-lg border border-red-200 text-red-500 text-xs font-medium hover:bg-red-50 transition-colors disabled:opacity-40"
+          >
+            {deleting ? "削除中" : "削除"}
+          </button>
+        </div>
       </div>
       {showQr && (
         <div className="flex justify-center pt-2 border-t border-green-50">
@@ -356,7 +387,13 @@ export function GolfCourseForm() {
         ) : courses.length === 0 ? (
           <p className="text-sm text-green-400">まだ登録されていません</p>
         ) : (
-          courses.map((c) => <CourseCard key={c.id} course={c} />)
+          courses.map((c) => (
+            <CourseCard
+              key={c.id}
+              course={c}
+              onDelete={(id) => setCourses((prev) => prev.filter((x) => x.id !== id))}
+            />
+          ))
         )}
       </div>
 

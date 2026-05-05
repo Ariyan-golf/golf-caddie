@@ -7,24 +7,38 @@ export default async function HistoryPage() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
+  // ID・日付付きで全件取得（展開表示と個別削除に使用）
   const { data: shotRows } = await supabase
     .from("shot_distances")
-    .select("club, distance_yards, distance_meters")
-    .eq("user_id", user!.id);
+    .select("id, club, distance_yards, distance_meters, created_at")
+    .eq("user_id", user!.id)
+    .order("created_at", { ascending: false });
 
-  const clubMap = new Map<string, { totalMeters: number; count: number }>();
+  // クラブ別に集計しつつ個別ショットも保持
+  const clubMap = new Map<string, {
+    totalMeters: number;
+    shots: { id: string; distance_yards: number; distance_meters: number; created_at: string }[];
+  }>();
+
   for (const shot of shotRows ?? []) {
-    const prev = clubMap.get(shot.club) ?? { totalMeters: 0, count: 0 };
+    const prev = clubMap.get(shot.club) ?? { totalMeters: 0, shots: [] };
     clubMap.set(shot.club, {
       totalMeters: prev.totalMeters + Number(shot.distance_meters),
-      count: prev.count + 1,
+      shots: [...prev.shots, {
+        id: shot.id,
+        distance_yards: shot.distance_yards,
+        distance_meters: Number(shot.distance_meters),
+        created_at: shot.created_at,
+      }],
     });
   }
-  const clubAverages = Array.from(clubMap.entries())
-    .map(([club, { totalMeters, count }]) => ({
+
+  const clubStats = Array.from(clubMap.entries())
+    .map(([club, { totalMeters, shots }]) => ({
       club,
-      average_distance_meters: totalMeters / count,
-      shot_count: count,
+      average_distance_meters: totalMeters / shots.length,
+      shot_count: shots.length,
+      shots,
     }))
     .sort((a, b) => b.average_distance_meters - a.average_distance_meters);
 
@@ -44,7 +58,7 @@ export default async function HistoryPage() {
         <h1 className="text-xl font-bold text-green-800">スタッツ</h1>
       </div>
 
-      <ClubAveragesSection initialStats={clubAverages} />
+      <ClubAveragesSection initialStats={clubStats} />
 
       {recentShots && recentShots.length > 0 && (
         <div className="card">
