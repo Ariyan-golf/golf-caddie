@@ -37,10 +37,11 @@ export async function POST(req: Request) {
 
   const admin = adminDb();
   const body = await req.json();
-  const { name, address, localRules, holes } = body as {
+  const { name, address, localRules, teeNames, holes } = body as {
     name: string;
     address: string;
     localRules: string;
+    teeNames: [string, string, string, string];
     holes: {
       hole_number: number;
       par: number;
@@ -58,7 +59,15 @@ export async function POST(req: Request) {
 
   const { data: course, error: courseErr } = await admin
     .from("golf_courses")
-    .insert({ name: name.trim(), address: address?.trim() || null, local_rules: localRules?.trim() || null })
+    .insert({
+      name: name.trim(),
+      address: address?.trim() || null,
+      local_rules: localRules?.trim() || null,
+      tee1_name: teeNames?.[0]?.trim() || "ティー1",
+      tee2_name: teeNames?.[1]?.trim() || "ティー2",
+      tee3_name: teeNames?.[2]?.trim() || "ティー3",
+      tee4_name: teeNames?.[3]?.trim() || "ティー4",
+    })
     .select()
     .single();
 

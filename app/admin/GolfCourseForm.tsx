@@ -1,24 +1,42 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import QRCode from "qrcode";
+
+// ── Types ────────────────────────────────────────────────────────────
 
 interface HoleInput {
   hole_number: number;
   par: number;
   hdcp: string;
-  distance_blue: string;
-  distance_orange: string;
-  distance_white: string;
-  distance_red: string;
+  distance_blue: string;   // tee1
+  distance_orange: string; // tee2
+  distance_white: string;  // tee3
+  distance_red: string;    // tee4
 }
+
+type TeeKey = "distance_blue" | "distance_orange" | "distance_white" | "distance_red";
+const TEE_KEYS: TeeKey[] = ["distance_blue", "distance_orange", "distance_white", "distance_red"];
 
 interface RegisteredCourse {
   id: string;
   name: string;
   address: string | null;
+  tee1_name: string | null;
+  tee2_name: string | null;
+  tee3_name: string | null;
+  tee4_name: string | null;
   created_at: string;
 }
+
+interface ParsedHole {
+  hole_number: number;
+  par: number;
+  hdcp: number | null;
+  distances: (number | null)[];
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────
 
 function defaultHoles(): HoleInput[] {
   return Array.from({ length: 18 }, (_, i) => ({
@@ -32,8 +50,14 @@ function defaultHoles(): HoleInput[] {
   }));
 }
 
+function defaultTeeNames(): [string, string, string, string] {
+  return ["ティー1", "ティー2", "ティー3", "ティー4"];
+}
+
+// ── QR display ───────────────────────────────────────────────────────
+
 function QrDisplay({ courseId, courseName }: { courseId: string; courseName: string }) {
-  const [dataUrl, setDataUrl] = useState<string>("");
+  const [dataUrl, setDataUrl] = useState("");
   const origin = typeof window !== "undefined" ? window.location.origin : "";
   const url = `${origin}/golf-qr?course=${courseId}`;
 
@@ -67,8 +91,13 @@ function QrDisplay({ courseId, courseName }: { courseId: string; courseName: str
   );
 }
 
+// ── Registered course card ───────────────────────────────────────────
+
 function CourseCard({ course }: { course: RegisteredCourse }) {
   const [showQr, setShowQr] = useState(false);
+  const teeLabels = [
+    course.tee1_name, course.tee2_name, course.tee3_name, course.tee4_name,
+  ].filter(Boolean).join(" / ");
 
   return (
     <div className="bg-white border border-green-200 rounded-xl p-4 space-y-3">
@@ -76,6 +105,7 @@ function CourseCard({ course }: { course: RegisteredCourse }) {
         <div>
           <p className="font-semibold text-green-800">{course.name}</p>
           {course.address && <p className="text-xs text-green-500 mt-0.5">{course.address}</p>}
+          {teeLabels && <p className="text-xs text-green-400 mt-0.5">ティー: {teeLabels}</p>}
           <p className="text-xs text-gray-400 mt-1">
             登録日: {new Date(course.created_at).toLocaleDateString("ja-JP")}
           </p>
@@ -96,17 +126,154 @@ function CourseCard({ course }: { course: RegisteredCourse }) {
   );
 }
 
+// ── Scorecard photo uploader ─────────────────────────────────────────
+
+function ScorecardUploader({
+  onParsed,
+}: {
+  onParsed: (teeNames: [string, string, string, string], holes: HoleInput[]) => void;
+}) {
+  const [preview, setPreview] = useState<string | null>(null);
+  const [file, setFile] = useState<File | null>(null);
+  const [parsing, setParsing] = useState(false);
+  const [parseError, setParseError] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0] ?? null;
+    setFile(f);
+    setParseError(null);
+    if (f) {
+      const reader = new FileReader();
+      reader.onload = (ev) => setPreview(ev.target?.result as string);
+      reader.readAsDataURL(f);
+    } else {
+      setPreview(null);
+    }
+  }
+
+  const handleParse = useCallback(async () => {
+    if (!file) return;
+    setParsing(true);
+    setParseError(null);
+
+    const fd = new FormData();
+    fd.append("image", file);
+
+    try {
+      const res = await fetch("/api/parse-scorecard", { method: "POST", body: fd });
+      const data = await res.json();
+
+      if (!res.ok) {
+        setParseError(data.error ?? "解析に失敗しました");
+        return;
+      }
+
+      // Map parsed data to form state
+      const rawNames: string[] = Array.isArray(data.teeNames) ? data.teeNames : [];
+      const teeNames: [string, string, string, string] = [
+        rawNames[0] ?? "ティー1",
+        rawNames[1] ?? "ティー2",
+        rawNames[2] ?? "ティー3",
+        rawNames[3] ?? "ティー4",
+      ];
+
+      const parsedHoles: ParsedHole[] = Array.isArray(data.holes) ? data.holes : [];
+      const filled = defaultHoles().map((def) => {
+        const found = parsedHoles.find((p) => p.hole_number === def.hole_number);
+        if (!found) return def;
+        return {
+          ...def,
+          par: found.par ?? def.par,
+          hdcp: found.hdcp != null ? String(found.hdcp) : "",
+          distance_blue:   found.distances?.[0] != null ? String(found.distances[0]) : "",
+          distance_orange: found.distances?.[1] != null ? String(found.distances[1]) : "",
+          distance_white:  found.distances?.[2] != null ? String(found.distances[2]) : "",
+          distance_red:    found.distances?.[3] != null ? String(found.distances[3]) : "",
+        };
+      });
+
+      onParsed(teeNames, filled);
+    } catch {
+      setParseError("通信エラーが発生しました");
+    } finally {
+      setParsing(false);
+    }
+  }, [file, onParsed]);
+
+  return (
+    <div className="border border-dashed border-green-300 rounded-xl p-4 space-y-3 bg-green-50/40">
+      <p className="text-xs font-semibold text-green-700">スコアカード写真から自動入力</p>
+      <p className="text-xs text-green-500">
+        スコアカードを撮影した写真をアップロードすると、ホールデータを自動で読み取ります。
+      </p>
+
+      <div className="flex flex-wrap gap-2 items-center">
+        <button
+          type="button"
+          onClick={() => inputRef.current?.click()}
+          className="px-3 py-2 rounded-lg border border-green-300 text-green-700 text-xs font-medium hover:bg-green-50 transition-colors"
+        >
+          写真を選択
+        </button>
+        {file && (
+          <button
+            type="button"
+            onClick={handleParse}
+            disabled={parsing}
+            className="px-3 py-2 rounded-lg bg-green-600 text-white text-xs font-semibold hover:bg-green-700 transition-colors disabled:opacity-50"
+          >
+            {parsing ? "解析中..." : "スコアカードを解析"}
+          </button>
+        )}
+        {file && <span className="text-xs text-green-500 truncate max-w-[160px]">{file.name}</span>}
+      </div>
+
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={handleFileChange}
+      />
+
+      {preview && (
+        <img
+          src={preview}
+          alt="スコアカードプレビュー"
+          className="max-h-48 rounded-lg border border-green-200 object-contain"
+        />
+      )}
+
+      {parseError && (
+        <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+          ⚠️ {parseError}
+        </p>
+      )}
+
+      {parsing && (
+        <p className="text-xs text-green-600 animate-pulse">
+          AIがスコアカードを解析しています...
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ── Main form ────────────────────────────────────────────────────────
+
 export function GolfCourseForm() {
   const [name, setName] = useState("");
   const [address, setAddress] = useState("");
   const [localRules, setLocalRules] = useState("");
+  const [teeNames, setTeeNames] = useState<[string, string, string, string]>(defaultTeeNames());
   const [holes, setHoles] = useState<HoleInput[]>(defaultHoles);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [newCourse, setNewCourse] = useState<RegisteredCourse | null>(null);
   const [courses, setCourses] = useState<RegisteredCourse[]>([]);
   const [loadingCourses, setLoadingCourses] = useState(true);
-  const formRef = useRef<HTMLDivElement>(null);
+  const successRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     fetch("/api/admin/golf-courses")
@@ -116,9 +283,25 @@ export function GolfCourseForm() {
       .finally(() => setLoadingCourses(false));
   }, [newCourse]);
 
+  function updateTeeName(index: number, value: string) {
+    setTeeNames((prev) => {
+      const next = [...prev] as [string, string, string, string];
+      next[index] = value;
+      return next;
+    });
+  }
+
   function updateHole(index: number, field: keyof Omit<HoleInput, "hole_number">, value: string | number) {
     setHoles((prev) => prev.map((h, i) => i === index ? { ...h, [field]: value } : h));
   }
+
+  const handleParsed = useCallback(
+    (parsedNames: [string, string, string, string], parsedHoles: HoleInput[]) => {
+      setTeeNames(parsedNames);
+      setHoles(parsedHoles);
+    },
+    []
+  );
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -130,14 +313,15 @@ export function GolfCourseForm() {
       name,
       address,
       localRules,
+      teeNames,
       holes: holes.map((h) => ({
         hole_number: h.hole_number,
         par: h.par,
         hdcp: h.hdcp ? parseInt(h.hdcp) : null,
-        distance_blue: h.distance_blue ? parseInt(h.distance_blue) : null,
+        distance_blue:   h.distance_blue   ? parseInt(h.distance_blue)   : null,
         distance_orange: h.distance_orange ? parseInt(h.distance_orange) : null,
-        distance_white: h.distance_white ? parseInt(h.distance_white) : null,
-        distance_red: h.distance_red ? parseInt(h.distance_red) : null,
+        distance_white:  h.distance_white  ? parseInt(h.distance_white)  : null,
+        distance_red:    h.distance_red    ? parseInt(h.distance_red)    : null,
       })),
     };
 
@@ -155,18 +339,12 @@ export function GolfCourseForm() {
       setName("");
       setAddress("");
       setLocalRules("");
+      setTeeNames(defaultTeeNames());
       setHoles(defaultHoles());
-      formRef.current?.scrollIntoView({ behavior: "smooth" });
+      setTimeout(() => successRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
     }
     setLoading(false);
   }
-
-  const teeHeaders = [
-    { key: "distance_blue",   label: "BLUE",   cls: "text-blue-600" },
-    { key: "distance_orange", label: "ORANGE", cls: "text-orange-500" },
-    { key: "distance_white",  label: "WHITE",  cls: "text-gray-500" },
-    { key: "distance_red",    label: "RED",    cls: "text-red-500" },
-  ] as const;
 
   return (
     <div className="space-y-6">
@@ -182,8 +360,8 @@ export function GolfCourseForm() {
         )}
       </div>
 
-      {/* 新規登録フォーム */}
-      <div ref={formRef}>
+      {/* 登録成功時のQR表示 */}
+      <div ref={successRef}>
         {newCourse && (
           <div className="bg-green-50 border border-green-200 rounded-xl p-4 space-y-4">
             <p className="text-sm font-semibold text-green-700">「{newCourse.name}」を登録しました！</p>
@@ -192,9 +370,11 @@ export function GolfCourseForm() {
         )}
       </div>
 
+      {/* 新規登録フォーム */}
       <form onSubmit={handleSubmit} className="space-y-5">
         <p className="text-sm font-semibold text-green-700">新しいゴルフ場を登録</p>
 
+        {/* 基本情報 */}
         <div className="space-y-3">
           <div>
             <label className="text-xs text-green-600 font-medium block mb-1">ゴルフ場名 *</label>
@@ -227,6 +407,27 @@ export function GolfCourseForm() {
           </div>
         </div>
 
+        {/* ティー名称設定 */}
+        <div>
+          <label className="text-xs text-green-600 font-medium block mb-2">ティーグランド名称（最大4つ）</label>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            {teeNames.map((name, i) => (
+              <div key={i}>
+                <label className="text-xs text-gray-400 block mb-0.5">ティー {i + 1}</label>
+                <input
+                  value={name}
+                  onChange={(e) => updateTeeName(i, e.target.value)}
+                  placeholder={`ティー${i + 1}`}
+                  className="w-full border border-green-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* スコアカード写真アップロード */}
+        <ScorecardUploader onParsed={handleParsed} />
+
         {/* 18ホール入力テーブル */}
         <div>
           <label className="text-xs text-green-600 font-medium block mb-2">ホールデータ（距離: ヤード）</label>
@@ -237,17 +438,22 @@ export function GolfCourseForm() {
                   <th className="px-2 py-2 text-left text-green-700 font-semibold whitespace-nowrap">H</th>
                   <th className="px-2 py-2 text-center text-green-700 font-semibold">Par</th>
                   <th className="px-2 py-2 text-center text-green-700 font-semibold">Hdcp</th>
-                  {teeHeaders.map((t) => (
-                    <th key={t.key} className={`px-2 py-2 text-center font-semibold ${t.cls}`}>{t.label}</th>
+                  {TEE_KEYS.map((key, i) => (
+                    <th key={key} className="px-2 py-2 text-center font-semibold text-green-600 whitespace-nowrap">
+                      {teeNames[i] || `ティー${i + 1}`}
+                    </th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {holes.map((hole, i) => (
-                  <tr key={hole.hole_number} className={`border-b border-green-50 ${i === 8 ? "border-b-2 border-green-300" : ""}`}>
+                  <tr
+                    key={hole.hole_number}
+                    className={`border-b border-green-50 ${i === 8 ? "border-b-2 border-green-300" : ""}`}
+                  >
                     <td className="px-2 py-1.5 font-semibold text-green-700 whitespace-nowrap">
                       {hole.hole_number}
-                      {hole.hole_number === 9 && <span className="text-green-400 ml-1">(OUT)</span>}
+                      {hole.hole_number === 9  && <span className="text-green-400 ml-1">(OUT)</span>}
                       {hole.hole_number === 18 && <span className="text-green-400 ml-1">(IN)</span>}
                     </td>
                     <td className="px-1 py-1">
@@ -272,14 +478,14 @@ export function GolfCourseForm() {
                         className="w-12 border border-green-200 rounded px-1 py-0.5 text-center focus:outline-none focus:ring-1 focus:ring-green-400"
                       />
                     </td>
-                    {teeHeaders.map((t) => (
-                      <td key={t.key} className="px-1 py-1">
+                    {TEE_KEYS.map((key) => (
+                      <td key={key} className="px-1 py-1">
                         <input
                           type="number"
                           min={0}
                           max={999}
-                          value={(hole as unknown as Record<string, string>)[t.key]}
-                          onChange={(e) => updateHole(i, t.key, e.target.value)}
+                          value={(hole as unknown as Record<string, string>)[key]}
+                          onChange={(e) => updateHole(i, key, e.target.value)}
                           placeholder="—"
                           className="w-14 border border-green-200 rounded px-1 py-0.5 text-center focus:outline-none focus:ring-1 focus:ring-green-400"
                         />
