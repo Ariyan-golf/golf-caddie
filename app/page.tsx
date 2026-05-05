@@ -17,7 +17,7 @@ export default async function HomePage() {
 
   if (!user) redirect("/login");
 
-  const [{ data: profile }, { data: roundsRaw }, { data: clubStats }] =
+  const [{ data: profile }, { data: roundsRaw }, { data: clubStats }, { data: handicapData }] =
     await Promise.all([
       supabase.from("profiles").select("display_name").eq("id", user.id).single(),
       supabase
@@ -32,6 +32,13 @@ export default async function HomePage() {
         .eq("user_id", user.id)
         .order("shot_count", { ascending: false })
         .limit(5),
+      supabase
+        .from("rounds")
+        .select("handicap_differential")
+        .eq("user_id", user.id)
+        .not("handicap_differential", "is", null)
+        .order("date", { ascending: false })
+        .limit(20),
     ]);
 
   // スコアあり10ラウンド分のグラフデータ（total_puttsをholes集計）
@@ -48,6 +55,17 @@ export default async function HomePage() {
   });
 
   const recentRounds = graphData.slice(0, 5);
+
+  // GCAハンディ計算（直近20ラウンドのベスト8平均 × 0.96）
+  const diffs = (handicapData ?? [])
+    .map((r) => r.handicap_differential as number)
+    .filter((d) => d != null);
+  let gcaHandicap: string | null = null;
+  if (diffs.length >= 8) {
+    const best8 = [...diffs].sort((a, b) => a - b).slice(0, 8);
+    const avg = best8.reduce((s, d) => s + d, 0) / 8;
+    gcaHandicap = (Math.round(avg * 0.96 * 10) / 10).toFixed(1);
+  }
 
   // display_name が profiles に未保存の場合、user_metadata から補完して保存
   if (profile && !profile.display_name && user.user_metadata?.display_name) {
@@ -100,6 +118,19 @@ export default async function HomePage() {
           >
             プランを変更する →
           </Link>
+        </div>
+
+        {/* GCAハンディ */}
+        <div className="card flex items-center justify-between gap-4">
+          <div>
+            <p className="text-xs text-green-500 font-medium mb-0.5">GCAハンディ</p>
+            <p className="text-xl font-bold text-green-800">
+              {gcaHandicap !== null ? gcaHandicap : "ラウンドデータ蓄積中"}
+            </p>
+          </div>
+          <p className="text-xs text-green-400 text-right leading-relaxed shrink-0 max-w-[140px]">
+            JGA方式に準じた計算です。<br />公式ハンディキャップではありません。
+          </p>
         </div>
 
         {/* ① Quick actions */}
