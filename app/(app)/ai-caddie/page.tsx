@@ -31,7 +31,7 @@ export default async function AiCaddiePage() {
     admin.from("club_averages").select("*").eq("user_id", user!.id),
   ]);
 
-  const hasAccess = profile?.plan === "premium" || !!todayPayment;
+  const hasAccess = profile?.plan === "premium" || profile?.plan === "premium_paid" || !!todayPayment;
 
   return (
     <div className="max-w-lg mx-auto p-4 space-y-4">

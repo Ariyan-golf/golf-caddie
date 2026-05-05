@@ -48,7 +48,7 @@ export async function POST(request: Request) {
     .eq("id", user.id)
     .single();
 
-  const isPremium = profile?.plan === "premium";
+  const isPremium = profile?.plan === "premium" || profile?.plan === "premium_paid";
 
   if (!isPremium) {
     const { gte, lt } = todayJSTBounds();

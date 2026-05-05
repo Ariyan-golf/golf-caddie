@@ -16,7 +16,7 @@ export default async function AiManagerPage() {
     .eq("id", user!.id)
     .single();
 
-  const isPremium = profile?.plan === "premium";
+  const isPremium = profile?.plan === "premium" || profile?.plan === "premium_paid";
 
   return (
     <div className="max-w-lg mx-auto p-4 space-y-4">

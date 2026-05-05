@@ -447,9 +447,10 @@ function RoleBadge({ role }: { role: string }) {
 
 function PlanBadge({ plan }: { plan: string }) {
   const map: Record<string, { label: string; className: string }> = {
-    premium:  { label: "Premium",  className: "bg-yellow-100 text-yellow-700" },
-    standard: { label: "Standard", className: "bg-green-100 text-green-700" },
-    free:     { label: "Free",     className: "bg-gray-100 text-gray-500" },
+    premium:      { label: "Premium",        className: "bg-yellow-100 text-yellow-700" },
+    premium_paid: { label: "Premium（課金）", className: "bg-orange-100 text-orange-700" },
+    standard:     { label: "Standard",       className: "bg-green-100 text-green-700" },
+    free:         { label: "Free",           className: "bg-gray-100 text-gray-500" },
   };
   const config = map[plan] ?? map.free;
   return (

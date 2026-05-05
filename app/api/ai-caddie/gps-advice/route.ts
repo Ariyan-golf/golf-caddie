@@ -47,7 +47,7 @@ export async function POST(request: Request) {
   const { data: profile } = await admin
     .from("profiles").select("plan").eq("id", user.id).single();
 
-  if (profile?.plan !== "premium") {
+  if (profile?.plan !== "premium" && profile?.plan !== "premium_paid") {
     const { gte, lt } = todayJSTBounds();
     const { data: todayPayment } = await admin
       .from("round_payments").select("id").eq("user_id", user.id)

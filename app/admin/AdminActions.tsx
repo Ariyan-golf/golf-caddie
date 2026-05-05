@@ -88,6 +88,7 @@ export function InviteCodeForm() {
                        focus:outline-none focus:ring-2 focus:ring-green-400"
           >
             <option value="premium">Premium（無料）</option>
+            <option value="premium_paid">Premium（770円/月）</option>
             <option value="standard">Standard</option>
             <option value="free">Free</option>
           </select>
@@ -205,9 +206,10 @@ export function PlanSelector({ userId, currentPlan }: { userId: string; currentP
   }
 
   const colors: Record<string, string> = {
-    premium:  "bg-yellow-100 text-yellow-800 border-yellow-300",
-    standard: "bg-green-100 text-green-800 border-green-300",
-    free:     "bg-gray-100 text-gray-600 border-gray-200",
+    premium:      "bg-yellow-100 text-yellow-800 border-yellow-300",
+    premium_paid: "bg-orange-100 text-orange-800 border-orange-300",
+    standard:     "bg-green-100 text-green-800 border-green-300",
+    free:         "bg-gray-100 text-gray-600 border-gray-200",
   };
 
   return (

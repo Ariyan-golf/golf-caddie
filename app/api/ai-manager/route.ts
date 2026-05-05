@@ -18,7 +18,7 @@ export async function POST(request: Request) {
     .eq("id", user.id)
     .single();
 
-  if (profile?.plan !== "premium") {
+  if (profile?.plan !== "premium" && profile?.plan !== "premium_paid") {
     return NextResponse.json({ error: "premium_required" }, { status: 403 });
   }
 

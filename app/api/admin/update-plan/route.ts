@@ -24,7 +24,7 @@ export async function POST(request: Request) {
 
   let updates: Record<string, unknown> = { plan };
 
-  if (plan === "premium") {
+  if (plan === "premium" || plan === "premium_paid") {
     // premium 昇格時: referral_code が未設定なら自動生成
     const { data: profile } = await admin
       .from("profiles")
