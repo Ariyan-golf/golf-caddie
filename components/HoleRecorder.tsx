@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { ShotRecorder } from "./ShotRecorder";
 import type { Club } from "@/types";
@@ -119,6 +120,7 @@ function scoreLabel(score: number, par: number) {
 // ── Main component ──────────────────────────────────────────────────
 
 export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "shot", windDirection, windSpeed, courseRating, slopeRating }: HoleRecorderProps) {
+  const router = useRouter();
   const lastHole = initialHoles.at(-1);
   const initPhase: Phase =
     initialHoles.length === 0 ? "par_select" :
@@ -372,6 +374,14 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
       <div>
         {phase === "par_select" && holes.length < 18 && (
           <div className="space-y-3">
+            {holes.length === 0 && (
+              <button
+                onClick={() => router.back()}
+                className="flex items-center gap-1 text-green-600 text-sm font-medium"
+              >
+                ← ラウンド情報に戻る
+              </button>
+            )}
             <ParSelector holeNumber={nextHoleNumber(holes.length)} onCreate={handleStartHole} creating={creating} />
 
             {holes.length > 0 && (

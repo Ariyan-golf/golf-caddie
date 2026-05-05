@@ -36,6 +36,9 @@ export default async function AiCaddiePage() {
   return (
     <div className="max-w-lg mx-auto p-4 space-y-4">
       <div className="pt-4">
+        <a href="/" className="flex items-center gap-1 text-green-600 text-sm font-medium mb-2">
+          ← ホームに戻る
+        </a>
         <h1 className="text-2xl font-bold text-green-800">🏌️ AIキャディ</h1>
         <p className="text-base text-green-600 mt-1">
           GPSで残り距離を計測してキャラクターがコースアドバイスをお届けします
