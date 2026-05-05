@@ -9,14 +9,14 @@ interface HoleInput {
   hole_number: number;
   par: number;
   hdcp: string;
-  distance_blue: string;   // tee1
-  distance_orange: string; // tee2
-  distance_white: string;  // tee3
-  distance_red: string;    // tee4
+  distance_tee1: string;
+  distance_tee2: string;
+  distance_tee3: string;
+  distance_tee4: string;
 }
 
-type TeeKey = "distance_blue" | "distance_orange" | "distance_white" | "distance_red";
-const TEE_KEYS: TeeKey[] = ["distance_blue", "distance_orange", "distance_white", "distance_red"];
+type TeeKey = "distance_tee1" | "distance_tee2" | "distance_tee3" | "distance_tee4";
+const TEE_KEYS: TeeKey[] = ["distance_tee1", "distance_tee2", "distance_tee3", "distance_tee4"];
 
 interface RegisteredCourse {
   id: string;
@@ -43,10 +43,10 @@ function defaultHoles(): HoleInput[] {
     hole_number: i + 1,
     par: 4,
     hdcp: "",
-    distance_blue: "",
-    distance_orange: "",
-    distance_white: "",
-    distance_red: "",
+    distance_tee1: "",
+    distance_tee2: "",
+    distance_tee3: "",
+    distance_tee4: "",
   }));
 }
 
@@ -186,10 +186,10 @@ function ScorecardUploader({
           ...def,
           par: found.par ?? def.par,
           hdcp: found.hdcp != null ? String(found.hdcp) : "",
-          distance_blue:   found.distances?.[0] != null ? String(found.distances[0]) : "",
-          distance_orange: found.distances?.[1] != null ? String(found.distances[1]) : "",
-          distance_white:  found.distances?.[2] != null ? String(found.distances[2]) : "",
-          distance_red:    found.distances?.[3] != null ? String(found.distances[3]) : "",
+          distance_tee1: found.distances?.[0] != null ? String(found.distances[0]) : "",
+          distance_tee2: found.distances?.[1] != null ? String(found.distances[1]) : "",
+          distance_tee3: found.distances?.[2] != null ? String(found.distances[2]) : "",
+          distance_tee4: found.distances?.[3] != null ? String(found.distances[3]) : "",
         };
       });
 
@@ -318,10 +318,10 @@ export function GolfCourseForm() {
         hole_number: h.hole_number,
         par: h.par,
         hdcp: h.hdcp ? parseInt(h.hdcp) : null,
-        distance_blue:   h.distance_blue   ? parseInt(h.distance_blue)   : null,
-        distance_orange: h.distance_orange ? parseInt(h.distance_orange) : null,
-        distance_white:  h.distance_white  ? parseInt(h.distance_white)  : null,
-        distance_red:    h.distance_red    ? parseInt(h.distance_red)    : null,
+        distance_tee1: h.distance_tee1 ? parseInt(h.distance_tee1) : null,
+        distance_tee2: h.distance_tee2 ? parseInt(h.distance_tee2) : null,
+        distance_tee3: h.distance_tee3 ? parseInt(h.distance_tee3) : null,
+        distance_tee4: h.distance_tee4 ? parseInt(h.distance_tee4) : null,
       })),
     };
 

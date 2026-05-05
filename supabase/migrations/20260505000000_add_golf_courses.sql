@@ -4,6 +4,10 @@ CREATE TABLE IF NOT EXISTS public.golf_courses (
   name TEXT NOT NULL,
   address TEXT,
   local_rules TEXT,
+  tee1_name TEXT DEFAULT 'ティー1',
+  tee2_name TEXT DEFAULT 'ティー2',
+  tee3_name TEXT DEFAULT 'ティー3',
+  tee4_name TEXT DEFAULT 'ティー4',
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
@@ -14,10 +18,10 @@ CREATE TABLE IF NOT EXISTS public.course_holes (
   hole_number INTEGER NOT NULL CHECK (hole_number BETWEEN 1 AND 18),
   par INTEGER NOT NULL DEFAULT 4 CHECK (par BETWEEN 3 AND 5),
   hdcp INTEGER CHECK (hdcp BETWEEN 1 AND 18),
-  distance_blue INTEGER,
-  distance_orange INTEGER,
-  distance_white INTEGER,
-  distance_red INTEGER,
+  distance_tee1 INTEGER,
+  distance_tee2 INTEGER,
+  distance_tee3 INTEGER,
+  distance_tee4 INTEGER,
   UNIQUE (course_id, hole_number)
 );
 

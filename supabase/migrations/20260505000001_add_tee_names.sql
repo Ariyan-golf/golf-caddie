@@ -1,5 +1,2 @@
-ALTER TABLE public.golf_courses
-  ADD COLUMN IF NOT EXISTS tee1_name TEXT DEFAULT 'ティー1',
-  ADD COLUMN IF NOT EXISTS tee2_name TEXT DEFAULT 'ティー2',
-  ADD COLUMN IF NOT EXISTS tee3_name TEXT DEFAULT 'ティー3',
-  ADD COLUMN IF NOT EXISTS tee4_name TEXT DEFAULT 'ティー4';
+-- Merged into 20260505000000_add_golf_courses.sql
+-- tee1_name ~ tee4_name columns are included in the initial golf_courses table definition.

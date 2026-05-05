@@ -46,10 +46,10 @@ export async function POST(req: Request) {
       hole_number: number;
       par: number;
       hdcp: number | null;
-      distance_blue: number | null;
-      distance_orange: number | null;
-      distance_white: number | null;
-      distance_red: number | null;
+      distance_tee1: number | null;
+      distance_tee2: number | null;
+      distance_tee3: number | null;
+      distance_tee4: number | null;
     }[];
   };
 
@@ -80,10 +80,10 @@ export async function POST(req: Request) {
     hole_number: h.hole_number,
     par: h.par,
     hdcp: h.hdcp || null,
-    distance_blue: h.distance_blue || null,
-    distance_orange: h.distance_orange || null,
-    distance_white: h.distance_white || null,
-    distance_red: h.distance_red || null,
+    distance_tee1: h.distance_tee1 || null,
+    distance_tee2: h.distance_tee2 || null,
+    distance_tee3: h.distance_tee3 || null,
+    distance_tee4: h.distance_tee4 || null,
   }));
 
   const { error: holesErr } = await admin.from("course_holes").insert(holeRows);
