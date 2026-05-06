@@ -36,6 +36,16 @@ interface RankingEvent {
   golf_courses: { name: string } | null;
 }
 
+type SortOrder = "distance" | "date";
+
+function formatDatetime(iso: string) {
+  const d = new Date(iso);
+  return d.toLocaleString("ja-JP", {
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit",
+  });
+}
+
 export function EventManagement({
   courses,
   initialEvents,
@@ -46,11 +56,11 @@ export function EventManagement({
   const router = useRouter();
 
   // フォーム状態
-  const [eventName, setEventName]   = useState("");
-  const [courseId,  setCourseId]    = useState(courses[0]?.id ?? "");
-  const [holeNum,   setHoleNum]     = useState(1);
-  const [startDate, setStartDate]   = useState("");
-  const [endDate,   setEndDate]     = useState("");
+  const [eventName,  setEventName]  = useState("");
+  const [courseId,   setCourseId]   = useState(courses[0]?.id ?? "");
+  const [holeNum,    setHoleNum]    = useState(1);
+  const [startDate,  setStartDate]  = useState("");
+  const [endDate,    setEndDate]    = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [formError,  setFormError]  = useState<string | null>(null);
 
@@ -59,9 +69,16 @@ export function EventManagement({
   const [ranking,        setRanking]        = useState<RankingRow[]>([]);
   const [rankingLoading, setRankingLoading] = useState(false);
   const [rankingError,   setRankingError]   = useState<string | null>(null);
+  const [sortOrder,      setSortOrder]      = useState<SortOrder>("distance");
 
   // 削除中のID管理
   const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  // 現在の並び順に応じたランキング
+  const sortedRanking: RankingRow[] =
+    sortOrder === "distance"
+      ? [...ranking].sort((a, b) => b.max_distance_meters - a.max_distance_meters)
+      : [...ranking].sort((a, b) => new Date(b.recorded_at).getTime() - new Date(a.recorded_at).getTime());
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -109,6 +126,7 @@ export function EventManagement({
     setRanking([]);
     setRankingError(null);
     setRankingLoading(true);
+    setSortOrder("distance");
 
     const res = await fetch(`/api/admin/events/${ev.id}/ranking`);
     const data = await res.json();
@@ -122,8 +140,29 @@ export function EventManagement({
   }
 
   function handleCsvDownload() {
-    if (!rankingEvent) return;
-    window.location.href = `/api/admin/events/${rankingEvent.id}/ranking?format=csv`;
+    if (!rankingEvent || sortedRanking.length === 0) return;
+
+    const header = "順位(飛距離),名前,最長飛距離(yd),最長飛距離(m),記録日時\n";
+    const body = sortedRanking
+      .map((r) =>
+        [
+          r.rank,
+          `"${r.display_name}"`,
+          r.max_distance_yards,
+          r.max_distance_meters.toFixed(1),
+          `"${formatDatetime(r.recorded_at)}"`,
+        ].join(",")
+      )
+      .join("\n");
+
+    const bom = "﻿";
+    const blob = new Blob([bom + header + body], { type: "text/csv; charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `event_ranking_${rankingEvent.id}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
   }
 
   return (
@@ -278,7 +317,7 @@ export function EventManagement({
             onClick={(e) => e.stopPropagation()}
           >
             {/* ヘッダー */}
-            <div className="p-4 border-b border-green-100 flex-shrink-0">
+            <div className="p-4 border-b border-green-100 flex-shrink-0 space-y-3">
               <div className="flex items-start justify-between">
                 <div>
                   <p className="font-bold text-green-900">{rankingEvent.event_name}</p>
@@ -296,14 +335,36 @@ export function EventManagement({
                 </button>
               </div>
 
-              {/* CSVダウンロードボタン */}
+              {/* 並び替えボタン */}
               {!rankingLoading && ranking.length > 0 && (
-                <button
-                  onClick={handleCsvDownload}
-                  className="mt-3 w-full bg-green-50 hover:bg-green-100 border border-green-200 text-green-700 text-xs font-semibold py-1.5 rounded-lg transition-colors"
-                >
-                  CSVダウンロード
-                </button>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setSortOrder("distance")}
+                    className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-colors border ${
+                      sortOrder === "distance"
+                        ? "bg-green-600 text-white border-green-600"
+                        : "bg-white text-green-600 border-green-200 hover:bg-green-50"
+                    }`}
+                  >
+                    飛距離順
+                  </button>
+                  <button
+                    onClick={() => setSortOrder("date")}
+                    className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-colors border ${
+                      sortOrder === "date"
+                        ? "bg-green-600 text-white border-green-600"
+                        : "bg-white text-green-600 border-green-200 hover:bg-green-50"
+                    }`}
+                  >
+                    日付順
+                  </button>
+                  <button
+                    onClick={handleCsvDownload}
+                    className="flex-1 py-1.5 rounded-lg text-xs font-semibold border bg-white text-green-600 border-green-200 hover:bg-green-50 transition-colors"
+                  >
+                    CSVダウンロード
+                  </button>
+                </div>
               )}
             </div>
 
@@ -313,50 +374,57 @@ export function EventManagement({
                 <div className="py-12 text-center text-green-400 text-sm">読み込み中…</div>
               ) : rankingError ? (
                 <div className="py-8 text-center text-red-400 text-sm">{rankingError}</div>
-              ) : ranking.length === 0 ? (
+              ) : sortedRanking.length === 0 ? (
                 <div className="py-12 text-center text-green-400 text-sm">
                   <p className="text-2xl mb-2">🏌️</p>
                   <p>期間内のデータがありません</p>
                 </div>
               ) : (
                 <table className="w-full text-sm">
-                  <thead className="sticky top-0 bg-white">
-                    <tr className="border-b border-green-100 text-green-600 text-xs">
+                  <thead className="sticky top-0 bg-white border-b border-green-100">
+                    <tr className="text-green-600 text-xs">
                       <th className="text-center px-3 py-3 font-semibold w-10">順位</th>
                       <th className="text-left px-3 py-3 font-semibold">名前</th>
                       <th className="text-right px-3 py-3 font-semibold whitespace-nowrap">最長飛距離</th>
-                      <th className="text-right px-3 py-3 font-semibold whitespace-nowrap">記録日</th>
+                      <th className="text-right px-3 py-3 font-semibold whitespace-nowrap">記録日時</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {ranking.map((row) => (
-                      <tr
-                        key={row.rank}
-                        className={`border-b border-green-50 last:border-0 ${
-                          row.rank === 1
-                            ? "bg-yellow-50"
-                            : row.rank === 2
-                            ? "bg-gray-50"
-                            : row.rank === 3
-                            ? "bg-orange-50"
-                            : ""
-                        }`}
-                      >
-                        <td className="px-3 py-3 text-center font-bold text-green-800">
-                          {row.rank === 1 ? "🥇" : row.rank === 2 ? "🥈" : row.rank === 3 ? "🥉" : row.rank}
-                        </td>
-                        <td className="px-3 py-3 font-medium text-green-900">{row.display_name}</td>
-                        <td className="px-3 py-3 text-right tabular-nums font-semibold text-green-800 whitespace-nowrap">
-                          {row.max_distance_meters.toFixed(1)} m
-                          <span className="text-green-400 font-normal ml-1">
-                            ({row.max_distance_yards} yd)
-                          </span>
-                        </td>
-                        <td className="px-3 py-3 text-right text-green-500 text-xs whitespace-nowrap">
-                          {new Date(row.recorded_at).toLocaleDateString("ja-JP")}
-                        </td>
-                      </tr>
-                    ))}
+                    {sortedRanking.map((row, i) => {
+                      const displayRank = sortOrder === "distance" ? row.rank : i + 1;
+                      const isTop3ByDistance = row.rank <= 3 && sortOrder === "distance";
+                      return (
+                        <tr
+                          key={`${row.display_name}-${row.recorded_at}`}
+                          className={`border-b border-green-50 last:border-0 ${
+                            isTop3ByDistance && row.rank === 1
+                              ? "bg-yellow-50"
+                              : isTop3ByDistance && row.rank === 2
+                              ? "bg-gray-50"
+                              : isTop3ByDistance && row.rank === 3
+                              ? "bg-orange-50"
+                              : ""
+                          }`}
+                        >
+                          <td className="px-3 py-3 text-center font-bold text-green-800">
+                            {sortOrder === "distance" && row.rank === 1 ? "🥇"
+                              : sortOrder === "distance" && row.rank === 2 ? "🥈"
+                              : sortOrder === "distance" && row.rank === 3 ? "🥉"
+                              : displayRank}
+                          </td>
+                          <td className="px-3 py-3 font-medium text-green-900">{row.display_name}</td>
+                          <td className="px-3 py-3 text-right tabular-nums font-semibold text-green-800 whitespace-nowrap">
+                            {row.max_distance_yards} yd
+                            <span className="text-green-400 font-normal ml-1 text-xs">
+                              ({row.max_distance_meters.toFixed(1)} m)
+                            </span>
+                          </td>
+                          <td className="px-3 py-3 text-right text-green-500 text-xs whitespace-nowrap">
+                            {formatDatetime(row.recorded_at)}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               )}
