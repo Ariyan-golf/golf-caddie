@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { InviteCodeForm, PlanSelector, RoleSelector } from "./AdminActions";
 import { GolfCourseForm } from "./GolfCourseForm";
+import { EventManagement } from "./EventManagement";
 
 const ADMIN_EMAIL = "t.a.0903076959@i.softbank.jp";
 
@@ -49,11 +50,24 @@ export default async function AdminPage({
     revenueStats = await fetchRevenueStats(admin, users);
   }
 
+  // ─── イベント管理タブ専用データ ──────────────────────────────────
+  let courses: { id: string; name: string }[] = [];
+  let events:  EventRow[]                      = [];
+  if (tab === "events") {
+    const [{ data: courseData }, { data: eventData }] = await Promise.all([
+      admin.from("golf_courses").select("id, name").order("name"),
+      admin.from("events").select("*, golf_courses(name)").order("created_at", { ascending: false }),
+    ]);
+    courses = courseData ?? [];
+    events  = eventData  ?? [];
+  }
+
   const tabs: { key: string; label: string }[] = [
     { key: "invite",  label: "招待コード" },
     { key: "users",   label: "ユーザー管理" },
     { key: "revenue", label: "💰 収益管理" },
     { key: "courses", label: "⛳ ゴルフ場登録" },
+    { key: "events",  label: "🏆 イベント管理" },
   ];
 
   return (
@@ -198,8 +212,28 @@ export default async function AdminPage({
           <GolfCourseForm />
         </section>
       )}
+
+      {/* ── イベント管理タブ ─────────────────────────────────── */}
+      {tab === "events" && (
+        <section className="space-y-4">
+          <EventManagement courses={courses} initialEvents={events} />
+        </section>
+      )}
     </div>
   );
+}
+
+// ── 型定義 ───────────────────────────────────────────────────────
+
+interface EventRow {
+  id: string;
+  event_name: string;
+  course_id: string;
+  hole_number: number;
+  start_date: string;
+  end_date: string;
+  created_at: string;
+  golf_courses: { name: string } | null;
 }
 
 // ── 収益データ集計 ────────────────────────────────────────────────
