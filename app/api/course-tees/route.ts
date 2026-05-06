@@ -10,16 +10,31 @@ export async function GET(req: Request) {
   const courseId = searchParams.get("courseId");
   if (!courseId) return NextResponse.json({ error: "courseId required" }, { status: 400 });
 
-  const [{ data: course }, { data: tees }] = await Promise.all([
-    supabase.from("golf_courses").select("id, name, address").eq("id", courseId).single(),
+  const [{ data: course }, { data: tees }, { data: holeRows }] = await Promise.all([
+    supabase
+      .from("golf_courses")
+      .select("id, name, address, course_type")
+      .eq("id", courseId)
+      .single(),
     supabase
       .from("course_tees")
       .select("id, green_type, tee_name, course_rating, slope_rating, distance")
       .eq("course_id", courseId)
       .order("green_type")
       .order("tee_name"),
+    supabase
+      .from("course_holes")
+      .select("course_section")
+      .eq("course_id", courseId)
+      .order("course_section"),
   ]);
 
   if (!course) return NextResponse.json({ error: "Course not found" }, { status: 404 });
-  return NextResponse.json({ course, tees: tees ?? [] });
+
+  // course_section の重複排除（27H/36H でセクション一覧を返す）
+  const sections: string[] = [
+    ...new Set((holeRows ?? []).map((r) => r.course_section as string)),
+  ].filter((s) => s !== "").sort();
+
+  return NextResponse.json({ course, tees: tees ?? [], sections });
 }

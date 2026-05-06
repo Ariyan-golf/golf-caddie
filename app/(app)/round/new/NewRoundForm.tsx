@@ -57,28 +57,37 @@ interface CourseTee {
 export function NewRoundForm({ linkedCourseId }: { linkedCourseId?: string }) {
   const router = useRouter();
 
-  const [courses, setCourses]             = useState<GolfCourse[]>([]);
+  // ゴルフ場選択
+  const [courses, setCourses]                   = useState<GolfCourse[]>([]);
   const [selectedCourseId, setSelectedCourseId] = useState(linkedCourseId ?? "");
-  const [courseName, setCourseName]       = useState("");
-  const [date, setDate]                   = useState(new Date().toISOString().split("T")[0]);
-  const [startHole, setStartHole]         = useState<StartHole>(1);
-  const [weather, setWeather]             = useState<Weather | null>(null);
-  const [windSpeed, setWindSpeed]         = useState<WindSpeed | null>(null);
-  const [windDirection, setWindDirection] = useState<WindDirection | null>(null);
-  const [mode, setMode]                   = useState<"shot" | "score">("score");
-  const [loading, setLoading]             = useState(false);
-  const [error, setError]                 = useState("");
+  const [courseName, setCourseName]             = useState("");
+  const [courseType, setCourseType]             = useState<string>("18H");
 
-  // Tee state
+  // ティー
   const [tees, setTees]               = useState<CourseTee[]>([]);
   const [selectedTeeId, setSelectedTeeId] = useState("");
   const [teesLoading, setTeesLoading] = useState(false);
 
-  // Weather auto-fetch
-  const [weatherStatus, setWeatherStatus] = useState<WeatherStatus>("idle");
-  const [temperature, setTemperature]     = useState<number | null>(null);
+  // コース選択（27H/36H）
+  const [sections, setSections]       = useState<string[]>([]);
+  const [outSection, setOutSection]   = useState("");
+  const [inSection, setInSection]     = useState("");
 
-  // Load all golf courses on mount
+  // ラウンド情報
+  const [date, setDate]               = useState(new Date().toISOString().split("T")[0]);
+  const [startHole, setStartHole]     = useState<StartHole>(1);
+  const [mode, setMode]               = useState<"shot" | "score">("score");
+  const [loading, setLoading]         = useState(false);
+  const [error, setError]             = useState("");
+
+  // 天気
+  const [weather, setWeather]               = useState<Weather | null>(null);
+  const [windSpeed, setWindSpeed]           = useState<WindSpeed | null>(null);
+  const [windDirection, setWindDirection]   = useState<WindDirection | null>(null);
+  const [weatherStatus, setWeatherStatus]   = useState<WeatherStatus>("idle");
+  const [temperature, setTemperature]       = useState<number | null>(null);
+
+  // 登録済みゴルフ場を初回ロード
   useEffect(() => {
     const supabase = createClient();
     supabase
@@ -88,11 +97,15 @@ export function NewRoundForm({ linkedCourseId }: { linkedCourseId?: string }) {
       .then(({ data }) => setCourses(data ?? []));
   }, []);
 
-  // When selectedCourseId changes, fetch tees and auto-fill course name
+  // ゴルフ場選択時 → ティー・セクション取得＆コース名自動入力
   useEffect(() => {
     if (!selectedCourseId) {
       setTees([]);
       setSelectedTeeId("");
+      setCourseType("18H");
+      setSections([]);
+      setOutSection("");
+      setInSection("");
       return;
     }
     setTeesLoading(true);
@@ -100,9 +113,26 @@ export function NewRoundForm({ linkedCourseId }: { linkedCourseId?: string }) {
       .then((r) => r.json())
       .then((data) => {
         if (data.course?.name) setCourseName(data.course.name);
+
+        const ct: string = data.course?.course_type ?? "18H";
+        setCourseType(ct);
+
         const newTees: CourseTee[] = data.tees ?? [];
         setTees(newTees);
         setSelectedTeeId(newTees.length > 0 ? newTees[0].id : "");
+
+        const newSections: string[] = data.sections ?? [];
+        setSections(newSections);
+        if (ct === "27H" && newSections.length >= 2) {
+          setOutSection(newSections[0]);
+          setInSection(newSections[1]);
+        } else if (ct === "36H" && newSections.length >= 1) {
+          setOutSection(newSections[0]);
+          setInSection("");
+        } else {
+          setOutSection("");
+          setInSection("");
+        }
       })
       .catch(() => {})
       .finally(() => setTeesLoading(false));
@@ -112,29 +142,21 @@ export function NewRoundForm({ linkedCourseId }: { linkedCourseId?: string }) {
 
   function formatTeeLabel(t: CourseTee) {
     let label = `${t.green_type} / ${t.tee_name}`;
-    if (t.course_rating != null || t.slope_rating != null) {
-      const parts: string[] = [];
-      if (t.course_rating != null) parts.push(`CR:${t.course_rating}`);
-      if (t.slope_rating  != null) parts.push(`SR:${t.slope_rating}`);
-      label += `（${parts.join(" / ")}）`;
-    }
+    const parts: string[] = [];
+    if (t.course_rating != null) parts.push(`CR:${t.course_rating}`);
+    if (t.slope_rating  != null) parts.push(`SR:${t.slope_rating}`);
+    if (parts.length > 0) label += `（${parts.join(" / ")}）`;
     return label;
   }
 
   async function handleAutoWeather() {
-    if (!navigator.geolocation) {
-      setWeatherStatus("error");
-      return;
-    }
+    if (!navigator.geolocation) { setWeatherStatus("error"); return; }
     setWeatherStatus("locating");
     navigator.geolocation.getCurrentPosition(
       async (pos) => {
         setWeatherStatus("fetching");
         const data = await fetchWeather(pos.coords.latitude, pos.coords.longitude);
-        if (!data) {
-          setWeatherStatus("error");
-          return;
-        }
+        if (!data) { setWeatherStatus("error"); return; }
         setWeather(data.weather);
         setWindSpeed(data.windSpeed);
         setWindDirection(data.windDirection);
@@ -171,6 +193,10 @@ export function NewRoundForm({ linkedCourseId }: { linkedCourseId?: string }) {
           course_rating:  selectedTee.course_rating ?? null,
           slope_rating:   selectedTee.slope_rating ?? null,
         } : {}),
+        ...(selectedCourseId ? {
+          out_section: outSection || null,
+          in_section:  inSection  || null,
+        } : {}),
       })
       .select("id")
       .single();
@@ -190,12 +216,11 @@ export function NewRoundForm({ linkedCourseId }: { linkedCourseId?: string }) {
   }
 
   const autoLabel: Record<WeatherStatus, string | null> = {
-    idle:     null,
-    locating: "📡 GPS取得中...",
-    fetching: "🌐 天気取得中...",
-    ok:       null,
-    error:    null,
+    idle: null, locating: "📡 GPS取得中...", fetching: "🌐 天気取得中...", ok: null, error: null,
   };
+
+  // 27H の IN セクション候補（OUT で選んだものを除外）
+  const inSectionOptions = sections.filter((s) => s !== outSection);
 
   return (
     <form onSubmit={handleSubmit} className="card space-y-5">
@@ -205,16 +230,15 @@ export function NewRoundForm({ linkedCourseId }: { linkedCourseId?: string }) {
         </div>
       )}
 
-      {/* ゴルフ場選択 */}
+      {/* ── ゴルフ場選択 ───────────────────────────────── */}
       <div>
         <label className="label">ゴルフ場</label>
         <select
           className="input"
           value={selectedCourseId}
           onChange={(e) => {
-            const val = e.target.value;
-            setSelectedCourseId(val);
-            if (!val) setCourseName("");
+            setSelectedCourseId(e.target.value);
+            if (!e.target.value) setCourseName("");
           }}
         >
           <option value="">指定なし（手動入力）</option>
@@ -224,25 +248,22 @@ export function NewRoundForm({ linkedCourseId }: { linkedCourseId?: string }) {
         </select>
       </div>
 
-      {/* コース名 */}
-      <div>
-        <label className="label">
-          コース名 *
-          {selectedCourseId && (
-            <span className="ml-1 text-xs text-green-400 font-normal">（自動入力）</span>
-          )}
-        </label>
-        <input
-          type="text"
-          className="input"
-          placeholder="例: 東京ゴルフクラブ"
-          value={courseName}
-          onChange={(e) => setCourseName(e.target.value)}
-          required
-        />
-      </div>
+      {/* ── コース名（指定なしのみ表示） ─────────────────── */}
+      {!selectedCourseId && (
+        <div>
+          <label className="label">コース名 *</label>
+          <input
+            type="text"
+            className="input"
+            placeholder="コース名を入力"
+            value={courseName}
+            onChange={(e) => setCourseName(e.target.value)}
+            required
+          />
+        </div>
+      )}
 
-      {/* グリーン・ティー選択（ゴルフ場選択時） */}
+      {/* ── ティーグランド選択（ゴルフ場選択時） ────────── */}
       {selectedCourseId && (
         <div>
           <label className="label">グリーン・ティー</label>
@@ -258,9 +279,7 @@ export function NewRoundForm({ linkedCourseId }: { linkedCourseId?: string }) {
                 onChange={(e) => setSelectedTeeId(e.target.value)}
               >
                 {tees.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {formatTeeLabel(t)}
-                  </option>
+                  <option key={t.id} value={t.id}>{formatTeeLabel(t)}</option>
                 ))}
               </select>
               {selectedTee && (selectedTee.course_rating != null || selectedTee.slope_rating != null) && (
@@ -275,7 +294,63 @@ export function NewRoundForm({ linkedCourseId }: { linkedCourseId?: string }) {
         </div>
       )}
 
-      {/* プレー日 */}
+      {/* ── 27H コース選択 ───────────────────────────────── */}
+      {selectedCourseId && courseType === "27H" && sections.length > 0 && (
+        <div className="space-y-3">
+          <label className="label">コース選択（27H）</label>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <p className="text-xs text-green-600 font-medium mb-1">前半（1〜9番）</p>
+              <select
+                className="input"
+                value={outSection}
+                onChange={(e) => {
+                  setOutSection(e.target.value);
+                  // IN が同じになってしまう場合は別のセクションを選ぶ
+                  if (e.target.value === inSection) {
+                    const alt = sections.find((s) => s !== e.target.value);
+                    setInSection(alt ?? "");
+                  }
+                }}
+              >
+                {sections.map((s) => (
+                  <option key={s} value={s}>{s}コース</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <p className="text-xs text-green-600 font-medium mb-1">後半（10〜18番）</p>
+              <select
+                className="input"
+                value={inSection}
+                onChange={(e) => setInSection(e.target.value)}
+              >
+                {inSectionOptions.map((s) => (
+                  <option key={s} value={s}>{s}コース</option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── 36H コース選択 ───────────────────────────────── */}
+      {selectedCourseId && courseType === "36H" && sections.length > 0 && (
+        <div>
+          <label className="label">コース選択（36H）</label>
+          <select
+            className="input"
+            value={outSection}
+            onChange={(e) => setOutSection(e.target.value)}
+          >
+            {sections.map((s) => (
+              <option key={s} value={s}>{s}コース</option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      {/* ── プレー日 ─────────────────────────────────────── */}
       <div>
         <label className="label">プレー日</label>
         <input
@@ -287,7 +362,7 @@ export function NewRoundForm({ linkedCourseId }: { linkedCourseId?: string }) {
         />
       </div>
 
-      {/* スタートホール */}
+      {/* ── スタートホール ──────────────────────────────── */}
       <div>
         <label className="label">スタートホール *</label>
         <div className="grid grid-cols-2 gap-3 mt-1">
@@ -311,7 +386,7 @@ export function NewRoundForm({ linkedCourseId }: { linkedCourseId?: string }) {
         </div>
       </div>
 
-      {/* 記録モード */}
+      {/* ── 記録モード ────────────────────────────────────── */}
       <div>
         <label className="label">記録モード *</label>
         <div className="grid grid-cols-2 gap-3 mt-1">
@@ -339,14 +414,12 @@ export function NewRoundForm({ linkedCourseId }: { linkedCourseId?: string }) {
         </div>
       </div>
 
-      {/* ── 天気・風 ─────────────────────────────────────────── */}
+      {/* ── 天気・風 ─────────────────────────────────────── */}
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <span className="label">天気・風（自動取得可）</span>
           {weatherStatus === "ok" && temperature !== null && (
-            <span className="text-xs text-sky-600 font-medium">
-              🌡 {temperature}°C
-            </span>
+            <span className="text-xs text-sky-600 font-medium">🌡 {temperature}°C</span>
           )}
         </div>
 
@@ -355,26 +428,14 @@ export function NewRoundForm({ linkedCourseId }: { linkedCourseId?: string }) {
             <span className="text-xs text-sky-700 font-medium">
               ✅ 現在地の天気を自動取得済み（手動変更も可）
             </span>
-            <button
-              type="button"
-              onClick={() => setWeatherStatus("idle")}
-              className="text-xs text-sky-500 underline ml-2"
-            >
-              再取得
-            </button>
+            <button type="button" onClick={() => setWeatherStatus("idle")}
+              className="text-xs text-sky-500 underline ml-2">再取得</button>
           </div>
         ) : weatherStatus === "error" ? (
           <div className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
-            <span className="text-xs text-amber-700">
-              ⚠️ 自動取得失敗 — 手動で入力してください
-            </span>
-            <button
-              type="button"
-              onClick={handleAutoWeather}
-              className="text-xs text-amber-600 underline ml-2"
-            >
-              再試行
-            </button>
+            <span className="text-xs text-amber-700">⚠️ 自動取得失敗 — 手動で入力してください</span>
+            <button type="button" onClick={handleAutoWeather}
+              className="text-xs text-amber-600 underline ml-2">再試行</button>
           </div>
         ) : autoLabel[weatherStatus] ? (
           <div className="flex items-center gap-2 bg-sky-50 border border-sky-200 rounded-xl px-3 py-2">
@@ -382,53 +443,41 @@ export function NewRoundForm({ linkedCourseId }: { linkedCourseId?: string }) {
             <span className="text-xs text-sky-700">{autoLabel[weatherStatus]}</span>
           </div>
         ) : (
-          <button
-            type="button"
-            onClick={handleAutoWeather}
+          <button type="button" onClick={handleAutoWeather}
             className="w-full py-2.5 rounded-xl border-2 border-dashed border-sky-300
-                       text-sky-600 text-sm font-medium hover:bg-sky-50 transition-colors active:scale-95"
-          >
+                       text-sky-600 text-sm font-medium hover:bg-sky-50 transition-colors active:scale-95">
             🌤 現在地の天気・風を自動入力
           </button>
         )}
 
-        {/* 天気 */}
         <div>
           <p className="text-xs text-green-600 font-medium mb-1.5">天気</p>
           <div className="grid grid-cols-4 gap-2">
             {WEATHER_OPTIONS.map((w) => (
-              <ToggleButton
-                key={w} label={w} selected={weather === w}
-                onClick={() => setWeather(weather === w ? null : w)}
-              />
+              <ToggleButton key={w} label={w} selected={weather === w}
+                onClick={() => setWeather(weather === w ? null : w)} />
             ))}
           </div>
         </div>
 
-        {/* 風速 */}
         <div>
           <p className="text-xs text-green-600 font-medium mb-1.5">風速</p>
           <div className="grid grid-cols-4 gap-2">
             {WIND_SPEED_OPTIONS.map((ws) => (
-              <ToggleButton
-                key={ws} label={ws} selected={windSpeed === ws}
-                onClick={() => setWindSpeed(windSpeed === ws ? null : ws)}
-              />
+              <ToggleButton key={ws} label={ws} selected={windSpeed === ws}
+                onClick={() => setWindSpeed(windSpeed === ws ? null : ws)} />
             ))}
           </div>
         </div>
 
-        {/* 風向き */}
         <div>
           <p className="text-xs text-green-600 font-medium mb-1.5">風向き</p>
           <div className="grid grid-cols-3 gap-2 max-w-[240px] mx-auto">
             {compassGrid.flatMap((row, ri) =>
               row.map((dir, ci) =>
                 dir ? (
-                  <ToggleButton
-                    key={dir} label={dir} selected={windDirection === dir}
-                    onClick={() => setWindDirection(windDirection === dir ? null : dir)}
-                  />
+                  <ToggleButton key={dir} label={dir} selected={windDirection === dir}
+                    onClick={() => setWindDirection(windDirection === dir ? null : dir)} />
                 ) : (
                   <div key={`empty-${ri}-${ci}`} />
                 )
