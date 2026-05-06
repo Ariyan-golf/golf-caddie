@@ -31,6 +31,11 @@ interface Hole {
   shots: Shot[];
 }
 
+interface CourseHole {
+  hole_number: number;
+  par: number;
+}
+
 interface HoleRecorderProps {
   roundId: string;
   initialHoles: Hole[];
@@ -40,6 +45,7 @@ interface HoleRecorderProps {
   windSpeed?: string | null;
   courseRating?: number | null;
   slopeRating?: number | null;
+  courseHoles?: CourseHole[];
 }
 
 interface RoundShotEntry {
@@ -119,7 +125,7 @@ function scoreLabel(score: number, par: number) {
 
 // ── Main component ──────────────────────────────────────────────────
 
-export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "shot", windDirection, windSpeed, courseRating, slopeRating }: HoleRecorderProps) {
+export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "shot", windDirection, windSpeed, courseRating, slopeRating, courseHoles }: HoleRecorderProps) {
   const router = useRouter();
   const lastHole = initialHoles.at(-1);
   const initPhase: Phase =
@@ -382,7 +388,13 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
                 ← ラウンド情報に戻る
               </button>
             )}
-            <ParSelector holeNumber={nextHoleNumber(holes.length)} onCreate={handleStartHole} creating={creating} />
+            {(() => {
+              const nextHole = nextHoleNumber(holes.length);
+              const autoPar  = courseHoles?.find((ch) => ch.hole_number === nextHole)?.par;
+              return autoPar != null
+                ? <AutoParCard holeNumber={nextHole} par={autoPar} onCreate={handleStartHole} creating={creating} />
+                : <ParSelector holeNumber={nextHole} onCreate={handleStartHole} creating={creating} />;
+            })()}
 
             {holes.length > 0 && (
               confirmGoBack ? (
@@ -576,6 +588,30 @@ function HoleTabs({
 }
 
 // ── Sub-components ──────────────────────────────────────────────────
+
+function AutoParCard({
+  holeNumber, par, onCreate, creating,
+}: {
+  holeNumber: number;
+  par: number;
+  onCreate: (par: number) => void;
+  creating: boolean;
+}) {
+  return (
+    <div className="card text-center space-y-4">
+      <p className="text-sm font-medium text-green-500">ホール {holeNumber}</p>
+      <p className="text-7xl font-bold text-green-700">Par {par}</p>
+      <button
+        onClick={() => onCreate(par)}
+        disabled={creating}
+        className="w-full py-5 rounded-xl bg-green-600 hover:bg-green-700 active:bg-green-800
+                   text-white font-bold text-xl transition-colors disabled:opacity-50"
+      >
+        {creating ? "開始中..." : "スタート"}
+      </button>
+    </div>
+  );
+}
 
 function ParSelector({
   holeNumber, onCreate, creating,

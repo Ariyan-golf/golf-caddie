@@ -40,6 +40,11 @@ function ToggleButton({
 
 type WeatherStatus = "idle" | "locating" | "fetching" | "ok" | "error";
 
+interface GolfCourse {
+  id: string;
+  name: string;
+}
+
 interface CourseTee {
   id: string;
   green_type: string;
@@ -51,6 +56,9 @@ interface CourseTee {
 
 export function NewRoundForm({ linkedCourseId }: { linkedCourseId?: string }) {
   const router = useRouter();
+
+  const [courses, setCourses]             = useState<GolfCourse[]>([]);
+  const [selectedCourseId, setSelectedCourseId] = useState(linkedCourseId ?? "");
   const [courseName, setCourseName]       = useState("");
   const [date, setDate]                   = useState(new Date().toISOString().split("T")[0]);
   const [startHole, setStartHole]         = useState<StartHole>(1);
@@ -61,32 +69,57 @@ export function NewRoundForm({ linkedCourseId }: { linkedCourseId?: string }) {
   const [loading, setLoading]             = useState(false);
   const [error, setError]                 = useState("");
 
-  // Linked course / tee state
-  const [tees, setTees]                   = useState<CourseTee[]>([]);
-  const [selectedTeeId, setSelectedTeeId] = useState<string>("");
-  const [teesLoading, setTeesLoading]     = useState(false);
+  // Tee state
+  const [tees, setTees]               = useState<CourseTee[]>([]);
+  const [selectedTeeId, setSelectedTeeId] = useState("");
+  const [teesLoading, setTeesLoading] = useState(false);
 
-  // 天気自動取得
+  // Weather auto-fetch
   const [weatherStatus, setWeatherStatus] = useState<WeatherStatus>("idle");
   const [temperature, setTemperature]     = useState<number | null>(null);
 
+  // Load all golf courses on mount
   useEffect(() => {
-    if (!linkedCourseId) return;
+    const supabase = createClient();
+    supabase
+      .from("golf_courses")
+      .select("id, name")
+      .order("name")
+      .then(({ data }) => setCourses(data ?? []));
+  }, []);
+
+  // When selectedCourseId changes, fetch tees and auto-fill course name
+  useEffect(() => {
+    if (!selectedCourseId) {
+      setTees([]);
+      setSelectedTeeId("");
+      return;
+    }
     setTeesLoading(true);
-    fetch(`/api/course-tees?courseId=${linkedCourseId}`)
+    fetch(`/api/course-tees?courseId=${selectedCourseId}`)
       .then((r) => r.json())
       .then((data) => {
         if (data.course?.name) setCourseName(data.course.name);
-        if (data.tees) {
-          setTees(data.tees);
-          if (data.tees.length > 0) setSelectedTeeId(data.tees[0].id);
-        }
+        const newTees: CourseTee[] = data.tees ?? [];
+        setTees(newTees);
+        setSelectedTeeId(newTees.length > 0 ? newTees[0].id : "");
       })
-      .catch(() => {/* silent */})
+      .catch(() => {})
       .finally(() => setTeesLoading(false));
-  }, [linkedCourseId]);
+  }, [selectedCourseId]);
 
   const selectedTee = tees.find((t) => t.id === selectedTeeId) ?? null;
+
+  function formatTeeLabel(t: CourseTee) {
+    let label = `${t.green_type} / ${t.tee_name}`;
+    if (t.course_rating != null || t.slope_rating != null) {
+      const parts: string[] = [];
+      if (t.course_rating != null) parts.push(`CR:${t.course_rating}`);
+      if (t.slope_rating  != null) parts.push(`SR:${t.slope_rating}`);
+      label += `（${parts.join(" / ")}）`;
+    }
+    return label;
+  }
 
   async function handleAutoWeather() {
     if (!navigator.geolocation) {
@@ -94,7 +127,6 @@ export function NewRoundForm({ linkedCourseId }: { linkedCourseId?: string }) {
       return;
     }
     setWeatherStatus("locating");
-
     navigator.geolocation.getCurrentPosition(
       async (pos) => {
         setWeatherStatus("fetching");
@@ -133,7 +165,7 @@ export function NewRoundForm({ linkedCourseId }: { linkedCourseId?: string }) {
         weather:        weather ?? null,
         wind_speed:     windSpeed ?? null,
         wind_direction: windDirection ?? null,
-        ...(linkedCourseId ? { golf_course_id: linkedCourseId } : {}),
+        golf_course_id: selectedCourseId || null,
         ...(selectedTee ? {
           course_tee_id:  selectedTee.id,
           course_rating:  selectedTee.course_rating ?? null,
@@ -173,9 +205,33 @@ export function NewRoundForm({ linkedCourseId }: { linkedCourseId?: string }) {
         </div>
       )}
 
+      {/* ゴルフ場選択 */}
+      <div>
+        <label className="label">ゴルフ場</label>
+        <select
+          className="input"
+          value={selectedCourseId}
+          onChange={(e) => {
+            const val = e.target.value;
+            setSelectedCourseId(val);
+            if (!val) setCourseName("");
+          }}
+        >
+          <option value="">指定なし（手動入力）</option>
+          {courses.map((c) => (
+            <option key={c.id} value={c.id}>{c.name}</option>
+          ))}
+        </select>
+      </div>
+
       {/* コース名 */}
       <div>
-        <label className="label">コース名 *</label>
+        <label className="label">
+          コース名 *
+          {selectedCourseId && (
+            <span className="ml-1 text-xs text-green-400 font-normal">（自動入力）</span>
+          )}
+        </label>
         <input
           type="text"
           className="input"
@@ -186,8 +242,8 @@ export function NewRoundForm({ linkedCourseId }: { linkedCourseId?: string }) {
         />
       </div>
 
-      {/* グリーン・ティー選択（QR連携コースのみ） */}
-      {linkedCourseId && (
+      {/* グリーン・ティー選択（ゴルフ場選択時） */}
+      {selectedCourseId && (
         <div>
           <label className="label">グリーン・ティー</label>
           {teesLoading ? (
@@ -203,9 +259,7 @@ export function NewRoundForm({ linkedCourseId }: { linkedCourseId?: string }) {
               >
                 {tees.map((t) => (
                   <option key={t.id} value={t.id}>
-                    {t.green_type} / {t.tee_name}
-                    {t.course_rating != null ? ` (CR ${t.course_rating}` : ""}
-                    {t.slope_rating  != null ? ` / SR ${t.slope_rating})` : t.course_rating != null ? ")" : ""}
+                    {formatTeeLabel(t)}
                   </option>
                 ))}
               </select>
@@ -213,7 +267,7 @@ export function NewRoundForm({ linkedCourseId }: { linkedCourseId?: string }) {
                 <p className="text-xs text-green-500 mt-1">
                   {selectedTee.course_rating != null && `コースレート: ${selectedTee.course_rating}`}
                   {selectedTee.course_rating != null && selectedTee.slope_rating != null && "　"}
-                  {selectedTee.slope_rating != null && `スロープレート: ${selectedTee.slope_rating}`}
+                  {selectedTee.slope_rating  != null && `スロープレート: ${selectedTee.slope_rating}`}
                 </p>
               )}
             </>
@@ -285,7 +339,7 @@ export function NewRoundForm({ linkedCourseId }: { linkedCourseId?: string }) {
         </div>
       </div>
 
-      {/* ── 天気・風 自動取得バナー ──────────────────────── */}
+      {/* ── 天気・風 ─────────────────────────────────────────── */}
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <span className="label">天気・風（自動取得可）</span>
@@ -364,7 +418,7 @@ export function NewRoundForm({ linkedCourseId }: { linkedCourseId?: string }) {
           </div>
         </div>
 
-        {/* 風向き (コンパスローズ) */}
+        {/* 風向き */}
         <div>
           <p className="text-xs text-green-600 font-medium mb-1.5">風向き</p>
           <div className="grid grid-cols-3 gap-2 max-w-[240px] mx-auto">

@@ -20,11 +20,20 @@ export default async function RoundDetailPage({ params }: Props) {
 
   if (!round) notFound();
 
-  const { data: holes } = await supabase
-    .from("holes")
-    .select("*, shots(*)")
-    .eq("round_id", id)
-    .order("hole_number");
+  const [{ data: holes }, { data: courseHoles }] = await Promise.all([
+    supabase
+      .from("holes")
+      .select("*, shots(*)")
+      .eq("round_id", id)
+      .order("hole_number"),
+    round.golf_course_id
+      ? supabase
+          .from("course_holes")
+          .select("hole_number, par")
+          .eq("course_id", round.golf_course_id)
+          .order("hole_number")
+      : Promise.resolve({ data: null }),
+  ]);
 
   return (
     <div className="max-w-lg mx-auto p-4 space-y-4">
@@ -49,6 +58,7 @@ export default async function RoundDetailPage({ params }: Props) {
         windSpeed={round.wind_speed ?? null}
         courseRating={round.course_rating ?? null}
         slopeRating={round.slope_rating ?? null}
+        courseHoles={courseHoles ?? undefined}
       />
     </div>
   );
