@@ -230,6 +230,8 @@ interface EventRow {
   event_name: string;
   course_id: string;
   hole_number: number;
+  event_type: string;
+  event_code: string | null;
   start_date: string;
   end_date: string;
   created_at: string;
