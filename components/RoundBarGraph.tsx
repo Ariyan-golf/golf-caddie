@@ -29,7 +29,7 @@ export function RoundBarGraph({ data }: { data: RoundData[] }) {
 
   return (
     <div className="card space-y-3">
-      <h2 className="font-semibold text-green-800">直近10ラウンド成績グラフ</h2>
+      <h2 className="font-semibold text-green-800">直近3ラウンド成績グラフ</h2>
       <ResponsiveContainer width="100%" height={220}>
         <BarChart data={chartData} margin={{ top: 4, right: hasPutts ? 12 : 4, left: -20, bottom: 24 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#dcfce7" />
