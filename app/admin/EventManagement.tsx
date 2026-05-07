@@ -13,6 +13,8 @@ interface Event {
   event_name: string;
   course_id: string;
   hole_number: number;
+  event_type: string;
+  event_code: string | null;
   start_date: string;
   end_date: string;
   created_at: string;
@@ -30,6 +32,7 @@ interface RankingRow {
 interface RankingEvent {
   id: string;
   event_name: string;
+  event_type: string;
   start_date: string;
   end_date: string;
   hole_number: number;
@@ -59,6 +62,8 @@ export function EventManagement({
   const [eventName,  setEventName]  = useState("");
   const [courseId,   setCourseId]   = useState(courses[0]?.id ?? "");
   const [holeNum,    setHoleNum]    = useState(1);
+  const [eventType,  setEventType]  = useState<"monthly" | "comp">("monthly");
+  const [eventCode,  setEventCode]  = useState("");
   const [startDate,  setStartDate]  = useState("");
   const [endDate,    setEndDate]    = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -93,7 +98,9 @@ export function EventManagement({
         course_id: courseId,
         hole_number: holeNum,
         start_date: startDate,
-        end_date: endDate,
+        end_date: eventType === "comp" ? startDate : endDate,
+        event_type: eventType,
+        event_code: eventType === "comp" ? eventCode : undefined,
       }),
     });
     const data = await res.json();
@@ -102,6 +109,7 @@ export function EventManagement({
       setFormError(data.error ?? "登録に失敗しました");
     } else {
       setEventName("");
+      setEventCode("");
       setStartDate("");
       setEndDate("");
       router.refresh();
@@ -171,16 +179,54 @@ export function EventManagement({
       <div className="bg-white border border-green-200 rounded-xl p-4">
         <p className="text-sm font-semibold text-green-700 mb-3">新規イベント登録</p>
         <form onSubmit={handleCreate} className="space-y-3">
+          {/* イベントタイプ */}
+          <div>
+            <label className="text-xs text-green-600 font-medium block mb-1">イベントタイプ *</label>
+            <div className="flex gap-3">
+              {(["monthly", "comp"] as const).map((t) => (
+                <label key={t} className="flex items-center gap-1.5 cursor-pointer text-sm">
+                  <input
+                    type="radio"
+                    name="eventType"
+                    value={t}
+                    checked={eventType === t}
+                    onChange={() => { setEventType(t); setEventCode(""); }}
+                    className="accent-green-600"
+                  />
+                  <span className="text-green-700">
+                    {t === "monthly" ? "月間イベント" : "コンペイベント（当日限定）"}
+                  </span>
+                </label>
+              ))}
+            </div>
+          </div>
+
           <div>
             <label className="text-xs text-green-600 font-medium block mb-1">イベント名 *</label>
             <input
               value={eventName}
               onChange={(e) => setEventName(e.target.value)}
-              placeholder="春の飛距離コンテスト"
+              placeholder={eventType === "comp" ? "〇〇カップ ドラコン" : "春の飛距離コンテスト"}
               required
               className="w-full border border-green-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
             />
           </div>
+
+          {/* コンペ用イベントコード */}
+          {eventType === "comp" && (
+            <div>
+              <label className="text-xs text-green-600 font-medium block mb-1">
+                イベントコード * <span className="text-green-400 font-normal">（参加者に共有する合言葉）</span>
+              </label>
+              <input
+                value={eventCode}
+                onChange={(e) => setEventCode(e.target.value.toUpperCase())}
+                placeholder="例: DRACON240507"
+                required={eventType === "comp"}
+                className="w-full border border-green-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400 font-mono tracking-wider"
+              />
+            </div>
+          )}
 
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -214,29 +260,44 @@ export function EventManagement({
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          {eventType === "comp" ? (
             <div>
-              <label className="text-xs text-green-600 font-medium block mb-1">開始日 *</label>
+              <label className="text-xs text-green-600 font-medium block mb-1">
+                開催日 * <span className="text-green-400 font-normal">（当日のみ有効）</span>
+              </label>
               <input
                 type="date"
                 value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
+                onChange={(e) => { setStartDate(e.target.value); setEndDate(e.target.value); }}
                 required
                 className="w-full border border-green-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
               />
             </div>
-            <div>
-              <label className="text-xs text-green-600 font-medium block mb-1">終了日 *</label>
-              <input
-                type="date"
-                value={endDate}
-                min={startDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                required
-                className="w-full border border-green-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
-              />
+          ) : (
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs text-green-600 font-medium block mb-1">開始日 *</label>
+                <input
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  required
+                  className="w-full border border-green-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-green-600 font-medium block mb-1">終了日 *</label>
+                <input
+                  type="date"
+                  value={endDate}
+                  min={startDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  required
+                  className="w-full border border-green-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
+                />
+              </div>
             </div>
-          </div>
+          )}
 
           {formError && (
             <p className="text-xs text-red-500">{formError}</p>
@@ -260,6 +321,7 @@ export function EventManagement({
               <th className="text-left px-4 py-3 font-semibold">イベント名</th>
               <th className="text-left px-4 py-3 font-semibold">ゴルフ場</th>
               <th className="text-center px-4 py-3 font-semibold">H</th>
+              <th className="text-left px-4 py-3 font-semibold whitespace-nowrap">種別</th>
               <th className="text-left px-4 py-3 font-semibold whitespace-nowrap">開始日</th>
               <th className="text-left px-4 py-3 font-semibold whitespace-nowrap">終了日</th>
               <th className="px-4 py-3" />
@@ -275,9 +337,27 @@ export function EventManagement({
             ) : (
               initialEvents.map((ev) => (
                 <tr key={ev.id} className="border-b border-green-50 last:border-0 hover:bg-green-50/50">
-                  <td className="px-4 py-3 font-medium text-green-900">{ev.event_name}</td>
+                  <td className="px-4 py-3 font-medium text-green-900">
+                    {ev.event_name}
+                    {ev.event_type === "comp" && ev.event_code && (
+                      <span className="ml-1 text-xs font-mono text-orange-500 bg-orange-50 px-1.5 py-0.5 rounded">
+                        {ev.event_code}
+                      </span>
+                    )}
+                  </td>
                   <td className="px-4 py-3 text-green-700 text-xs">{ev.golf_courses?.name ?? "—"}</td>
                   <td className="px-4 py-3 text-center text-green-700">{ev.hole_number}</td>
+                  <td className="px-4 py-3 text-xs whitespace-nowrap">
+                    {ev.event_type === "comp" ? (
+                      <span className="bg-orange-100 text-orange-600 px-2 py-0.5 rounded-full font-semibold text-xs">
+                        コンペ
+                      </span>
+                    ) : (
+                      <span className="bg-green-100 text-green-600 px-2 py-0.5 rounded-full font-semibold text-xs">
+                        月間
+                      </span>
+                    )}
+                  </td>
                   <td className="px-4 py-3 text-green-500 text-xs whitespace-nowrap">
                     {new Date(ev.start_date).toLocaleDateString("ja-JP")}
                   </td>

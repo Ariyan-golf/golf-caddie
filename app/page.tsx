@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
@@ -6,6 +7,7 @@ import { Navigation } from "@/components/Navigation";
 import { LogoutButton } from "@/components/LogoutButton";
 import { RoundPaymentButton } from "@/components/RoundPaymentButton";
 import { RoundBarGraph } from "@/components/RoundBarGraph";
+import { EventRankingSection, type EventRankingData } from "@/components/EventRankingSection";
 
 export const dynamic = "force-dynamic";
 
@@ -16,6 +18,102 @@ export default async function HomePage() {
   } = await supabase.auth.getUser();
 
   if (!user) redirect("/login");
+
+  // ── 開催中イベントランキング ──────────────────────────────────────────
+  const adminDb = createAdminClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
+  const todayStr = new Date().toISOString().split("T")[0];
+
+  const { data: activeEvents } = await adminDb
+    .from("events")
+    .select("*, golf_courses(name)")
+    .lte("start_date", todayStr)
+    .gte("end_date", todayStr)
+    .order("created_at", { ascending: false });
+
+  const eventRankings: EventRankingData[] = await Promise.all(
+    (activeEvents ?? []).map(async (event) => {
+      const endExclusive = new Date(event.end_date);
+      endExclusive.setDate(endExclusive.getDate() + 1);
+      const endStr = endExclusive.toISOString().split("T")[0];
+
+      let participantIds: string[] | null = null;
+      let isParticipant = false;
+
+      if (event.event_type === "comp") {
+        const { data: parts } = await adminDb
+          .from("event_participants")
+          .select("user_id")
+          .eq("event_id", event.id);
+        participantIds = (parts ?? []).map((p: { user_id: string }) => p.user_id);
+        isParticipant = participantIds.includes(user.id);
+        if (participantIds.length === 0) {
+          return { event, ranking: [], myRank: null, isParticipant: false };
+        }
+      }
+
+      const baseQuery = adminDb
+        .from("shot_distances")
+        .select("user_id, distance_meters, distance_yards")
+        .gte("created_at", event.start_date)
+        .lt("created_at", endStr);
+
+      const { data: shots } =
+        participantIds !== null
+          ? await baseQuery.in("user_id", participantIds)
+          : await baseQuery;
+
+      const byUser = new Map<string, { distance_meters: number; distance_yards: number }>();
+      for (const s of shots ?? []) {
+        const m = Number(s.distance_meters);
+        const cur = byUser.get(s.user_id);
+        if (!cur || m > cur.distance_meters) {
+          byUser.set(s.user_id, { distance_meters: m, distance_yards: s.distance_yards });
+        }
+      }
+
+      if (byUser.size === 0) {
+        return { event, ranking: [], myRank: null, isParticipant };
+      }
+
+      const uids = Array.from(byUser.keys());
+      const { data: profs } = await adminDb
+        .from("profiles")
+        .select("id, display_name")
+        .in("id", uids);
+      const profMap = new Map(
+        (profs ?? []).map((p: { id: string; display_name: string | null }) => [
+          p.id,
+          p.display_name ?? "—",
+        ])
+      );
+
+      const ranked = Array.from(byUser.entries())
+        .map(([uid, best]) => ({
+          user_id: uid,
+          display_name: profMap.get(uid) ?? "—",
+          max_distance_meters: best.distance_meters,
+          max_distance_yards: best.distance_yards,
+        }))
+        .sort((a, b) => b.max_distance_meters - a.max_distance_meters)
+        .map((row, i) => ({ ...row, rank: i + 1 }));
+
+      const myEntry = ranked.find((r) => r.user_id === user.id);
+      const myRank = myEntry
+        ? {
+            rank: myEntry.rank,
+            max_distance_meters: myEntry.max_distance_meters,
+            max_distance_yards: myEntry.max_distance_yards,
+          }
+        : null;
+
+      const ranking = ranked.map(({ user_id: _uid, ...rest }) => rest);
+      return { event, ranking, myRank, isParticipant };
+    })
+  );
+  // ─────────────────────────────────────────────────────────────────────
 
   const [{ data: profile }, { data: roundsRaw }, { data: clubStats }, { data: handicapData }] =
     await Promise.all([
@@ -119,6 +217,11 @@ export default async function HomePage() {
             プランを変更する →
           </Link>
         </div>
+
+        {/* 開催中イベント */}
+        {eventRankings.length > 0 && (
+          <EventRankingSection events={eventRankings} />
+        )}
 
         {/* GCAハンディ */}
         <div className="card flex items-center justify-between gap-4">

@@ -48,12 +48,29 @@ export async function GET(
   endExclusive.setDate(endExclusive.getDate() + 1);
   const endStr = endExclusive.toISOString().split("T")[0];
 
-  // 期間内の shot_distances を全件取得
-  const { data: shots, error: shotErr } = await admin
+  // コンペイベントの場合は参加者のみ対象
+  let participantIds: string[] | null = null;
+  if (event.event_type === "comp") {
+    const { data: parts } = await admin
+      .from("event_participants")
+      .select("user_id")
+      .eq("event_id", eventId);
+    participantIds = (parts ?? []).map((p: { user_id: string }) => p.user_id);
+  }
+
+  // 期間内の shot_distances を取得（コンペは参加者のみ）
+  const baseQuery = admin
     .from("shot_distances")
     .select("user_id, distance_meters, distance_yards, created_at")
     .gte("created_at", event.start_date)
     .lt("created_at", endStr);
+
+  const { data: shots, error: shotErr } =
+    participantIds !== null && participantIds.length > 0
+      ? await baseQuery.in("user_id", participantIds)
+      : participantIds !== null && participantIds.length === 0
+      ? { data: [], error: null }
+      : await baseQuery;
 
   if (shotErr) return NextResponse.json({ error: shotErr.message }, { status: 500 });
 

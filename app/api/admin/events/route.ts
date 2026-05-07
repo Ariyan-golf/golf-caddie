@@ -37,14 +37,18 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const admin = adminDb();
-  const { event_name, course_id, hole_number, start_date, end_date } =
+  const { event_name, course_id, hole_number, start_date, end_date, event_type, event_code } =
     await req.json() as {
       event_name: string;
       course_id: string;
       hole_number: number;
       start_date: string;
       end_date: string;
+      event_type?: string;
+      event_code?: string;
     };
+
+  const type = event_type === "comp" ? "comp" : "monthly";
 
   if (!event_name?.trim()) {
     return NextResponse.json({ error: "イベント名は必須です" }, { status: 400 });
@@ -61,10 +65,26 @@ export async function POST(req: Request) {
   if (end_date < start_date) {
     return NextResponse.json({ error: "終了日は開始日以降にしてください" }, { status: 400 });
   }
+  if (type === "comp") {
+    if (!event_code?.trim()) {
+      return NextResponse.json({ error: "コンペイベントにはイベントコードが必要です" }, { status: 400 });
+    }
+    if (start_date !== end_date) {
+      return NextResponse.json({ error: "コンペイベントは開始日と終了日を同じ日にしてください" }, { status: 400 });
+    }
+  }
 
   const { data, error } = await admin
     .from("events")
-    .insert({ event_name: event_name.trim(), course_id, hole_number, start_date, end_date })
+    .insert({
+      event_name: event_name.trim(),
+      course_id,
+      hole_number,
+      start_date,
+      end_date,
+      event_type: type,
+      event_code: type === "comp" ? event_code!.trim().toUpperCase() : null,
+    })
     .select()
     .single();
 
