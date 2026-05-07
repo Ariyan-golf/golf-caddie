@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import LineLoginButton from "@/components/LineLoginButton";
 
 const INVITE_CODE_MAP: Record<string, { graduation_year: number }> = {
   TOKAI2026: { graduation_year: 2026 },
@@ -151,6 +152,15 @@ export default function RegisterPage() {
               {loading ? "登録中..." : "アカウント作成"}
             </button>
           </form>
+        </div>
+
+        <div className="mt-4">
+          <div className="flex items-center gap-3 my-4">
+            <hr className="flex-1 border-green-200" />
+            <span className="text-xs text-green-500">または</span>
+            <hr className="flex-1 border-green-200" />
+          </div>
+          <LineLoginButton />
         </div>
 
         <p className="text-center text-sm text-green-600 mt-4">
