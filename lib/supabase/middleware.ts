@@ -28,10 +28,14 @@ export async function updateSession(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   const { pathname } = request.nextUrl;
+  // 未ログインでも見られる公開ページ
   const publicPaths = ["/login", "/register", "/auth/callback", "/auth/line", "/lp.html"];
+  // ログイン状態に関わらず両対応するページ（middlewareでリダイレクトしない）
+  const openPaths = ["/pay"];
   const isPublic = publicPaths.some((p) => pathname.startsWith(p));
+  const isOpen = openPaths.some((p) => pathname === p || pathname.startsWith(`${p}/`));
 
-  if (!user && !isPublic) {
+  if (!user && !isPublic && !isOpen) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     return NextResponse.redirect(url);
