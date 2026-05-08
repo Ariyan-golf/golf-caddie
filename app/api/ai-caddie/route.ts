@@ -1,5 +1,6 @@
 import { anthropic } from "@/lib/anthropic";
 import { createClient } from "@/lib/supabase/server";
+import { hasFullAccess } from "@/lib/day-pass";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 
@@ -44,13 +45,11 @@ export async function POST(request: Request) {
   );
   const { data: profile } = await admin
     .from("profiles")
-    .select("plan")
+    .select("plan, day_pass_date")
     .eq("id", user.id)
     .single();
 
-  const isPremium = profile?.plan === "premium" || profile?.plan === "premium_paid";
-
-  if (!isPremium) {
+  if (!hasFullAccess(profile ?? {})) {
     const { gte, lt } = todayJSTBounds();
     const { data: todayPayment } = await admin
       .from("round_payments")

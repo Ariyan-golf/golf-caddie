@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { hasFullAccess } from "@/lib/day-pass";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { AiManagerClient } from "./AiManagerClient";
 
@@ -12,11 +13,11 @@ export default async function AiManagerPage() {
   );
   const { data: profile } = await admin
     .from("profiles")
-    .select("plan")
+    .select("plan, day_pass_date")
     .eq("id", user!.id)
     .single();
 
-  const isPremium = profile?.plan === "premium" || profile?.plan === "premium_paid";
+  const canAccess = hasFullAccess(profile ?? {});
 
   return (
     <div className="max-w-lg mx-auto p-4 space-y-4">
@@ -30,7 +31,7 @@ export default async function AiManagerPage() {
         </p>
       </div>
 
-      {isPremium ? (
+      {canAccess ? (
         <AiManagerClient />
       ) : (
         <PremiumGate />

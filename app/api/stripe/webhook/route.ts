@@ -1,5 +1,6 @@
 import { stripe } from "@/lib/stripe";
 import { generateReferralCode } from "@/lib/referral-code";
+import { todayJST } from "@/lib/day-pass";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 import type Stripe from "stripe";
@@ -42,6 +43,15 @@ async function updateUserPlan(userId: string, plan: "free" | "standard" | "premi
   }
 }
 
+async function activateDayPass(session: Stripe.Checkout.Session) {
+  const userId = session.metadata?.user_id ?? session.client_reference_id;
+  if (!userId) return;
+  await adminClient()
+    .from("profiles")
+    .update({ day_pass_date: todayJST() })
+    .eq("id", userId);
+}
+
 async function recordRoundPayment(session: Stripe.Checkout.Session) {
   const userId = session.metadata?.user_id ?? session.client_reference_id;
   if (!userId) return;
@@ -77,6 +87,8 @@ export async function POST(request: Request) {
       const session = event.data.object as Stripe.Checkout.Session;
       if (session.metadata?.type === "round_payment") {
         await recordRoundPayment(session);
+      } else if (session.metadata?.type === "day_pass") {
+        await activateDayPass(session);
       } else {
         const userId = session.metadata?.user_id ?? session.client_reference_id;
         const plan   = session.metadata?.plan;

@@ -11,11 +11,14 @@ export async function GET(request: NextRequest) {
 
   const cookieStore = await cookies();
   const storedState = cookieStore.get("line_oauth_state")?.value;
+  const storedRedirect = cookieStore.get("line_oauth_redirect")?.value;
+  const redirectPath = storedRedirect && storedRedirect.startsWith("/") ? storedRedirect : "/";
 
   if (!code || !state || state !== storedState) {
     return NextResponse.redirect(`${origin}/login?error=invalid_state`);
   }
   cookieStore.delete("line_oauth_state");
+  cookieStore.delete("line_oauth_redirect");
 
   // Exchange code for LINE access token
   const tokenRes = await fetch("https://api.line.me/oauth2/v2.1/token", {
@@ -108,7 +111,7 @@ export async function GET(request: NextRequest) {
   }
 
   // Sign in with synthetic credentials to set SSR session cookies
-  const response = NextResponse.redirect(`${origin}/`);
+  const response = NextResponse.redirect(`${origin}${redirectPath}`);
 
   const cookieMethods: CookieMethodsServer = {
     getAll() {

@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { hasActiveDayPass } from "@/lib/day-pass";
 import Link from "next/link";
 import { NewRoundForm } from "./NewRoundForm";
 
@@ -15,15 +16,16 @@ export default async function NewRoundPage({ searchParams }: PageProps) {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("plan, round_count, role")
+    .select("plan, round_count, role, day_pass_date")
     .eq("id", user!.id)
     .single();
 
   const plan = profile?.plan ?? "free";
   const role = profile?.role ?? "general";
   const roundCount = profile?.round_count ?? 0;
-  // pro ロールはラウンド上限なし・支払い不要
-  const isBlocked = plan === "free" && roundCount >= FREE_ROUND_LIMIT && role !== "pro";
+  const dayPassActive = hasActiveDayPass(profile?.day_pass_date);
+  // pro ロール / day_pass有効 はラウンド上限なし・支払い不要
+  const isBlocked = plan === "free" && roundCount >= FREE_ROUND_LIMIT && role !== "pro" && !dayPassActive;
 
   return (
     <div className="max-w-lg mx-auto p-4 space-y-4">
@@ -55,7 +57,7 @@ export default async function NewRoundPage({ searchParams }: PageProps) {
         </div>
       ) : (
         <>
-          {plan === "free" && role !== "pro" && (
+          {plan === "free" && role !== "pro" && !dayPassActive && (
             <div className="flex items-center justify-between bg-green-50 border border-green-200 rounded-xl px-4 py-2 text-sm">
               <span className="text-green-600">
                 残りラウンド数：<span className="font-bold text-green-800">{FREE_ROUND_LIMIT - roundCount}</span> / {FREE_ROUND_LIMIT}

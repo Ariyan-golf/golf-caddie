@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { hasFullAccess } from "@/lib/day-pass";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { AiCaddieClient } from "./AiCaddieClient";
 
@@ -12,7 +13,7 @@ export default async function AiCaddiePage() {
   );
 
   const [{ data: profile }, todayPayment, { data: clubAverages }] = await Promise.all([
-    admin.from("profiles").select("plan").eq("id", user!.id).single(),
+    admin.from("profiles").select("plan, day_pass_date").eq("id", user!.id).single(),
     (async () => {
       const nowMs = Date.now();
       const jstMs = nowMs + 9 * 60 * 60 * 1000;
@@ -31,7 +32,7 @@ export default async function AiCaddiePage() {
     admin.from("club_averages").select("*").eq("user_id", user!.id),
   ]);
 
-  const hasAccess = profile?.plan === "premium" || profile?.plan === "premium_paid" || !!todayPayment;
+  const hasAccess = hasFullAccess(profile ?? {}) || !!todayPayment;
 
   return (
     <div className="max-w-lg mx-auto p-4 space-y-4">
