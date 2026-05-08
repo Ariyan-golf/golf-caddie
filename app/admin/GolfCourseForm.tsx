@@ -74,7 +74,7 @@ function defaultTees(): TeeEntry[] {
 function QrDisplay({ courseId, courseName }: { courseId: string; courseName: string }) {
   const [dataUrl, setDataUrl] = useState("");
   const origin = typeof window !== "undefined" ? window.location.origin : "";
-  const url = `${origin}/golf-qr?course=${courseId}`;
+  const url = `${origin}/pay?course_id=${courseId}`;
 
   useEffect(() => {
     QRCode.toDataURL(url, { width: 256, margin: 2, color: { dark: "#166534", light: "#ffffff" } })
