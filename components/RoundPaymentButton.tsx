@@ -10,7 +10,7 @@ export function RoundPaymentButton() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/stripe/checkout-once", {
+      const res = await fetch("/api/stripe/checkout-day-pass", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({}),
@@ -48,18 +48,9 @@ export function RoundPaymentButton() {
       <button
         onClick={handleClick}
         disabled={loading}
-        className="w-full py-3 rounded-xl text-sm font-semibold bg-blue-600 hover:bg-blue-700
-                   active:bg-blue-800 text-white transition-colors
-                   disabled:opacity-50 disabled:cursor-not-allowed"
+        className="w-full py-3 rounded-xl text-sm font-semibold bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
       >
-        {loading ? (
-          <span className="flex items-center justify-center gap-2">
-            <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-            処理中...
-          </span>
-        ) : (
-          "⛳ 330円でラウンド利用を開始する"
-        )}
+        {loading ? "読み込み中..." : "330円でラウンド利用を開始する"}
       </button>
     </div>
   );
