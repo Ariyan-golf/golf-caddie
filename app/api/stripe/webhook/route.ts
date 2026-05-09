@@ -49,20 +49,20 @@ async function recordRoundPayment(session: Stripe.Checkout.Session) {
   const userId = session.metadata?.user_id ?? session.client_reference_id;
   if (!userId) return;
   const db = adminClient();
-  // 金額を Stripe セッションから取得（¥280 or ¥330）
-  const amount = session.amount_total ?? 330;
-  // round_payments テーブルに記録
-  await db.from("round_payments").insert({
-    user_id:          userId,
-    amount:           amount,
-    golf_course:      session.metadata?.golf_course ?? null,
-    stripe_session_id: session.id,
-  });
-  // ★重要: day_pass_date も更新して重複決済を防止
+  // ★最優先: day_pass_date を更新して重複決済を防止
+  // （万が一この後の処理で失敗しても、重複防止は確実に効く）
   await db
     .from("profiles")
     .update({ day_pass_date: todayJST() })
     .eq("id", userId);
+  // 金額を Stripe セッションから取得（¥280 or ¥330）
+  const amount = session.amount_total ?? 330;
+  // round_payments テーブルに記録（stripe_session_idカラムは存在しないため除外）
+  await db.from("round_payments").insert({
+    user_id:     userId,
+    amount:      amount,
+    golf_course: session.metadata?.golf_course ?? null,
+  });
 }
 export async function POST(request: Request) {
   const body      = await request.text();
@@ -111,8 +111,3 @@ export async function POST(request: Request) {
       if (userId) {
         await updateUserPlan(userId, "free");
       }
-      break;
-    }
-  }
-  return NextResponse.json({ received: true });
-}
