@@ -43,15 +43,6 @@ async function updateUserPlan(userId: string, plan: "free" | "standard" | "premi
   }
 }
 
-async function activateDayPass(session: Stripe.Checkout.Session) {
-  const userId = session.metadata?.user_id ?? session.client_reference_id;
-  if (!userId) return;
-  await adminClient()
-    .from("profiles")
-    .update({ day_pass_date: todayJST() })
-    .eq("id", userId);
-}
-
 async function recordRoundPayment(session: Stripe.Checkout.Session) {
   const userId = session.metadata?.user_id ?? session.client_reference_id;
   if (!userId) return;
@@ -68,11 +59,11 @@ async function recordRoundPayment(session: Stripe.Checkout.Session) {
   // 金額を Stripe セッションから取得（¥280 or ¥330）
   const amount = session.amount_total ?? 330;
 
-  // round_payments テーブルに記録（stripe_session_idカラムは存在しないため除外）
+  // round_payments テーブルに記録（収益分配の集計用）
   await db.from("round_payments").insert({
     user_id:     userId,
     amount:      amount,
-    golf_course: session.metadata?.golf_course ?? null,
+    golf_course: session.metadata?.course_id || session.metadata?.golf_course || null,
   });
 }
 
@@ -99,13 +90,18 @@ export async function POST(request: Request) {
     case "checkout.session.completed": {
       const session = event.data.object as Stripe.Checkout.Session;
 
-      if (session.metadata?.type === "round_payment") {
+      // ラウンド決済（kind: "day_pass" or "round_payment"）
+      if (
+        session.metadata?.kind === "day_pass" ||
+        session.metadata?.kind === "round_payment" ||
+        session.metadata?.type === "round_payment" ||
+        session.metadata?.type === "day_pass"
+      ) {
         await recordRoundPayment(session);
-      } else if (session.metadata?.type === "day_pass") {
-        await activateDayPass(session);
       } else {
+        // サブスクプラン変更
         const userId = session.metadata?.user_id ?? session.client_reference_id;
-        const plan   = session.metadata?.plan;
+        const plan   = session.metadata?.plan ?? session.metadata?.plan_at_purchase;
         if (userId && plan && PLAN_MAP[plan]) {
           await updateUserPlan(userId, PLAN_MAP[plan]);
         }
