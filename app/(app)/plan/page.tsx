@@ -206,7 +206,7 @@ export default async function PlanPage({ searchParams }: Props) {
 
       <div className="card bg-blue-50 border-blue-200 space-y-3 text-sm text-blue-700">
         <p className="font-semibold text-blue-800">⛳ 提携ゴルフ場でのご利用</p>
-        <p>330円/ラウンド（ゴルフ場110円・紹介者110円・健考社110円）</p>
+        <p>通常330円、サブスク会員は280円となります。</p>
         <p>サブスクとは別料金です。当日1回のみ有効です。</p>
         <RoundPaymentButton />
       </div>
