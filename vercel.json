@@ -3,6 +3,10 @@
     {
       "path": "/api/cleanup-cancelled",
       "schedule": "0 2 * * *"
+    },
+    {
+      "path": "/api/cron/cleanup-pending-rounds",
+      "schedule": "30 15 * * *"
     }
   ]
 }

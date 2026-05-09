@@ -102,6 +102,8 @@ export default async function RoundDetailPage({ params }: Props) {
         courseRating={round.course_rating ?? null}
         slopeRating={round.slope_rating ?? null}
         courseHoles={courseHoles}
+        paymentStatus={(round.payment_status ?? "paid") as "pending" | "paid"}
+        golfCourseName={round.course_name ?? ""}
       />
     </div>
   );

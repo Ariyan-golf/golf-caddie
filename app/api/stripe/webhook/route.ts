@@ -61,10 +61,26 @@ async function recordRoundPayment(session: Stripe.Checkout.Session) {
 
   // round_payments テーブルに記録（収益分配の集計用）
   await db.from("round_payments").insert({
-    user_id:     userId,
-    amount:      amount,
-    golf_course: session.metadata?.course_id || session.metadata?.golf_course || null,
+    user_id:           userId,
+    amount:            amount,
+    golf_course:       session.metadata?.course_id || session.metadata?.golf_course || null,
+    stripe_session_id: session.id,
   });
+
+  // QR後払いフロー: 当日 JST 中の pending ラウンドを全て paid に
+  const today = todayJST();
+  const startOfTodayJST = new Date(`${today}T00:00:00+09:00`).toISOString();
+
+  const { error } = await db
+    .from("rounds")
+    .update({ payment_status: "paid" })
+    .eq("user_id", userId)
+    .eq("payment_status", "pending")
+    .gte("created_at", startOfTodayJST);
+
+  if (error) {
+    console.error("[webhook] failed to mark rounds paid:", error.message);
+  }
 }
 
 export async function POST(request: Request) {
