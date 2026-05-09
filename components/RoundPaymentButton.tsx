@@ -50,7 +50,7 @@ export function RoundPaymentButton() {
         disabled={loading}
         className="w-full py-3 rounded-xl text-sm font-semibold bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
       >
-        {loading ? "読み込み中..." : "330円でラウンド利用を開始する"}
+        {loading ? "読み込み中..." : "課金してラウンド利用を開始する"}
       </button>
     </div>
   );
