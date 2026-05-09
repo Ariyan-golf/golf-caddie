@@ -117,7 +117,7 @@ export default async function HomePage() {
 
   const [{ data: profile }, { data: roundsRaw }, { data: clubStats }, { data: handicapData }] =
     await Promise.all([
-      supabase.from("profiles").select("display_name").eq("id", user.id).single(),
+      supabase.from("profiles").select("display_name, day_pass_date, plan").eq("id", user.id).single(),
       supabase
         .from("rounds")
         .select("id, course_name, date, total_score, holes(putts)")
@@ -138,6 +138,11 @@ export default async function HomePage() {
         .order("date", { ascending: false })
         .limit(20),
     ]);
+
+  // 本日day_pass有効か判定
+  const isPaidToday = profile?.day_pass_date === todayStr;
+  const isPremium = profile?.plan === "premium";
+  const hasFullAccess = isPaidToday || isPremium;
 
   // スコアあり10ラウンド分のグラフデータ（total_puttsをholes集計）
   const graphData = (roundsRaw ?? []).map((r) => {
@@ -265,17 +270,33 @@ export default async function HomePage() {
         {/* ② Score & putts bar graph */}
         <RoundBarGraph data={graphData} />
 
-        {/* ③ Partnership payment */}
-        <div className="card space-y-3">
-          <div className="flex items-center gap-3">
-            <span className="text-2xl">⛳</span>
-            <div>
-              <p className="font-semibold text-green-700 text-sm">提携ゴルフ場と連携</p>
-              <p className="text-xs text-green-500">330円／ラウンド</p>
+        {/* ③ Partnership payment / Day pass status */}
+        {hasFullAccess ? (
+          <div className="card bg-green-50 border-green-300 space-y-2">
+            <div className="flex items-center gap-3">
+              <span className="text-2xl">✅</span>
+              <div>
+                <p className="font-semibold text-green-800 text-sm">
+                  {isPremium ? "プレミアムプラン利用中" : "本日のラウンド利用中"}
+                </p>
+                <p className="text-xs text-green-600">
+                  {isPremium ? "全機能をご利用いただけます" : "本日23:59まで全機能利用可能"}
+                </p>
+              </div>
             </div>
           </div>
-          <RoundPaymentButton />
-        </div>
+        ) : (
+          <div className="card space-y-3">
+            <div className="flex items-center gap-3">
+              <span className="text-2xl">⛳</span>
+              <div>
+                <p className="font-semibold text-green-700 text-sm">提携ゴルフ場と連携</p>
+                <p className="text-xs text-green-500">330円／ラウンド</p>
+              </div>
+            </div>
+            <RoundPaymentButton />
+          </div>
+        )}
 
         {/* ④ Recent rounds (5件) */}
         <div className="card">
