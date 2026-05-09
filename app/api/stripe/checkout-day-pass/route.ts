@@ -1,14 +1,12 @@
 import { stripe } from "@/lib/stripe";
-import { createClient } from "@/lib/supabase/server";
-import { NextResponse } from "next/server";
+import { createClient } from "@/lib/supabase/server"; import { NextResponse } from "next/server";
 
 const BASE_URL = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
 
 function todayJST(): string {
   const now = new Date();
   const jstMs = now.getTime() + 9 * 60 * 60 * 1000;
-  return new Date(jstMs).toISOString().slice(0, 10);
-}
+  return new Date(jstMs).toISOString().slice(0, 10); }
 
 export async function POST(request: Request) {
   const supabase = await createClient();
@@ -18,11 +16,19 @@ export async function POST(request: Request) {
   const body = await request.json() as { course_id?: string };
   const courseId = body.course_id ?? "";
 
-  const { data: profile } = await supabase
+  const { data: profile, error: profileError } = await supabase
     .from("profiles")
     .select("plan, day_pass_date, referrer_id")
     .eq("id", user.id)
     .single();
+
+  console.log("[checkout-day-pass] DEBUG", {
+    user_id: user.id,
+    profile,
+    profileError: profileError?.message,
+    todayJST: todayJST(),
+    courseId,
+  });
 
   if (profile?.day_pass_date === todayJST()) {
     return NextResponse.json(
@@ -35,6 +41,14 @@ export async function POST(request: Request) {
   const priceId = isSubscriber
     ? process.env.STRIPE_ROUND_SUB_PRICE_ID
     : process.env.STRIPE_ROUND_PRICE_ID;
+
+  console.log("[checkout-day-pass] PRICE", {
+    plan: profile?.plan,
+    isSubscriber,
+    priceId,
+    has_sub_price_env: !!process.env.STRIPE_ROUND_SUB_PRICE_ID,
+    has_normal_price_env: !!process.env.STRIPE_ROUND_PRICE_ID,
+  });
 
   if (!priceId) {
     console.error("Stripe price ID is not set", { isSubscriber });
@@ -77,5 +91,4 @@ export async function POST(request: Request) {
     },
   });
 
-  return NextResponse.json({ url: session.url });
-}
+  return NextResponse.json({ url: session.url }); }
