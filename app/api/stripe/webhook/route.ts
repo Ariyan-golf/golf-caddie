@@ -4,19 +4,16 @@ import { todayJST } from "@/lib/day-pass";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 import type Stripe from "stripe";
-
 const PLAN_MAP: Record<string, "standard" | "premium"> = {
   standard: "standard",
   premium:  "premium",
 };
-
 function adminClient() {
   return createAdminClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
 }
-
 /**
  * プラン変更と同時に referral_code を管理する
  * - premium 昇格時: referral_code が未設定なら自動生成
@@ -24,14 +21,12 @@ function adminClient() {
  */
 async function updateUserPlan(userId: string, plan: "free" | "standard" | "premium") {
   const db = adminClient();
-
   if (plan === "premium") {
     const { data: profile } = await db
       .from("profiles")
       .select("display_name, referral_code")
       .eq("id", userId)
       .single();
-
     const updates: Record<string, unknown> = { plan };
     if (!profile?.referral_code) {
       updates.referral_code = generateReferralCode(profile?.display_name ?? "");
@@ -42,7 +37,6 @@ async function updateUserPlan(userId: string, plan: "free" | "standard" | "premi
     await db.from("profiles").update({ plan, referral_code: null }).eq("id", userId);
   }
 }
-
 async function activateDayPass(session: Stripe.Checkout.Session) {
   const userId = session.metadata?.user_id ?? session.client_reference_id;
   if (!userId) return;
@@ -51,26 +45,31 @@ async function activateDayPass(session: Stripe.Checkout.Session) {
     .update({ day_pass_date: todayJST() })
     .eq("id", userId);
 }
-
 async function recordRoundPayment(session: Stripe.Checkout.Session) {
   const userId = session.metadata?.user_id ?? session.client_reference_id;
   if (!userId) return;
-  await adminClient().from("round_payments").insert({
+  const db = adminClient();
+  // 金額を Stripe セッションから取得（¥280 or ¥330）
+  const amount = session.amount_total ?? 330;
+  // round_payments テーブルに記録
+  await db.from("round_payments").insert({
     user_id:          userId,
-    amount:           330,
+    amount:           amount,
     golf_course:      session.metadata?.golf_course ?? null,
     stripe_session_id: session.id,
   });
+  // ★重要: day_pass_date も更新して重複決済を防止
+  await db
+    .from("profiles")
+    .update({ day_pass_date: todayJST() })
+    .eq("id", userId);
 }
-
 export async function POST(request: Request) {
   const body      = await request.text();
   const signature = request.headers.get("stripe-signature");
-
   if (!signature) {
     return NextResponse.json({ error: "No signature" }, { status: 400 });
   }
-
   let event: Stripe.Event;
   try {
     event = stripe.webhooks.constructEvent(
@@ -81,7 +80,6 @@ export async function POST(request: Request) {
   } catch {
     return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
   }
-
   switch (event.type) {
     case "checkout.session.completed": {
       const session = event.data.object as Stripe.Checkout.Session;
@@ -98,7 +96,6 @@ export async function POST(request: Request) {
       }
       break;
     }
-
     case "customer.subscription.updated": {
       const sub    = event.data.object as Stripe.Subscription;
       const userId = sub.metadata?.user_id;
@@ -108,7 +105,6 @@ export async function POST(request: Request) {
       }
       break;
     }
-
     case "customer.subscription.deleted": {
       const sub    = event.data.object as Stripe.Subscription;
       const userId = sub.metadata?.user_id;
@@ -118,6 +114,5 @@ export async function POST(request: Request) {
       break;
     }
   }
-
   return NextResponse.json({ received: true });
 }
