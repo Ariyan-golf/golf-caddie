@@ -272,7 +272,7 @@ export default async function HomePage() {
 
         {/* Partnership payment / Day pass status */}
         {hasFullAccess ? (
-          <div className="card bg-green-50 border-green-300 space-y-2">
+          <div className="card bg-green-50 border-green-300 space-y-3">
             <div className="flex items-center gap-3">
               <span className="text-2xl">✅</span>
               <div>
@@ -284,6 +284,7 @@ export default async function HomePage() {
                 </p>
               </div>
             </div>
+            {!isPaidToday && <RoundPaymentButton />}
           </div>
         ) : (
           <div className="card space-y-3">
