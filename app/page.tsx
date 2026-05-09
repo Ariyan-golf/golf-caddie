@@ -146,7 +146,7 @@ export default async function HomePage() {
   const hasFullAccess = isPaidToday || isPremium;
   const roundPrice = isSubscriber ? 280 : 330;
 
-  // スコアあり10ラウンド分のグラフデータ（total_puttsをholes集計）
+  // スコアあり10ラウンド分のグラフデータ
   const graphData = (roundsRaw ?? []).map((r) => {
     const holes = (r as { holes?: { putts: number | null }[] }).holes ?? [];
     const hasPutts = holes.some((h) => h.putts != null);
@@ -161,7 +161,7 @@ export default async function HomePage() {
 
   const recentRounds = graphData.slice(0, 5);
 
-  // GCAハンディ計算（直近20ラウンドのベスト8平均 × 0.96）
+  // GCAハンディ計算
   const diffs = (handicapData ?? [])
     .map((r) => r.handicap_differential as number)
     .filter((d) => d != null);
@@ -172,7 +172,6 @@ export default async function HomePage() {
     gcaHandicap = (Math.round(avg * 0.96 * 10) / 10).toFixed(1);
   }
 
-  // display_name が profiles に未保存の場合、user_metadata から補完して保存
   if (profile && !profile.display_name && user.user_metadata?.display_name) {
     await supabase
       .from("profiles")
@@ -218,8 +217,7 @@ export default async function HomePage() {
           </div>
           <Link
             href="/plan"
-            className="block w-full text-center bg-white text-green-700 font-semibold
-                       text-sm py-2.5 rounded-lg hover:bg-green-50 transition-colors"
+            className="block w-full text-center bg-white text-green-700 font-semibold text-sm py-2.5 rounded-lg hover:bg-green-50 transition-colors"
           >
             プランを変更する →
           </Link>
@@ -231,4 +229,135 @@ export default async function HomePage() {
         )}
 
         {/* GCAハンディ */}
-        <div className="card flex item
+        <div className="card flex items-center justify-between gap-4">
+          <div>
+            <p className="text-xs text-green-500 font-medium mb-0.5">GCAハンディ</p>
+            <p className="text-xl font-bold text-green-800">
+              {gcaHandicap !== null ? gcaHandicap : "ラウンドデータ蓄積中"}
+            </p>
+          </div>
+          <p className="text-xs text-green-400 text-right leading-relaxed shrink-0 max-w-[140px]">
+            JGA方式に準じた計算です。<br />公式ハンディキャップではありません。
+          </p>
+        </div>
+
+        {/* Quick actions */}
+        <div className="grid grid-cols-2 gap-3">
+          <Link
+            href="/round/new"
+            className="card flex flex-col items-center py-5 gap-2 hover:border-green-300 transition-colors"
+          >
+            <span className="text-3xl">🏌️</span>
+            <span className="font-semibold text-green-700 text-sm">ラウンド開始</span>
+          </Link>
+          <Link
+            href="/ai-caddie"
+            className="card flex flex-col items-center py-5 gap-2 hover:border-green-300 transition-colors"
+          >
+            <div className="w-12 h-12 overflow-hidden rounded-xl">
+              <Image
+                src="/characters/ai.png"
+                alt="AIちゃん"
+                width={48}
+                height={48}
+                className="w-full h-full object-cover object-top"
+              />
+            </div>
+            <span className="font-semibold text-green-700 text-sm">AIキャディ</span>
+          </Link>
+        </div>
+
+        {/* Score & putts bar graph */}
+        <RoundBarGraph data={graphData} />
+
+        {/* Partnership payment / Day pass status */}
+        {hasFullAccess ? (
+          <div className="card bg-green-50 border-green-300 space-y-2">
+            <div className="flex items-center gap-3">
+              <span className="text-2xl">✅</span>
+              <div>
+                <p className="font-semibold text-green-800 text-sm">
+                  {isPaidToday ? "本日のラウンド利用中" : isPremium ? "プレミアムプラン利用中" : "スタンダードプラン利用中"}
+                </p>
+                <p className="text-xs text-green-600">
+                  {isPaidToday ? "本日23:59まで全機能利用可能" : `※ゴルフ場ラウンドは別料金（${roundPrice}円/回）`}
+                </p>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="card space-y-3">
+            <div className="flex items-center gap-3">
+              <span className="text-2xl">⛳</span>
+              <div>
+                <p className="font-semibold text-green-700 text-sm">提携ゴルフ場と連携</p>
+                <p className="text-xs text-green-500">{roundPrice}円／ラウンド</p>
+              </div>
+            </div>
+            <RoundPaymentButton />
+          </div>
+        )}
+
+        {/* Recent rounds */}
+        <div className="card">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="font-semibold text-green-800">最近のラウンド</h2>
+            <Link href="/round" className="text-xs text-green-600 underline">
+              すべて見る
+            </Link>
+          </div>
+          {recentRounds.length ? (
+            <div className="space-y-2">
+              {recentRounds.map((round) => (
+                <Link
+                  key={round.id}
+                  href={`/round/${round.id}`}
+                  className="flex items-center justify-between py-2 border-b border-green-50 last:border-0"
+                >
+                  <div>
+                    <p className="font-medium text-green-800 text-sm">{round.course_name}</p>
+                    <p className="text-xs text-green-500">
+                      {new Date(round.date).toLocaleDateString("ja-JP")}
+                    </p>
+                  </div>
+                  {round.total_score && (
+                    <span className="badge bg-green-100 text-green-700 font-bold">
+                      {round.total_score}
+                    </span>
+                  )}
+                </Link>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-green-400 text-center py-4">
+              まだラウンドがありません。
+              <br />
+              ラウンド開始から記録しましょう！
+            </p>
+          )}
+        </div>
+
+        {/* Club averages */}
+        {clubStats && clubStats.length > 0 && (
+          <div className="card">
+            <h2 className="font-semibold text-green-800 mb-3">番手別平均飛距離</h2>
+            <div className="space-y-2">
+              {clubStats.map((stat) => (
+                <div key={stat.club} className="flex items-center justify-between">
+                  <span className="text-sm text-green-700">{stat.club}</span>
+                  <span className="text-sm font-semibold text-green-800">
+                    {Math.round(stat.average_distance_meters * 1.09361)}y
+                    <span className="text-xs text-green-400 font-normal ml-1">
+                      ({stat.shot_count}打)
+                    </span>
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+      <Navigation />
+    </div>
+  );
+}
