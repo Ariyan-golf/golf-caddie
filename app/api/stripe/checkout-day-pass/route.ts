@@ -18,7 +18,7 @@ export async function POST(request: Request) {
 
   const { data: profile, error: profileError } = await supabase
     .from("profiles")
-    .select("plan, day_pass_date, referrer_id")
+    .select("plan, day_pass_date")
     .eq("id", user.id)
     .single();
 
@@ -65,7 +65,13 @@ export async function POST(request: Request) {
     agentUserId = agent?.agent_user_id ?? null;
   }
 
-  const referrerId = profile?.referrer_id ?? null;
+  let referrerId: string | null = null;
+  const { data: referral } = await supabase
+    .from("referrals")
+    .select("referrer_id")
+    .eq("referred_id", user.id)
+    .maybeSingle();
+  referrerId = referral?.referrer_id ?? null;
 
   const successQuery = new URLSearchParams({ session_id: "{CHECKOUT_SESSION_ID}" });
   if (courseId) successQuery.set("course_id", courseId);
