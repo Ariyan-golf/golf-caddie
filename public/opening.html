@@ -1,0 +1,798 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=375, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Golf Caddie AI - Opening</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body {
+  width: 100%; height: 100%;
+  overflow: hidden;
+  background: #000;
+  font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", sans-serif;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.stage {
+  position: relative;
+  width: 375px;
+  height: 812px;
+  margin: 0 auto;
+  overflow: hidden;
+  background: #000;
+}
+.scene {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  opacity: 0;
+  transition: opacity 0.6s ease;
+  pointer-events: none;
+}
+.scene.active { opacity: 1; pointer-events: auto; }
+
+/* ===== Scene 1: Course Overview ===== */
+.s1-world {
+  position: absolute;
+  width: 100%; height: 100%;
+  transform-origin: 50% 60%;
+  transform: scale(1.3) translateY(40px);
+  animation: s1pan 3s ease-out forwards;
+}
+@keyframes s1pan {
+  0%   { transform: scale(1.3) translateY(40px); }
+  100% { transform: scale(1.0) translateY(0px); }
+}
+.s1-sky {
+  position: absolute; left: 0; top: 0;
+  width: 100%; height: 55%;
+  background: linear-gradient(to bottom, #6cc4ff 0%, #b6e5ff 100%);
+}
+.s1-sun {
+  position: absolute;
+  right: 40px; top: 50px;
+  width: 60px; height: 60px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #fff7a8, #ffd33d 70%, #ffb700 100%);
+  box-shadow: 0 0 30px rgba(255, 211, 61, 0.7);
+}
+.s1-cloud {
+  position: absolute;
+  background: #fff;
+  border-radius: 50px;
+  opacity: 0.9;
+  box-shadow: inset -6px -6px 0 rgba(0,0,0,0.05);
+}
+.s1-cloud:before, .s1-cloud:after {
+  content: "";
+  position: absolute;
+  background: #fff;
+  border-radius: 50%;
+}
+.cloud-a {
+  width: 80px; height: 22px;
+  top: 90px; left: -90px;
+  animation: cloudMove 12s linear infinite;
+}
+.cloud-a:before { width: 30px; height: 30px; top: -15px; left: 15px; }
+.cloud-a:after  { width: 24px; height: 24px; top: -12px; left: 45px; }
+.cloud-b {
+  width: 60px; height: 18px;
+  top: 160px; left: -90px;
+  animation: cloudMove 16s linear infinite;
+  animation-delay: -6s;
+}
+.cloud-b:before { width: 22px; height: 22px; top: -11px; left: 10px; }
+.cloud-b:after  { width: 18px; height: 18px; top: -9px; left: 32px; }
+@keyframes cloudMove {
+  0%   { transform: translateX(0); }
+  100% { transform: translateX(500px); }
+}
+.s1-ground {
+  position: absolute; left: 0; bottom: 0;
+  width: 100%; height: 50%;
+  background: linear-gradient(to bottom, #6fbf3a 0%, #4d9a23 100%);
+  border-top: 3px solid #87cf52;
+}
+.s1-fairway {
+  position: absolute;
+  left: 50%; bottom: 80px;
+  width: 240px; height: 320px;
+  margin-left: -120px;
+  background: linear-gradient(to bottom, #8fd55b 0%, #6fbf3a 100%);
+  border-radius: 50% 50% 30% 30% / 60% 60% 20% 20%;
+  box-shadow: inset 0 -10px 20px rgba(0,0,0,0.1);
+}
+.s1-green {
+  position: absolute;
+  left: 50%; top: 40px;
+  width: 130px; height: 60px;
+  margin-left: -65px;
+  background: radial-gradient(ellipse at center, #b3e87a 0%, #79c33d 100%);
+  border-radius: 50%;
+  box-shadow: inset 0 -4px 8px rgba(0,0,0,0.15);
+}
+.s1-pin {
+  position: absolute;
+  left: 50%; top: -28px;
+  width: 2px; height: 50px;
+  margin-left: -1px;
+  background: #444;
+}
+.s1-flag {
+  position: absolute;
+  left: 2px; top: 0;
+  width: 22px; height: 14px;
+  background: #e63946;
+  transform-origin: 0 50%;
+  animation: flagWave 1.4s ease-in-out infinite;
+  clip-path: polygon(0 0, 100% 0, 80% 50%, 100% 100%, 0 100%);
+}
+@keyframes flagWave {
+  0%, 100% { transform: skewX(-6deg) scaleX(1); }
+  50%      { transform: skewX(8deg) scaleX(0.92); }
+}
+.s1-bunker {
+  position: absolute;
+  background: radial-gradient(ellipse at 40% 40%, #fbe7a3 0%, #e6c66a 100%);
+  border-radius: 50%;
+  box-shadow: inset 0 -4px 6px rgba(0,0,0,0.15);
+}
+.bunker-a { width: 70px; height: 32px; left: 60px; bottom: 280px; }
+.bunker-b { width: 50px; height: 24px; right: 50px; bottom: 200px; }
+.s1-tree {
+  position: absolute;
+  width: 38px; height: 56px;
+}
+.s1-tree .leaf {
+  position: absolute;
+  left: 50%; top: 0;
+  width: 38px; height: 38px;
+  margin-left: -19px;
+  background: radial-gradient(circle at 35% 35%, #4ea83a, #1f6a18 90%);
+  border-radius: 50%;
+  box-shadow: inset -3px -4px 0 rgba(0,0,0,0.15);
+}
+.s1-tree .trunk {
+  position: absolute;
+  left: 50%; bottom: 0;
+  width: 8px; height: 22px;
+  margin-left: -4px;
+  background: #6b3f1a;
+  border-radius: 2px;
+}
+.tree-1 { left: 20px;  bottom: 140px; }
+.tree-2 { left: 30px;  bottom: 60px;  transform: scale(0.85); }
+.tree-3 { right: 22px; bottom: 130px; }
+.tree-4 { right: 36px; bottom: 50px;  transform: scale(0.9); }
+
+/* ===== Scene 2: Ball Flight ===== */
+.s2-bg {
+  position: absolute; inset: 0;
+  background: linear-gradient(to bottom, #6cc4ff 0%, #b6e5ff 55%, #6fbf3a 55%, #4d9a23 100%);
+}
+.s2-ground-line {
+  position: absolute; left: 0; right: 0; top: 55%;
+  height: 3px; background: rgba(255,255,255,0.6);
+}
+.s2-trajectory {
+  position: absolute; inset: 0;
+  pointer-events: none;
+}
+.s2-ball {
+  position: absolute;
+  left: 0; top: 0;
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 30% 30%, #fff 0%, #d8d8d8 70%, #999 100%);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+  transform: translate(40px, 660px);
+}
+.s2-ball:before {
+  content: ""; position: absolute;
+  left: 4px; top: 4px;
+  width: 4px; height: 4px;
+  border-radius: 50%;
+  background: rgba(0,0,0,0.08);
+  box-shadow:
+    6px 0 0 rgba(0,0,0,0.08),
+    12px 2px 0 rgba(0,0,0,0.08),
+    2px 8px 0 rgba(0,0,0,0.08),
+    8px 10px 0 rgba(0,0,0,0.08);
+}
+.s2-hud {
+  position: absolute;
+  right: 16px; top: 60px;
+  padding: 10px 14px;
+  background: rgba(0,0,0,0.55);
+  border: 1px solid rgba(255,255,255,0.3);
+  border-radius: 12px;
+  color: #fff;
+  text-align: right;
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+.s2-hud .label {
+  font-size: 11px;
+  letter-spacing: 2px;
+  color: #aee;
+  margin-bottom: 2px;
+}
+.s2-hud .value {
+  font-size: 28px;
+  font-weight: 800;
+  color: #fff45e;
+  text-shadow: 0 0 8px rgba(255,244,94,0.6);
+  font-variant-numeric: tabular-nums;
+}
+.s2-hud .unit {
+  font-size: 13px;
+  color: #fff;
+  margin-left: 2px;
+}
+.s2-shock {
+  position: absolute;
+  width: 20px; height: 20px;
+  border-radius: 50%;
+  border: 3px solid #fff;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+}
+
+/* ===== Scene 3: Characters ===== */
+.s3-bg {
+  position: absolute; inset: 0;
+  background:
+    radial-gradient(ellipse at 50% 30%, #1c4a2e 0%, #0a2615 70%, #061a0e 100%);
+}
+.s3-title {
+  position: absolute;
+  top: 70px; left: 0; right: 0;
+  text-align: center;
+  color: #fff;
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  text-shadow: 0 0 12px rgba(255,213,79,0.6), 0 2px 0 rgba(0,0,0,0.5);
+  opacity: 0;
+  transform: translateY(-12px);
+  transition: opacity 0.5s ease, transform 0.5s ease;
+}
+.s3-title.show { opacity: 1; transform: translateY(0); }
+.s3-title .accent { color: #ffd54f; }
+.s3-row {
+  position: absolute;
+  left: 0; right: 0;
+  bottom: 110px;
+  display: flex;
+  justify-content: space-around;
+  align-items: flex-end;
+  padding: 0 6px;
+}
+.s3-char {
+  position: relative;
+  width: 80px;
+  text-align: center;
+  opacity: 0;
+  transform: translateY(180px);
+  transition: opacity 0.45s ease, transform 0.55s cubic-bezier(0.18, 1.2, 0.4, 1.05);
+}
+.s3-char.show { opacity: 1; transform: translateY(0); }
+.s3-char .avatar {
+  width: 72px; height: 72px;
+  margin: 0 auto;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #ffd54f 0%, #ff9a3c 100%);
+  border: 3px solid #fff;
+  box-shadow: 0 6px 14px rgba(0,0,0,0.4), 0 0 20px rgba(255,213,79,0.45);
+  display: flex; align-items: center; justify-content: center;
+  overflow: hidden;
+  font-size: 36px;
+}
+.s3-char .avatar img {
+  width: 100%; height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.s3-char .name {
+  margin-top: 8px;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.6);
+}
+.s3-char .role {
+  margin-top: 2px;
+  color: #aee9b4;
+  font-size: 10px;
+}
+.s3-char .bubble {
+  position: absolute;
+  left: 50%;
+  top: -52px;
+  transform: translateX(-50%);
+  background: #fff;
+  color: #1a3a2a;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 6px 8px;
+  border-radius: 10px;
+  white-space: nowrap;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.35);
+  opacity: 0;
+  transition: opacity 0.3s ease 0.25s;
+}
+.s3-char.show .bubble { opacity: 1; }
+.s3-char .bubble:after {
+  content: "";
+  position: absolute;
+  left: 50%; bottom: -6px;
+  margin-left: -6px;
+  width: 0; height: 0;
+  border: 6px solid transparent;
+  border-top-color: #fff;
+  border-bottom: 0;
+}
+.s3-star {
+  position: absolute;
+  font-size: 18px;
+  pointer-events: none;
+  opacity: 0;
+  animation: starFloat 2.4s ease-out infinite;
+}
+@keyframes starFloat {
+  0%   { opacity: 0; transform: translateY(0) scale(0.6); }
+  20%  { opacity: 1; }
+  100% { opacity: 0; transform: translateY(-80px) scale(1.2); }
+}
+
+/* ===== Scene 4: Logo ===== */
+.s4-bg {
+  position: absolute; inset: 0;
+  background:
+    radial-gradient(ellipse at 50% 40%, #1a2a55 0%, #0a1233 60%, #050922 100%);
+}
+.s4-bg:before {
+  content: "";
+  position: absolute; inset: 0;
+  background-image:
+    radial-gradient(2px 2px at 30px 120px, rgba(255,255,255,0.7), transparent),
+    radial-gradient(1px 1px at 200px 60px, rgba(255,255,255,0.6), transparent),
+    radial-gradient(1.5px 1.5px at 320px 200px, rgba(255,255,255,0.6), transparent),
+    radial-gradient(1px 1px at 80px 400px, rgba(255,255,255,0.5), transparent),
+    radial-gradient(1.5px 1.5px at 280px 500px, rgba(255,255,255,0.6), transparent),
+    radial-gradient(1px 1px at 150px 700px, rgba(255,255,255,0.5), transparent);
+}
+.s4-stack {
+  position: absolute;
+  left: 0; right: 0;
+  top: 50%;
+  transform: translateY(-58%);
+  text-align: center;
+  color: #fff;
+}
+.s4-icon {
+  font-size: 72px;
+  opacity: 0;
+  transform: scale(0.5);
+  transition: opacity 0.6s ease, transform 0.6s cubic-bezier(0.2, 1.4, 0.5, 1);
+  filter: drop-shadow(0 4px 12px rgba(255,213,79,0.6));
+}
+.s4-icon.show { opacity: 1; transform: scale(1); }
+.s4-title {
+  margin-top: 18px;
+  font-size: 34px;
+  font-weight: 900;
+  letter-spacing: 1px;
+  background: linear-gradient(90deg, #ffd54f 0%, #fff7a8 50%, #ffd54f 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  text-shadow: 0 0 20px rgba(255,213,79,0.4);
+  opacity: 0;
+  transform: translateY(12px);
+  transition: opacity 0.55s ease, transform 0.55s ease;
+}
+.s4-title.show { opacity: 1; transform: translateY(0); }
+.s4-sub {
+  margin-top: 14px;
+  font-size: 13px;
+  color: #b8c5ff;
+  letter-spacing: 1px;
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 0.5s ease, transform 0.5s ease;
+}
+.s4-sub.show { opacity: 1; transform: translateY(0); }
+.s4-url {
+  margin-top: 26px;
+  font-size: 12px;
+  color: #ffd54f;
+  letter-spacing: 1px;
+  opacity: 0;
+  transition: opacity 0.5s ease;
+}
+.s4-url.show { opacity: 1; }
+.s4-replay {
+  position: absolute;
+  left: 50%;
+  bottom: 100px;
+  transform: translateX(-50%);
+  padding: 12px 28px;
+  background: linear-gradient(135deg, #ffd54f 0%, #ff9a3c 100%);
+  color: #1a1a3a;
+  font-size: 14px;
+  font-weight: 800;
+  border: none;
+  border-radius: 999px;
+  box-shadow: 0 6px 16px rgba(255,154,60,0.5);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.5s ease, transform 0.2s ease;
+}
+.s4-replay.show { opacity: 1; }
+.s4-replay:active { transform: translateX(-50%) scale(0.96); }
+</style>
+</head>
+<body>
+<div class="stage" id="stage">
+
+  <!-- Scene 1 -->
+  <div class="scene" id="scene1">
+    <div class="s1-world">
+      <div class="s1-sky"></div>
+      <div class="s1-sun"></div>
+      <div class="s1-cloud cloud-a"></div>
+      <div class="s1-cloud cloud-b"></div>
+      <div class="s1-ground"></div>
+      <div class="s1-fairway"></div>
+      <div class="s1-bunker bunker-a"></div>
+      <div class="s1-bunker bunker-b"></div>
+      <div class="s1-green">
+        <div class="s1-pin">
+          <div class="s1-flag"></div>
+        </div>
+      </div>
+      <div class="s1-tree tree-1"><div class="leaf"></div><div class="trunk"></div></div>
+      <div class="s1-tree tree-2"><div class="leaf"></div><div class="trunk"></div></div>
+      <div class="s1-tree tree-3"><div class="leaf"></div><div class="trunk"></div></div>
+      <div class="s1-tree tree-4"><div class="leaf"></div><div class="trunk"></div></div>
+    </div>
+  </div>
+
+  <!-- Scene 2 -->
+  <div class="scene" id="scene2">
+    <div class="s2-bg"></div>
+    <div class="s2-ground-line"></div>
+    <svg class="s2-trajectory" viewBox="0 0 375 812" preserveAspectRatio="none">
+      <path id="s2-arc" d="M 50 660 Q 187 60 335 660"
+            stroke="#ffffff" stroke-width="2"
+            stroke-dasharray="6 6" fill="none" opacity="0.85"/>
+    </svg>
+    <div class="s2-ball" id="s2-ball"></div>
+    <div class="s2-shock" id="s2-shock"></div>
+    <div class="s2-hud">
+      <div class="label">DISTANCE</div>
+      <div><span class="value" id="s2-dist">0</span><span class="unit">yd</span></div>
+    </div>
+  </div>
+
+  <!-- Scene 3 -->
+  <div class="scene" id="scene3">
+    <div class="s3-bg"></div>
+    <div class="s3-title" id="s3-title">
+      <span class="accent">4人</span>のAIキャディが<span class="accent">登場！</span>
+    </div>
+    <div class="s3-row" id="s3-row">
+      <div class="s3-char" data-idx="0">
+        <div class="bubble">明るくサポート！</div>
+        <div class="avatar"><img src="https://golf-caddie-eight.vercel.app/characters/ai.png" alt="AI" data-fallback="🤖"></div>
+        <div class="name">AIちゃん</div>
+        <div class="role">メインキャディ</div>
+      </div>
+      <div class="s3-char" data-idx="1">
+        <div class="bubble">データで勝つ！</div>
+        <div class="avatar"><img src="https://golf-caddie-eight.vercel.app/characters/taka.png" alt="taka" data-fallback="📊"></div>
+        <div class="name">タカさん</div>
+        <div class="role">データ分析</div>
+      </div>
+      <div class="s3-char" data-idx="2">
+        <div class="bubble">コース任せて！</div>
+        <div class="avatar"><img src="https://golf-caddie-eight.vercel.app/characters/yoshi.png" alt="yoshi" data-fallback="🏌️"></div>
+        <div class="name">ヨシさん</div>
+        <div class="role">コース攻略</div>
+      </div>
+      <div class="s3-char" data-idx="3">
+        <div class="bubble">ルール聞けい！</div>
+        <div class="avatar"><img src="https://golf-caddie-eight.vercel.app/characters/sennin.png" alt="sennin" data-fallback="🧙"></div>
+        <div class="name">ゴルフ仙人</div>
+        <div class="role">ルール担当</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scene 4 -->
+  <div class="scene" id="scene4">
+    <div class="s4-bg"></div>
+    <div class="s4-stack">
+      <div class="s4-icon" id="s4-icon">⛳</div>
+      <div class="s4-title" id="s4-title">Golf Caddie AI</div>
+      <div class="s4-sub" id="s4-sub">あなた専属、4人のAIキャディ</div>
+      <div class="s4-url" id="s4-url">golf-caddie-eight.vercel.app</div>
+    </div>
+    <button class="s4-replay" id="s4-replay" type="button">もう一度見る</button>
+  </div>
+
+</div>
+
+<script>
+(function () {
+  var timers = [];
+  var sceneIds = ["scene1", "scene2", "scene3", "scene4"];
+
+  function setTimer(fn, delay) {
+    var t = setTimeout(fn, delay);
+    timers.push(t);
+    return t;
+  }
+  function clearAllTimers() {
+    for (var i = 0; i < timers.length; i++) {
+      clearTimeout(timers[i]);
+    }
+    timers = [];
+  }
+  function showScene(id) {
+    for (var i = 0; i < sceneIds.length; i++) {
+      var el = document.getElementById(sceneIds[i]);
+      if (!el) continue;
+      if (sceneIds[i] === id) {
+        el.classList.add("active");
+      } else {
+        el.classList.remove("active");
+      }
+    }
+  }
+  function resetScene1() {
+    var s = document.getElementById("scene1");
+    if (!s) return;
+    var world = s.querySelector(".s1-world");
+    if (world) {
+      world.style.animation = "none";
+      void world.offsetWidth;
+      world.style.animation = "";
+    }
+  }
+  function resetScene2() {
+    var ball = document.getElementById("s2-ball");
+    var dist = document.getElementById("s2-dist");
+    var shock = document.getElementById("s2-shock");
+    if (ball) {
+      ball.style.transform = "translate(40px, 660px)";
+      if (ball.getAnimations) {
+        var anims = ball.getAnimations();
+        for (var i = 0; i < anims.length; i++) anims[i].cancel();
+      }
+    }
+    if (dist) dist.textContent = "0";
+    if (shock) {
+      shock.style.opacity = 0;
+      shock.style.transform = "translate(-50%, -50%) scale(1)";
+    }
+  }
+  function resetScene3() {
+    var s = document.getElementById("scene3");
+    if (!s) return;
+    var title = document.getElementById("s3-title");
+    if (title) title.classList.remove("show");
+    var chars = s.querySelectorAll(".s3-char");
+    for (var i = 0; i < chars.length; i++) chars[i].classList.remove("show");
+    var stars = s.querySelectorAll(".s3-star");
+    for (var j = 0; j < stars.length; j++) {
+      if (stars[j].parentNode) stars[j].parentNode.removeChild(stars[j]);
+    }
+  }
+  function resetScene4() {
+    var ids = ["s4-icon", "s4-title", "s4-sub", "s4-url", "s4-replay"];
+    for (var i = 0; i < ids.length; i++) {
+      var el = document.getElementById(ids[i]);
+      if (el) el.classList.remove("show");
+    }
+  }
+
+  // ===== Scene 2: ball flight via Web Animations API =====
+  function runScene2() {
+    var ball = document.getElementById("s2-ball");
+    var distEl = document.getElementById("s2-dist");
+    var shock = document.getElementById("s2-shock");
+    if (!ball) return;
+
+    var duration = 3600;
+    var startX = 40, startY = 660;
+    var endX = 326, endY = 660;
+    var midX = 187, midY = 60;
+
+    var keyframes = [
+      { transform: "translate(" + startX + "px, " + startY + "px) rotate(0deg)" },
+      { transform: "translate(" + midX   + "px, " + midY   + "px) rotate(360deg)", offset: 0.5 },
+      { transform: "translate(" + endX   + "px, " + endY   + "px) rotate(720deg)" }
+    ];
+    var options = {
+      duration: duration,
+      easing: "cubic-bezier(0.22, 0.6, 0.78, 0.4)",
+      fill: "forwards"
+    };
+
+    if (ball.animate) {
+      var anim = ball.animate(keyframes, options);
+      if (anim) {
+        anim.onfinish = function () {
+          ball.style.transform = keyframes[2].transform;
+          triggerShockwave(shock, endX + 11, endY + 11);
+        };
+      }
+    } else {
+      // Fallback: simple CSS transition along straight diagonal
+      ball.style.transition = "transform " + duration + "ms ease-out";
+      ball.style.transform = keyframes[2].transform;
+      setTimer(function () {
+        triggerShockwave(shock, endX + 11, endY + 11);
+      }, duration);
+    }
+
+    // Distance count up 0 -> 248
+    var target = 248;
+    var startTime = Date.now();
+    var countDuration = duration;
+    var iv = setInterval(function () {
+      var elapsed = Date.now() - startTime;
+      var ratio = elapsed / countDuration;
+      if (ratio >= 1) { ratio = 1; }
+      var eased = 1 - Math.pow(1 - ratio, 2);
+      var v = Math.round(target * eased);
+      if (distEl) distEl.textContent = String(v);
+      if (ratio >= 1) clearInterval(iv);
+    }, 30);
+    timers.push(iv);
+  }
+
+  function triggerShockwave(shock, x, y) {
+    if (!shock) return;
+    shock.style.left = x + "px";
+    shock.style.top = y + "px";
+    shock.style.transform = "translate(-50%, -50%) scale(0.4)";
+    shock.style.opacity = 0.95;
+    shock.style.transition = "transform 700ms ease-out, opacity 700ms ease-out";
+    // force reflow
+    void shock.offsetWidth;
+    shock.style.transform = "translate(-50%, -50%) scale(6)";
+    shock.style.opacity = 0;
+  }
+
+  // ===== Scene 3: characters reveal + sparkles =====
+  function runScene3() {
+    var title = document.getElementById("s3-title");
+    if (title) {
+      setTimer(function () { title.classList.add("show"); }, 100);
+    }
+    var chars = document.querySelectorAll("#scene3 .s3-char");
+    for (var i = 0; i < chars.length; i++) {
+      (function (el, idx) {
+        setTimer(function () { el.classList.add("show"); }, 500 + idx * 600);
+      })(chars[i], i);
+    }
+    // Image fallback to emoji on error
+    var imgs = document.querySelectorAll("#scene3 .avatar img");
+    for (var k = 0; k < imgs.length; k++) {
+      (function (img) {
+        img.onerror = function () {
+          var fb = img.getAttribute("data-fallback") || "🏌️";
+          var parent = img.parentNode;
+          if (parent) {
+            parent.removeChild(img);
+            parent.textContent = fb;
+          }
+        };
+      })(imgs[k]);
+    }
+    // Sparkle stars
+    spawnStars();
+  }
+
+  function spawnStars() {
+    var scene = document.getElementById("scene3");
+    if (!scene) return;
+    var emojis = ["⭐", "✨", "⭐", "✨"];
+    var count = 14;
+    for (var i = 0; i < count; i++) {
+      (function (idx) {
+        setTimer(function () {
+          var s = document.createElement("div");
+          s.className = "s3-star";
+          s.textContent = emojis[idx % emojis.length];
+          var x = 20 + Math.floor(Math.random() * 335);
+          var y = 250 + Math.floor(Math.random() * 350);
+          s.style.left = x + "px";
+          s.style.top = y + "px";
+          s.style.animationDelay = (Math.random() * 0.3) + "s";
+          s.style.animationDuration = (1.8 + Math.random() * 1.2) + "s";
+          scene.appendChild(s);
+          setTimer(function () {
+            if (s.parentNode) s.parentNode.removeChild(s);
+          }, 3500);
+        }, 700 + idx * 220);
+      })(i);
+    }
+  }
+
+  // ===== Scene 4: logo cascade =====
+  function runScene4() {
+    var seq = [
+      { id: "s4-icon",   delay: 100 },
+      { id: "s4-title",  delay: 600 },
+      { id: "s4-sub",    delay: 1100 },
+      { id: "s4-url",    delay: 1500 },
+      { id: "s4-replay", delay: 1900 }
+    ];
+    for (var i = 0; i < seq.length; i++) {
+      (function (item) {
+        setTimer(function () {
+          var el = document.getElementById(item.id);
+          if (el) el.classList.add("show");
+        }, item.delay);
+      })(seq[i]);
+    }
+  }
+
+  // ===== Master timeline =====
+  function play() {
+    clearAllTimers();
+    resetScene1();
+    resetScene2();
+    resetScene3();
+    resetScene4();
+
+    showScene("scene1");
+    resetScene1();
+
+    setTimer(function () {
+      showScene("scene2");
+      resetScene2();
+      runScene2();
+    }, 3000);
+
+    setTimer(function () {
+      showScene("scene3");
+      resetScene3();
+      runScene3();
+    }, 8000);
+
+    setTimer(function () {
+      showScene("scene4");
+      resetScene4();
+      runScene4();
+    }, 13000);
+  }
+
+  function init() {
+    var replay = document.getElementById("s4-replay");
+    if (replay) {
+      replay.addEventListener("click", function () {
+        play();
+      }, false);
+    }
+    play();
+  }
+
+  if (window.addEventListener) {
+    window.addEventListener("load", init, false);
+  } else {
+    window.onload = init;
+  }
+})();
+</script>
+</body>
+</html>
