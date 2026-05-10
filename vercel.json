@@ -1,4 +1,5 @@
 {
+  "public": true,
   "crons": [
     {
       "path": "/api/cleanup-cancelled",
@@ -8,5 +9,8 @@
       "path": "/api/cron/cleanup-pending-rounds",
       "schedule": "30 15 * * *"
     }
+  ],
+  "routes": [
+    { "src": "/opening.html", "dest": "/opening.html" }
   ]
 }
