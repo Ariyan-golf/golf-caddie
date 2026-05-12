@@ -207,11 +207,11 @@ export default async function HomePage() {
             <span className="text-xl flex-shrink-0 mt-0.5">📢</span>
             <div className="space-y-1">
               <p className="text-white font-bold text-sm tracking-wide">
-                🏌️ テスト期間中 ― 現在は無料でご利用いただけます
+                まもなく正式リリース ― Coming Soon
               </p>
               <p className="text-green-100 text-xs leading-relaxed">
-                5月15日より本格スタート予定。アプリ内課金システムに移行します。
-                <span className="font-semibold text-white">今のうちにぜひお試しください！</span>
+                現在はテスト期間中で無料でご利用いただけます。
+                <span className="font-semibold text-white">正式リリース日は公式SNSでお知らせします！</span>
               </p>
             </div>
           </div>
