@@ -7,6 +7,8 @@ import { ShotRecorder } from "./ShotRecorder";
 import type { Club } from "@/types";
 import { CLUB_LABELS } from "@/types";
 import { calculateDistance, metersToYards } from "@/lib/distance";
+import { stopGpsTracking } from "@/lib/gps";
+import { releaseWakeLock } from "@/lib/wakeLock";
 
 // ── Local types ─────────────────────────────────────────────────────
 
@@ -351,6 +353,10 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
     }
     const supabase = createClient();
     await supabase.from("rounds").update({ handicap_differential: diff }).eq("id", roundId);
+
+    stopGpsTracking();
+    void releaseWakeLock();
+
     setHandicapDiff(diff);
     setConfirmLoading(false);
     setRoundEndConfirmed(true);

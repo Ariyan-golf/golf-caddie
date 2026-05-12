@@ -4,6 +4,8 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { fetchWeather } from "@/lib/weather";
+import { startGpsTracking } from "@/lib/gps";
+import { acquireWakeLock } from "@/lib/wakeLock";
 import type { StartHole, Weather, WindSpeed, WindDirection } from "@/types";
 import { WEATHER_OPTIONS, WIND_SPEED_OPTIONS } from "@/types";
 
@@ -206,6 +208,9 @@ export function NewRoundForm({ linkedCourseId }: { linkedCourseId?: string }) {
       setLoading(false);
       return;
     }
+
+    void startGpsTracking();
+    void acquireWakeLock();
 
     router.push(`/round/${data.id}`);
   }

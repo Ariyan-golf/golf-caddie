@@ -4,6 +4,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { todayJST } from "@/lib/day-pass";
+import { startGpsTracking } from "@/lib/gps";
+import { acquireWakeLock } from "@/lib/wakeLock";
 
 interface CourseTee {
   id: string;
@@ -74,6 +76,9 @@ export function RoundStartConfirm({
       setCreating(false);
       return;
     }
+
+    void startGpsTracking();
+    void acquireWakeLock();
 
     router.push(`/round/${data.id}`);
   }
