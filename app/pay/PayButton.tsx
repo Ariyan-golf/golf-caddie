@@ -3,11 +3,12 @@
 import { useState } from "react";
 
 export function PayButton({ courseId }: { courseId: string }) {
-  const [loading, setLoading] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function handleClick() {
-    setLoading(true);
+    if (isProcessing) return;
+    setIsProcessing(true);
     setError(null);
     try {
       const res = await fetch("/api/stripe/checkout-day-pass", {
@@ -21,20 +22,20 @@ export function PayButton({ courseId }: { courseId: string }) {
         data = await res.json();
       } catch {
         setError("サーバーエラーが発生しました。しばらく待ってから再試行してください。");
-        setLoading(false);
+        setIsProcessing(false);
         return;
       }
 
       if (!res.ok || !data.url) {
         setError(data.error ?? "決済ページの取得に失敗しました。");
-        setLoading(false);
+        setIsProcessing(false);
         return;
       }
 
       window.location.href = data.url;
     } catch {
       setError("通信エラーが発生しました。インターネット接続を確認してください。");
-      setLoading(false);
+      setIsProcessing(false);
     }
   }
 
@@ -47,14 +48,18 @@ export function PayButton({ courseId }: { courseId: string }) {
       )}
       <button
         onClick={handleClick}
-        disabled={loading}
+        disabled={isProcessing}
+        aria-busy={isProcessing}
         className="w-full py-3.5 rounded-xl text-base font-semibold bg-green-600 hover:bg-green-700
                    active:bg-green-800 text-white transition-colors
                    disabled:opacity-50 disabled:cursor-not-allowed"
       >
-        {loading ? (
+        {isProcessing ? (
           <span className="flex items-center justify-center gap-2">
-            <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+            <span
+              className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"
+              aria-hidden="true"
+            />
             処理中...
           </span>
         ) : (
