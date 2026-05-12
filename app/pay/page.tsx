@@ -39,7 +39,7 @@ export default async function PayPage({
         </Link>
 
         <p className="text-xs text-gray-400 text-center">
-          ログイン後、330円のお支払いに進みます
+          ログイン後、220円のお支払いに進みます
         </p>
       </div>
     );
@@ -59,14 +59,14 @@ export default async function PayPage({
       <div className="text-center space-y-2">
         <h1 className="text-2xl font-bold text-green-800">本日のラウンド利用</h1>
         <p className="text-sm text-green-600">
-          330円で本日中、全機能をご利用いただけます
+          220円で本日中、全機能をご利用いただけます
         </p>
       </div>
 
       <div className="bg-white border border-green-200 rounded-xl p-5 space-y-3">
         <div className="flex justify-between items-baseline">
           <span className="text-sm text-gray-600">利用料金</span>
-          <span className="text-2xl font-bold text-green-800 tabular-nums">¥330</span>
+          <span className="text-2xl font-bold text-green-800 tabular-nums">¥220</span>
         </div>
         <p className="text-xs text-gray-500">
           本日23:59まで全機能が利用可能。翌日0時に自動で無料プランに戻ります。

@@ -145,7 +145,7 @@ export function RoundStartConfirm({
               未課金の場合、<strong>翌日午前0:30に本ラウンドのデータは自動削除</strong>されます。
             </p>
             <p className="text-amber-700 text-xs">
-              利用料：330円（決済はラウンド終了後にご案内します）
+              利用料：220円（決済はラウンド終了後にご案内します）
             </p>
           </div>
         </div>

@@ -14,7 +14,7 @@ export default async function GolfQrPage({ searchParams }: Props) {
           ← ホームに戻る
         </a>
         <h1 className="text-2xl font-bold text-green-800">⛳ 提携ゴルフ場と連携</h1>
-        <p className="text-sm text-green-600 mt-1">QRコードをスキャンして330円をお支払いください</p>
+        <p className="text-sm text-green-600 mt-1">QRコードをスキャンして220円をお支払いください</p>
       </div>
 
       <QrScanner initialCourse={course} />

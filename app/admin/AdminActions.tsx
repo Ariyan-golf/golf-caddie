@@ -88,8 +88,8 @@ export function InviteCodeForm() {
                        focus:outline-none focus:ring-2 focus:ring-green-400"
           >
             <option value="premium">Premium（無料）</option>
-            <option value="premium_paid">Premium（770円/月）</option>
-            <option value="standard">Standard</option>
+            <option value="premium_paid">Premium（550円/月）</option>
+            <option value="standard">Standard（220円/月）</option>
             <option value="free">Free</option>
           </select>
         </div>

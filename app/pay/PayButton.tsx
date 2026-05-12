@@ -63,7 +63,7 @@ export function PayButton({ courseId }: { courseId: string }) {
             処理中...
           </span>
         ) : (
-          "330円を今日中に支払う"
+          "220円を今日中に支払う"
         )}
       </button>
     </div>

@@ -25,7 +25,7 @@ const PLANS = [
   {
     key: "standard",
     name: "スタンダード",
-    price: "330円",
+    price: "220円",
     period: "/月",
     description: "本格的にスコアアップを目指す方へ",
     features: [
@@ -43,7 +43,7 @@ const PLANS = [
   {
     key: "premium",
     name: "プレミアム",
-    price: "770円",
+    price: "550円",
     period: "/月",
     description: "AIの力で一段上のゴルフへ",
     features: [
@@ -118,7 +118,7 @@ export default async function PlanPage({ searchParams }: Props) {
           <span className="text-2xl shrink-0">⛳</span>
           <div>
             <p className="font-bold text-blue-800">ラウンド利用料のお支払いが完了しました！</p>
-            <p className="text-sm text-blue-600 mt-0.5">330円のお支払いを受け付けました。楽しいゴルフを！</p>
+            <p className="text-sm text-blue-600 mt-0.5">220円のお支払いを受け付けました。楽しいゴルフを！</p>
           </div>
         </div>
       )}
@@ -206,7 +206,7 @@ export default async function PlanPage({ searchParams }: Props) {
 
       <div className="card bg-blue-50 border-blue-200 space-y-3 text-sm text-blue-700">
         <p className="font-semibold text-blue-800">⛳ 提携ゴルフ場でのご利用</p>
-        <p>通常330円、サブスク会員は280円となります。</p>
+        <p>通常220円、サブスク会員は280円となります。</p>
         <p>サブスクとは別料金です。当日1回のみ有効です。</p>
         <RoundPaymentButton />
       </div>

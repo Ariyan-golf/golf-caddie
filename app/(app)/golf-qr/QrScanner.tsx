@@ -88,7 +88,7 @@ export function QrScanner({ initialCourse }: { initialCourse?: string }) {
         <div className="card flex flex-col items-center gap-4 py-8">
           <span className="text-6xl">📷</span>
           <p className="text-green-700 text-sm text-center">
-            提携ゴルフ場に設置されているQRコードをスキャンして、330円のラウンド利用料をお支払いください。
+            提携ゴルフ場に設置されているQRコードをスキャンして、220円のラウンド利用料をお支払いください。
           </p>
           <button
             onClick={startScan}
@@ -117,13 +117,13 @@ export function QrScanner({ initialCourse }: { initialCourse?: string }) {
           </div>
           <div className="bg-green-50 rounded-lg p-3 text-center">
             <p className="text-sm text-green-700">ラウンド利用料</p>
-            <p className="text-2xl font-bold text-green-800">330円</p>
+            <p className="text-2xl font-bold text-green-800">220円</p>
           </div>
           <button
             onClick={handlePay}
             className="w-full py-3 rounded-xl bg-green-600 text-white font-semibold text-sm hover:bg-green-700 transition-colors"
           >
-            330円を支払う
+            220円を支払う
           </button>
           <button onClick={reset} className="w-full text-sm text-gray-500 underline">
             やり直す

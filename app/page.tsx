@@ -144,7 +144,7 @@ export default async function HomePage() {
   const isPremium = profile?.plan === "premium";
   const isSubscriber = profile?.plan === "standard" || profile?.plan === "premium";
   const hasFullAccess = isPaidToday || isPremium;
-  const roundPrice = isSubscriber ? 280 : 330;
+  const roundPrice = isSubscriber ? 280 : 220;
 
   // スコアあり10ラウンド分のグラフデータ
   const graphData = (roundsRaw ?? []).map((r) => {

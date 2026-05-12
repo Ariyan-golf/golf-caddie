@@ -56,8 +56,8 @@ async function recordRoundPayment(session: Stripe.Checkout.Session) {
     .update({ day_pass_date: todayJST() })
     .eq("id", userId);
 
-  // 金額を Stripe セッションから取得（¥280 or ¥330）
-  const amount = session.amount_total ?? 330;
+  // 金額を Stripe セッションから取得（¥280 or ¥220）
+  const amount = session.amount_total ?? 220;
 
   // round_payments テーブルに記録（収益分配の集計用）
   await db.from("round_payments").insert({

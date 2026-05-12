@@ -1730,7 +1730,7 @@ function PaymentRequiredModal({
         </p>
         <div className="bg-green-50 rounded-lg p-3 text-center">
           <p className="text-xs text-green-700">ラウンド利用料</p>
-          <p className="text-2xl font-bold text-green-800">330円</p>
+          <p className="text-2xl font-bold text-green-800">220円</p>
         </div>
         {error && (
           <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
@@ -1809,7 +1809,7 @@ function RoundComplete({
             className="w-full py-3 rounded-xl bg-amber-600 hover:bg-amber-700 active:bg-amber-800
                        text-white text-sm font-bold transition-colors"
           >
-            今すぐ330円を決済する
+            今すぐ220円を決済する
           </button>
         </div>
       )}
