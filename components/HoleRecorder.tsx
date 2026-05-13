@@ -179,6 +179,7 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
   const [dmDistance, setDmDistance] = useState<{ yards: number; meters: number } | null>(null);
   const [dmLoading, setDmLoading] = useState<"idle" | "start" | "end">("idle");
   const [shotNextAction, setShotNextAction] = useState<"before" | "after">("before");
+  const [confirmingShot, setConfirmingShot] = useState(false);
 
   // Wind compass visibility — persisted to localStorage
   const [windVisible, setWindVisible] = useState(true);
@@ -436,7 +437,8 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
   }
 
   async function handleConfirmShot() {
-    if (!currentHole || !dmStart || !dmEnd || !dmDistance) return;
+    if (!currentHole || !dmStart || !dmEnd || !dmDistance || confirmingShot) return;
+    setConfirmingShot(true);
     const supabase = createClient();
     const { error } = await supabase.from("shots").insert({
       hole_id: currentHole.id,
@@ -452,13 +454,17 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
     });
     if (error) {
       console.error("[confirm-shot] insert error:", error.message);
+      setConfirmingShot(false);
       return;
     }
     await refreshCurrent();
+    // Brief "✅ 記録しました" feedback before clearing the panel
+    await new Promise((r) => setTimeout(r, 600));
     setDmStart(null);
     setDmEnd(null);
     setDmDistance(null);
     setShotNextAction("before");
+    setConfirmingShot(false);
   }
 
   function handleCloseShot() {
@@ -622,6 +628,7 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
         dmLoading={dmLoading}
         nextAction={shotNextAction}
         shotCount={currentHole?.shots.length ?? 0}
+        confirming={confirmingShot}
         onShotStart={handleShotStart}
         onShotEnd={handleShotEnd}
         onConfirmShot={handleConfirmShot}
@@ -650,6 +657,9 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
           confirming={confirmLoading}
         />
       )}
+
+      {/* One-time iPhone back-tap hint, gated by localStorage */}
+      <BackTapHintModal />
     </div>
   );
 }
@@ -2221,9 +2231,41 @@ function CompactCompass({
 
 // ── ShotRecordPanel: DM measurement + confirm-insert ─────────────────
 
+// Smooth count-up from 0 to `target` on each new target value.
+// 500ms with ease-out cubic — light enough to never stutter on a phone.
+function useCountUp(target: number | null, duration = 500): number {
+  const [value, setValue] = useState<number>(target ?? 0);
+  const prevTargetRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (target == null) {
+      setValue(0);
+      prevTargetRef.current = null;
+      return;
+    }
+    // If the target didn't change, skip re-animating.
+    if (prevTargetRef.current === target) return;
+    prevTargetRef.current = target;
+
+    let raf = 0;
+    const start = performance.now();
+    function step(now: number) {
+      const t = Math.min(1, (now - start) / duration);
+      const eased = 1 - Math.pow(1 - t, 3);
+      setValue(target! * eased);
+      if (t < 1) raf = requestAnimationFrame(step);
+      else setValue(target!);
+    }
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [target, duration]);
+
+  return value;
+}
+
 function ShotRecordPanel({
   hasCurrentHole, creating,
-  dmStart, dmEnd, dmDistance, dmLoading, nextAction, shotCount,
+  dmStart, dmEnd, dmDistance, dmLoading, nextAction, shotCount, confirming,
   onShotStart, onShotEnd, onConfirmShot, onCloseShot,
 }: {
   hasCurrentHole: boolean;
@@ -2234,6 +2276,7 @@ function ShotRecordPanel({
   dmLoading: "idle" | "start" | "end";
   nextAction: "before" | "after";
   shotCount: number;
+  confirming: boolean;
   onShotStart: () => void;
   onShotEnd: () => void;
   onConfirmShot: () => void;
@@ -2241,13 +2284,15 @@ function ShotRecordPanel({
 }) {
   const disabled = !hasCurrentHole || creating;
   const hasPending = !!(dmStart || dmEnd || dmDistance);
+  const animYards  = useCountUp(dmDistance?.yards  ?? null);
+  const animMeters = useCountUp(dmDistance?.meters ?? null);
 
   return (
     <div className="space-y-1.5">
       {/* Start button */}
       <button
         onClick={onShotStart}
-        disabled={disabled || dmLoading !== "idle" || nextAction !== "before"}
+        disabled={disabled || dmLoading !== "idle" || nextAction !== "before" || confirming}
         className={`w-full py-3.5 rounded-2xl border-2 font-bold text-base transition-colors
                     active:scale-95 disabled:cursor-not-allowed ${
           nextAction === "before"
@@ -2265,7 +2310,7 @@ function ShotRecordPanel({
       {/* End button */}
       <button
         onClick={onShotEnd}
-        disabled={disabled || dmLoading !== "idle" || !dmStart || !!dmEnd}
+        disabled={disabled || dmLoading !== "idle" || !dmStart || !!dmEnd || confirming}
         className={`w-full py-3.5 rounded-2xl border-2 font-bold text-base transition-colors
                     active:scale-95 disabled:cursor-not-allowed ${
           dmStart && !dmEnd
@@ -2280,33 +2325,39 @@ function ShotRecordPanel({
             : "📍 止まった場所で押してね"}
       </button>
 
-      {/* Distance readout */}
+      {/* Distance readout with count-up animation */}
       {dmDistance && (
         <div className="text-center py-1">
           <span className="text-sm text-green-600">飛距離 </span>
           <span className="text-xl font-bold text-green-900 tabular-nums">
-            {dmDistance.yards}ヤード
+            {Math.round(animYards)}ヤード
           </span>
           <span className="text-sm text-green-500 tabular-nums ml-1">
-            （{Math.round(dmDistance.meters)}m）
+            （{Math.round(animMeters)}m）
           </span>
         </div>
       )}
 
-      {/* Confirm — INSERT into shots table */}
+      {/* Confirm — INSERT into shots table. While confirming, flip to a
+          disabled grey style with success text so the user gets immediate
+          visual feedback and can't double-tap. */}
       {dmDistance && (
         <button
           onClick={onConfirmShot}
-          disabled={disabled}
-          className="w-full py-3.5 rounded-2xl bg-green-700 hover:bg-green-800 active:bg-green-900
-                     text-white font-bold text-base transition-colors active:scale-95 shadow-md disabled:opacity-60"
+          disabled={disabled || confirming}
+          className={`w-full py-3.5 rounded-2xl font-bold text-base transition-colors
+                      active:scale-95 shadow-md disabled:cursor-not-allowed ${
+            confirming
+              ? "bg-gray-200 text-gray-400"
+              : "bg-green-700 hover:bg-green-800 active:bg-green-900 text-white"
+          }`}
         >
-          このショットを記録する
+          {confirming ? "✅ 記録しました" : "このショットを記録する"}
         </button>
       )}
 
       {/* Small close-link to abort the in-progress measurement */}
-      {hasPending && (
+      {hasPending && !confirming && (
         <button
           onClick={onCloseShot}
           className="block mx-auto text-[11px] text-gray-400 hover:text-gray-600 underline"
@@ -2327,58 +2378,150 @@ function CompactScoreEntry({
   score: number | null;
   putts: number | null;
   onParChange: (par: number) => void;
-  onScoreChange: (score: number | null) => void;
-  onPuttsChange: (putts: number | null) => void;
+  onScoreChange: (score: number) => void;
+  onPuttsChange: (putts: number) => void;
 }) {
-  const rows: Array<{
-    label: string;
-    value: number | null;
-    onChange: (v: number) => void;
-    onClear?: () => void;
-    min: number;
-    max: number;
-    placeholder?: string;
-  }> = [
-    { label: "パー", value: par,   onChange: onParChange,   min: 3, max: 6,  placeholder: "-" },
-    { label: "打数", value: score, onChange: (v) => onScoreChange(v), onClear: () => onScoreChange(null), min: 1, max: 20, placeholder: "-" },
-    { label: "パット", value: putts, onChange: (v) => onPuttsChange(v), onClear: () => onPuttsChange(null), min: 0, max: 10, placeholder: "-" },
-  ];
+  return (
+    <div className="card !p-2 space-y-1.5">
+      <QuickPickRow
+        label="パー"
+        value={par}
+        options={[3, 4, 5, 6]}
+        min={3}
+        max={7}
+        onChange={onParChange}
+      />
+      <QuickPickRow
+        label="打数"
+        value={score}
+        options={[1, 2, 3, 4, 5]}
+        min={1}
+        max={20}
+        onChange={onScoreChange}
+      />
+      <QuickPickRow
+        label="パット"
+        value={putts}
+        options={[0, 1, 2, 3, 4]}
+        min={0}
+        max={10}
+        onChange={onPuttsChange}
+      />
+    </div>
+  );
+}
+
+// Horizontal number quick-select: [-] [n1] [n2] ... [+]
+// — number buttons set the value in one tap (primary path)
+// — ±  are for out-of-range values (rare: e.g. 8打, 5パット)
+function QuickPickRow({
+  label, value, options, min, max, onChange,
+}: {
+  label: string;
+  value: number | null;
+  options: number[];
+  min: number;
+  max: number;
+  onChange: (n: number) => void;
+}) {
+  function dec() {
+    if (value == null) return;
+    if (value <= min) return;
+    onChange(value - 1);
+  }
+  function inc() {
+    if (value == null) { onChange(options[0] ?? min); return; }
+    if (value >= max) return;
+    onChange(value + 1);
+  }
+  // When the current value is outside the displayed options, show it as a
+  // small badge so the user can still see where they are without scrolling.
+  const valueOutsideOptions = value != null && !options.includes(value);
 
   return (
-    <div className="card !p-2.5 space-y-1.5">
-      {rows.map((r) => {
-        const v = r.value;
-        return (
-          <div key={r.label} className="flex items-center justify-between">
-            <span className="text-sm font-semibold text-green-700 w-12">{r.label}</span>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => {
-                  if (v == null) return;
-                  if (v <= r.min && r.onClear) { r.onClear(); return; }
-                  r.onChange(Math.max(r.min, v - 1));
-                }}
-                disabled={v == null}
-                className="w-9 h-9 rounded-lg bg-gray-100 hover:bg-gray-200 active:bg-gray-300
-                           text-gray-700 font-bold text-lg transition-colors active:scale-95
-                           disabled:opacity-40"
-              >
-                −
-              </button>
-              <span className="text-2xl font-bold text-green-900 tabular-nums w-10 text-center">
-                {v ?? r.placeholder ?? "-"}
-              </span>
-              <button
-                onClick={() => r.onChange(v == null ? r.min : Math.min(r.max, v + 1))}
-                className="w-9 h-9 rounded-lg bg-green-600 hover:bg-green-700 active:bg-green-800
-                           text-white font-bold text-lg transition-colors active:scale-95"
-              >
-                ＋
-              </button>
-            </div>
-          </div>
-        );
-      })}
+    <div className="flex items-center gap-1">
+      <span className="text-xs font-semibold text-green-700 w-10 flex-shrink-0">{label}</span>
+      <button
+        onClick={dec}
+        disabled={value == null || value <= min}
+        className="w-9 h-10 rounded-lg bg-gray-100 hover:bg-gray-200 active:bg-gray-300
+                   text-gray-700 font-bold text-base transition-colors active:scale-95
+                   disabled:opacity-40 flex-shrink-0"
+      >
+        −
+      </button>
+      <div className="flex gap-1 flex-1 min-w-0">
+        {options.map((n) => {
+          const selected = value === n;
+          return (
+            <button
+              key={n}
+              onClick={() => onChange(n)}
+              className={`flex-1 h-10 rounded-lg border-2 font-bold text-base tabular-nums
+                          transition-colors active:scale-95 min-w-0 ${
+                selected
+                  ? "bg-green-600 border-green-600 text-white shadow-sm"
+                  : "bg-white border-green-300 text-green-700 hover:bg-green-50"
+              }`}
+            >
+              {n}
+            </button>
+          );
+        })}
+      </div>
+      <button
+        onClick={inc}
+        disabled={value != null && value >= max}
+        className="w-9 h-10 rounded-lg bg-green-600 hover:bg-green-700 active:bg-green-800
+                   text-white font-bold text-base transition-colors active:scale-95
+                   disabled:opacity-40 flex-shrink-0"
+      >
+        ＋
+      </button>
+      {valueOutsideOptions && (
+        <span className="text-xs font-bold text-green-700 tabular-nums w-6 text-center flex-shrink-0">
+          {value}
+        </span>
+      )}
+    </div>
+  );
+}
+
+// ── BackTapHintModal: shown once on first round-screen visit ──────────
+
+function BackTapHintModal() {
+  const STORAGE_KEY = "back_tap_hint_shown";
+  const [show, setShow] = useState(false);
+
+  useEffect(() => {
+    try {
+      if (localStorage.getItem(STORAGE_KEY) !== "true") setShow(true);
+    } catch {
+      // storage disabled — silently skip
+    }
+  }, []);
+
+  function dismiss() {
+    try { localStorage.setItem(STORAGE_KEY, "true"); } catch { /* ignore */ }
+    setShow(false);
+  }
+
+  if (!show) return null;
+  return (
+    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl max-w-sm w-full p-5 space-y-3 shadow-xl">
+        <h2 className="font-bold text-green-800 text-base">💡 ラウンド中のヒント</h2>
+        <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-line">
+          {`iPhoneの 設定 → アクセシビリティ → タッチ → 「背面タップ」 をOFFにすると、誤動作なく快適にお使いいただけます。`}
+        </p>
+        <button
+          onClick={dismiss}
+          className="w-full py-2.5 rounded-xl bg-green-600 hover:bg-green-700 active:bg-green-800
+                     text-white font-bold text-sm transition-colors active:scale-95"
+        >
+          OK
+        </button>
+      </div>
     </div>
   );
 }
