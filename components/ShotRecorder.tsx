@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { calculateDistance, metersToYards } from "@/lib/distance";
+import { getBestShotPosition } from "@/lib/gps";
 
 interface PrevShot {
   id: string;
@@ -26,64 +27,56 @@ export function ShotRecorder({
   const [state, setState] = useState<State>("idle");
   const [error, setError] = useState<string | null>(null);
 
-  function record() {
+  async function record() {
     setError(null);
     setState("locating");
 
-    if (!navigator.geolocation) {
-      setError("このデバイスはGPSに対応していません");
+    const best = await getBestShotPosition();
+    if (!best) {
+      setError("GPS取得失敗。位置情報の許可を確認してください。");
       setState("idle");
       return;
     }
 
-    navigator.geolocation.getCurrentPosition(
-      async (pos) => {
-        const lat = pos.coords.latitude;
-        const lng = pos.coords.longitude;
-        const supabase = createClient();
+    const lat = best.lat;
+    const lng = best.lng;
+    const supabase = createClient();
 
-        // Retroactively set end position + distance of the previous shot
-        if (prevShot) {
-          const distM = calculateDistance(
-            { latitude: prevShot.start_lat, longitude: prevShot.start_lng },
-            { latitude: lat, longitude: lng },
-          );
-          await supabase
-            .from("shots")
-            .update({
-              end_lat: lat,
-              end_lng: lng,
-              distance_meters: distM,
-              distance_yards: metersToYards(distM),
-            })
-            .eq("id", prevShot.id);
-        }
+    if (prevShot) {
+      const distM = calculateDistance(
+        { latitude: prevShot.start_lat, longitude: prevShot.start_lng },
+        { latitude: lat, longitude: lng },
+      );
+      await supabase
+        .from("shots")
+        .update({
+          end_lat: lat,
+          end_lng: lng,
+          distance_meters: distM,
+          distance_yards: metersToYards(distM),
+        })
+        .eq("id", prevShot.id);
+    }
 
-        // Insert new shot — club and lie filled in later
-        const { error: err } = await supabase.from("shots").insert({
-          hole_id: holeId,
-          round_id: roundId,
-          shot_number: shotNumber,
-          start_lat: lat,
-          start_lng: lng,
-        });
+    const { error: err } = await supabase.from("shots").insert({
+      hole_id: holeId,
+      round_id: roundId,
+      shot_number: shotNumber,
+      start_lat: lat,
+      start_lng: lng,
+    });
 
-        if (err) {
-          setError("保存に失敗しました");
-          setState("idle");
-          return;
-        }
+    if (err) {
+      setError("保存に失敗しました");
+      setState("idle");
+      return;
+    }
 
-        setState("idle");
-        onShotRecorded();
-      },
-      () => {
-        setError("GPS取得失敗。位置情報の許可を確認してください。");
-        setState("idle");
-      },
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
-    );
+    setState("idle");
+    onShotRecorded();
   }
+
+  const isLocating = state === "locating";
 
   return (
     <div className="space-y-2">
@@ -92,20 +85,21 @@ export function ShotRecorder({
       )}
       <button
         onClick={record}
-        disabled={state === "locating"}
-        className="w-full py-5 rounded-2xl font-bold text-xl transition-all
-                   bg-green-600 hover:bg-green-700 active:bg-green-800
-                   text-white shadow-md disabled:opacity-60 disabled:cursor-wait"
+        disabled={isLocating}
+        className={`w-full py-5 rounded-2xl font-bold text-xl transition-all
+                    ${isLocating
+                      ? "bg-white text-green-400 border-2 border-green-200 opacity-70 cursor-wait"
+                      : "bg-green-500 hover:bg-green-600 active:bg-green-700 text-white shadow-lg"}`}
       >
-        {state === "locating" ? (
+        {isLocating ? (
           <span className="flex items-center justify-center gap-2">
-            <span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+            <span className="w-5 h-5 border-2 border-green-300 border-t-transparent rounded-full animate-spin" />
             GPS取得中...
           </span>
         ) : (
           <span className="flex flex-col items-center gap-1">
             <span>第{shotNumber}打　打つ前に押してね</span>
-            <span className="text-sm font-normal opacity-80">（ショット記録です）</span>
+            <span className="text-sm font-normal opacity-90">（ショット記録です）</span>
           </span>
         )}
       </button>

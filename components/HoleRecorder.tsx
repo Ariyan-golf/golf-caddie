@@ -7,7 +7,7 @@ import { ShotRecorder } from "./ShotRecorder";
 import type { Club } from "@/types";
 import { CLUB_LABELS } from "@/types";
 import { calculateDistance, metersToYards } from "@/lib/distance";
-import { stopGpsTracking } from "@/lib/gps";
+import { stopGpsTracking, getBestShotPosition } from "@/lib/gps";
 import { releaseWakeLock } from "@/lib/wakeLock";
 
 // ── Local types ─────────────────────────────────────────────────────
@@ -154,6 +154,8 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [payLoading, setPayLoading] = useState(false);
   const [payError, setPayError] = useState("");
+  const [confirmEarlyEnd, setConfirmEarlyEnd] = useState(false);
+  const [endedEarly, setEndedEarly] = useState(false);
 
   // Wind compass visibility — persisted to localStorage
   const [windVisible, setWindVisible] = useState(true);
@@ -294,29 +296,27 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
 
     // Record last shot's end position + distance in the background
     const lastShot = currentHole?.shots.at(-1);
-    if (!lastShot?.start_lat || !lastShot?.start_lng || !navigator.geolocation) return;
+    if (!lastShot?.start_lat || !lastShot?.start_lng) return;
 
     const shotId   = lastShot.id;
     const startLat = lastShot.start_lat;
     const startLng = lastShot.start_lng;
 
-    navigator.geolocation.getCurrentPosition(
-      async (pos) => {
-        const supabase = createClient();
-        const distM = calculateDistance(
-          { latitude: startLat, longitude: startLng },
-          { latitude: pos.coords.latitude, longitude: pos.coords.longitude },
-        );
-        await supabase.from("shots").update({
-          end_lat: pos.coords.latitude,
-          end_lng: pos.coords.longitude,
-          distance_meters: distM,
-          distance_yards: metersToYards(distM),
-        }).eq("id", shotId);
-      },
-      () => { /* silent fail — last shot distance stays null */ },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 },
-    );
+    void (async () => {
+      const best = await getBestShotPosition();
+      if (!best) return;
+      const supabase = createClient();
+      const distM = calculateDistance(
+        { latitude: startLat, longitude: startLng },
+        { latitude: best.lat, longitude: best.lng },
+      );
+      await supabase.from("shots").update({
+        end_lat: best.lat,
+        end_lng: best.lng,
+        distance_meters: distM,
+        distance_yards: metersToYards(distM),
+      }).eq("id", shotId);
+    })();
   }
 
   async function goBackToPrevHole() {
@@ -347,8 +347,12 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
 
   async function handleRoundEndConfirm() {
     setConfirmLoading(true);
+    // Handicap differential only meaningful for full 18H rounds.
     let diff: number | null = null;
-    if (courseRating != null && slopeRating != null && slopeRating !== 0) {
+    if (
+      completedHoles.length === 18 &&
+      courseRating != null && slopeRating != null && slopeRating !== 0
+    ) {
       diff = Math.round(((totalScore - courseRating) * 113 / slopeRating) * 10) / 10;
     }
     const supabase = createClient();
@@ -360,6 +364,7 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
     setHandicapDiff(diff);
     setConfirmLoading(false);
     setRoundEndConfirmed(true);
+    if (!isRoundDone) setEndedEarly(true);
     if (paymentStatus === "pending") {
       setShowPaymentModal(true);
     }
@@ -389,7 +394,7 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
   if (isRoundDone && !roundEndConfirmed) {
     return <RoundEndScreen onConfirm={handleRoundEndConfirm} confirming={confirmLoading} />;
   }
-  if (isRoundDone) {
+  if (isRoundDone || endedEarly) {
     return (
       <>
         <RoundComplete
@@ -420,7 +425,20 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
         startHole={startHole}
         activeHoleNumber={currentHole?.hole_number ?? null}
         onTabClick={scrollToHole}
+        onEndRound={() => setConfirmEarlyEnd(true)}
       />
+
+      {confirmEarlyEnd && (
+        <EarlyEndModal
+          completed={completedHoles.length}
+          onConfirm={async () => {
+            setConfirmEarlyEnd(false);
+            await handleRoundEndConfirm();
+          }}
+          onCancel={() => setConfirmEarlyEnd(false)}
+          confirming={confirmLoading}
+        />
+      )}
 
       {(windDirection || windSpeed) && (
         <WindCompassSection
@@ -568,12 +586,13 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
 // ── HoleTabs ────────────────────────────────────────────────────────
 
 function HoleTabs({
-  holes, startHole, activeHoleNumber, onTabClick,
+  holes, startHole, activeHoleNumber, onTabClick, onEndRound,
 }: {
   holes: Hole[];
   startHole: number;
   activeHoleNumber: number | null;
   onTabClick: (holeNumber: number) => void;
+  onEndRound: () => void;
 }) {
   const playOrder = Array.from({ length: 18 }, (_, i) => ((startHole - 1 + i) % 18) + 1);
   const holeMap = Object.fromEntries(holes.map((h) => [h.hole_number, h]));
@@ -636,6 +655,17 @@ function HoleTabs({
               </button>
             );
           })}
+          {/* End-round button immediately after 18H to make termination discoverable */}
+          <button
+            onClick={onEndRound}
+            aria-label="ラウンドを終了する"
+            className="flex flex-col items-center justify-center rounded-xl border-2 px-2.5 py-2 min-w-[3.5rem]
+                       bg-red-600 hover:bg-red-700 active:bg-red-800 border-red-700 text-white
+                       font-bold transition-colors active:scale-95 shadow-md"
+          >
+            <span className="text-lg leading-tight">🏁</span>
+            <span className="text-[11px] leading-tight">終了</span>
+          </button>
         </div>
       </div>
     </div>
@@ -1281,37 +1311,41 @@ function ScoreEntryCard({
   const [dmClub, setDmClub]         = useState("driver");
   const [dmSaved, setDmSaved]       = useState(false);
   const [dmHistory, setDmHistory]   = useState<Array<{club: string; yards: number; meters: number}>>([]);
+  // Sequential button enforcement: which action is up next
+  const [nextAction, setNextAction] = useState<"before" | "after">("before");
+
+  // Reset DM state when the hole changes (1H → 2H, etc.)
+  useEffect(() => {
+    setShowDM(false);
+    setDmStart(null);
+    setDmEnd(null);
+    setDmDistance(null);
+    setDmSaved(false);
+    setNextAction("before");
+  }, [hole.id]);
 
   async function handleDmStart() {
-    if (!navigator.geolocation) return;
     setDmLoading("start");
     try {
-      const pos = await new Promise<GeolocationPosition>((resolve, reject) =>
-        navigator.geolocation.getCurrentPosition(resolve, reject, {
-          enableHighAccuracy: true, timeout: 15000, maximumAge: 0,
-        })
-      );
-      setDmStart({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+      const best = await getBestShotPosition();
+      if (!best) return;
+      setDmStart({ lat: best.lat, lng: best.lng });
       setDmEnd(null);
       setDmDistance(null);
-    } catch {
-      // GPS unavailable
+      setNextAction("after");
     } finally {
       setDmLoading("idle");
     }
   }
 
   async function handleDmEnd() {
-    if (!navigator.geolocation || !dmStart) return;
+    if (!dmStart) return;
     setDmLoading("end");
     try {
-      const pos = await new Promise<GeolocationPosition>((resolve, reject) =>
-        navigator.geolocation.getCurrentPosition(resolve, reject, {
-          enableHighAccuracy: true, timeout: 15000, maximumAge: 0,
-        })
-      );
-      const endLat = pos.coords.latitude;
-      const endLng = pos.coords.longitude;
+      const best = await getBestShotPosition();
+      if (!best) return;
+      const endLat = best.lat;
+      const endLng = best.lng;
       setDmEnd({ lat: endLat, lng: endLng });
       const distM = calculateDistance(
         { latitude: dmStart.lat, longitude: dmStart.lng },
@@ -1319,8 +1353,7 @@ function ScoreEntryCard({
       );
       const distY = metersToYards(distM);
       setDmDistance({ yards: distY, meters: Math.round(distM * 10) / 10 });
-    } catch {
-      // GPS unavailable
+      setNextAction("before");
     } finally {
       setDmLoading("idle");
     }
@@ -1345,6 +1378,7 @@ function ScoreEntryCard({
       setDmEnd(null);
       setDmDistance(null);
       setDmSaved(false);
+      setNextAction("before");
     }, 1500);
   }
 
@@ -1451,24 +1485,24 @@ function ScoreEntryCard({
             </div>
             <button
               onClick={handleDmStart}
-              disabled={dmLoading !== "idle"}
+              disabled={dmLoading !== "idle" || nextAction !== "before"}
               className={`w-full py-4 rounded-2xl border-2 font-bold text-base transition-colors
-                          active:scale-95 disabled:opacity-50 ${
-                dmStart
-                  ? "border-green-500 bg-green-500 text-white"
-                  : "border-green-300 bg-white text-green-700 hover:bg-green-50"
+                          active:scale-95 disabled:cursor-not-allowed ${
+                nextAction === "before"
+                  ? "border-green-600 bg-green-500 hover:bg-green-600 text-white shadow-md"
+                  : "border-green-200 bg-white text-green-400 opacity-60"
               }`}
             >
               {dmLoading === "start" ? "📡 GPS取得中..." : dmStart ? "✅ 打点を記録済み" : "📍 打つ前に押してね"}
             </button>
             <button
               onClick={handleDmEnd}
-              disabled={dmLoading !== "idle" || !dmStart}
+              disabled={dmLoading !== "idle" || nextAction !== "after"}
               className={`w-full py-4 rounded-2xl border-2 font-bold text-base transition-colors
-                          active:scale-95 disabled:opacity-50 ${
-                dmEnd
-                  ? "border-blue-500 bg-blue-500 text-white"
-                  : "border-blue-300 bg-white text-blue-700 hover:bg-blue-50"
+                          active:scale-95 disabled:cursor-not-allowed ${
+                nextAction === "after"
+                  ? "border-green-600 bg-green-500 hover:bg-green-600 text-white shadow-md"
+                  : "border-green-200 bg-white text-green-400 opacity-60"
               }`}
             >
               {dmLoading === "end" ? "📡 GPS取得中..." : dmEnd ? "✅ 着地点を記録済み" : "📍 止まった場所で押してね"}
@@ -1489,6 +1523,7 @@ function ScoreEntryCard({
                   setDmEnd(null);
                   setDmDistance(null);
                   setDmSaved(false);
+                  setNextAction("before");
                 }}
                 className="flex-1 py-3 rounded-xl border border-gray-200 text-gray-500
                            hover:bg-gray-50 text-sm font-medium transition-colors active:scale-95"
@@ -1708,6 +1743,52 @@ function RoundEndScreen({ onConfirm, confirming }: { onConfirm: () => void; conf
         >
           {confirming ? "集計中..." : "ラウンド終了"}
         </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Early-end confirmation modal ────────────────────────────────────
+
+function EarlyEndModal({
+  completed, onConfirm, onCancel, confirming,
+}: {
+  completed: number;
+  onConfirm: () => void;
+  onCancel: () => void;
+  confirming: boolean;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="bg-white rounded-2xl max-w-sm w-full p-6 space-y-4 shadow-xl">
+        <div className="text-center space-y-2">
+          <span className="text-4xl">🏁</span>
+          <h2 className="text-lg font-bold text-red-700">ラウンドを終了しますか？</h2>
+        </div>
+        <p className="text-sm text-gray-700 leading-relaxed text-center">
+          現在 {completed}/18H 完了です。本当にラウンドを終了しますか？
+        </p>
+        <p className="text-xs text-gray-500 leading-relaxed text-center">
+          GPS取得と画面起動ロックを解除し、これまでの記録を集計します。
+        </p>
+        <div className="flex gap-2">
+          <button
+            onClick={onCancel}
+            disabled={confirming}
+            className="flex-1 py-3 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700
+                       text-sm font-bold transition-colors disabled:opacity-60"
+          >
+            キャンセル
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={confirming}
+            className="flex-1 py-3 rounded-xl bg-red-600 hover:bg-red-700 active:bg-red-800
+                       text-white text-sm font-bold transition-colors disabled:opacity-60"
+          >
+            {confirming ? "集計中..." : "終了する"}
+          </button>
+        </div>
       </div>
     </div>
   );
