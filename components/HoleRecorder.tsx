@@ -471,37 +471,54 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
       distanceYards: dmDistance.yards,
       distanceMeters: dmDistance.meters,
     };
+
+    // Eagerly show the feedback panel; idle reset is guaranteed by the finally below.
     setConfirmingShot(true);
     setLastShot(snapshot);
-    const supabase = createClient();
-    const { error } = await supabase.from("shots").insert({
-      hole_id: currentHole.id,
-      round_id: roundId,
-      shot_number: snapshot.shotNumber,
-      start_lat: dmStart.lat,
-      start_lng: dmStart.lng,
-      end_lat: dmEnd.lat,
-      end_lng: dmEnd.lng,
-      distance_meters: dmDistance.meters,
-      distance_yards: dmDistance.yards,
-      club_input_at: inputMode === "realtime" ? "当日" : "事後",
-    });
-    if (error) {
-      console.error("[confirm-shot] insert error:", error.message);
-      setLastShot(null);
+
+    let insertOk = false;
+    try {
+      const supabase = createClient();
+      // Run INSERT and the 2-second display timer in parallel so the panel is
+      // always visible for ≥2s — even if INSERT is faster or fails immediately.
+      const [insertResult] = await Promise.all([
+        supabase.from("shots").insert({
+          hole_id: currentHole.id,
+          round_id: roundId,
+          shot_number: snapshot.shotNumber,
+          start_lat: dmStart.lat,
+          start_lng: dmStart.lng,
+          end_lat: dmEnd.lat,
+          end_lng: dmEnd.lng,
+          distance_meters: dmDistance.meters,
+          distance_yards: dmDistance.yards,
+          club_input_at: inputMode === "realtime" ? "当日" : "事後",
+        }),
+        new Promise<void>((r) => setTimeout(r, 2000)),
+      ]);
+      if (insertResult.error) {
+        console.error("[confirm-shot] insert error:", insertResult.error.message);
+      } else {
+        insertOk = true;
+      }
+    } catch (e) {
+      console.error("[confirm-shot] unexpected error:", e);
+    } finally {
+      // Refresh in the background only when the INSERT succeeded.
+      if (insertOk) {
+        void refreshCurrent();
+      } else {
+        // Don't surface a phantom "直前のショット" if the write failed.
+        setLastShot(null);
+      }
+      // ALWAYS unwind to idle so the user is never stuck on the panel.
+      setDmStart(null);
+      setDmEnd(null);
+      setDmDistance(null);
+      setShotNextAction("before");
       setConfirmingShot(false);
-      return;
+      setShotMode("idle");
     }
-    await refreshCurrent();
-    // 2s feedback ("✅ 第N打 記録しました / 飛距離 …") before clearing the panel
-    await new Promise((r) => setTimeout(r, 2000));
-    setDmStart(null);
-    setDmEnd(null);
-    setDmDistance(null);
-    setShotNextAction("before");
-    setConfirmingShot(false);
-    // Collapse back to the idle "⛳ 飛距離を測る" entry button
-    setShotMode("idle");
   }
 
   async function updateHolePar(par: number) {
@@ -2360,17 +2377,24 @@ function ActiveShotPanel({
   const startDone = !!dmStart;
   const endDone   = !!dmEnd;
 
-  // 2s feedback panel after "このショットを記録する" tap — uses the captured snapshot
-  if (confirming && lastShot) {
+  // 2s feedback panel after "このショットを記録する" tap. Gated on `confirming`
+  // alone — `lastShot` is used for display if present, with a safe fallback to
+  // the in-flight values so the panel never collapses unexpectedly.
+  if (confirming) {
+    const shotNumber = lastShot?.shotNumber ?? shotCount + 1;
+    const yards = lastShot?.distanceYards ?? dmDistance?.yards;
+    const meters = lastShot?.distanceMeters ?? dmDistance?.meters;
     return (
       <div className="w-full py-5 rounded-2xl bg-gray-100 border-2 border-gray-200
                       text-center space-y-1.5 shadow-inner">
         <p className="text-base font-bold text-gray-700">
-          ✅ 第{lastShot.shotNumber}打 記録しました
+          ✅ 第{shotNumber}打 記録しました
         </p>
-        <p className="text-sm text-gray-600 tabular-nums">
-          飛距離 {lastShot.distanceYards}ヤード（{lastShot.distanceMeters}m）
-        </p>
+        {yards != null && meters != null && (
+          <p className="text-sm text-gray-600 tabular-nums">
+            飛距離 {yards}ヤード（{meters}m）
+          </p>
+        )}
       </div>
     );
   }
