@@ -56,6 +56,9 @@ interface HoleRecorderProps {
   paymentStatus?: "pending" | "paid";
   golfCourseName?: string;
   inputMode?: "post_round" | "realtime";
+  golfCourseId?: string | null;
+  greenType?: "main" | "sub";
+  initialGreenCenters?: Record<number, { lat: number; lng: number }>;
 }
 
 interface RoundShotEntry {
@@ -146,7 +149,7 @@ function scoreLabel(score: number, par: number) {
 
 // ── Main component ──────────────────────────────────────────────────
 
-export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "shot", windDirection, windSpeed, courseRating, slopeRating, courseHoles, paymentStatus = "paid", golfCourseName = "", inputMode = "post_round" }: HoleRecorderProps) {
+export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "shot", windDirection, windSpeed, courseRating, slopeRating, courseHoles, paymentStatus = "paid", golfCourseName = "", inputMode = "post_round", golfCourseId = null, greenType = "main", initialGreenCenters = {} }: HoleRecorderProps) {
   const betaMode = isBetaMode();
   const router = useRouter();
   const lastHole = initialHoles.at(-1);
@@ -195,6 +198,17 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
   // automatically "cleared" on hole switch because the key just isn't present yet
   // for the next hole. Lives in component state only — resets on app reload by design.
   const [greenDirections, setGreenDirections] = useState<Record<number, number>>({});
+
+  // Per-hole green-center coordinates, seeded from any rows that already exist
+  // in green_centers for this course + green_type. New registrations from the
+  // dialog merge into this map.
+  const [greenCenters, setGreenCenters] = useState<Record<number, { lat: number; lng: number }>>(initialGreenCenters);
+
+  // Green-center registration dialog + toast
+  const [greenDialogOpen, setGreenDialogOpen] = useState(false);
+  const [greenDialogStatus, setGreenDialogStatus] = useState<"idle" | "saving" | "error">("idle");
+  const [greenDialogError, setGreenDialogError] = useState<string | null>(null);
+  const [greenToast, setGreenToast] = useState<{ holeNumber: number } | null>(null);
 
   // Wind compass visibility — persisted to localStorage
   const [windVisible, setWindVisible] = useState(true);
@@ -256,6 +270,62 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
   }, [dmStart, dmEnd]);
 
   // ── Actions ─────────────────────────────────────────────────────────
+
+  async function handleConfirmGreenCenter() {
+    if (!currentHole || !golfCourseId || greenDialogStatus === "saving") return;
+    setGreenDialogStatus("saving");
+    setGreenDialogError(null);
+    try {
+      const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
+        if (typeof navigator === "undefined" || !navigator.geolocation) {
+          reject(new Error("位置情報を取得できませんでした"));
+          return;
+        }
+        navigator.geolocation.getCurrentPosition(
+          (p) => resolve(p),
+          (err) => reject(err),
+          { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
+        );
+      });
+      const lat = pos.coords.latitude;
+      const lng = pos.coords.longitude;
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      const { error } = await supabase
+        .from("green_centers")
+        .upsert(
+          {
+            course_id: golfCourseId,
+            hole_number: currentHole.hole_number,
+            green_type: greenType,
+            latitude: lat,
+            longitude: lng,
+            registered_by: user?.id ?? null,
+            registered_at: new Date().toISOString(),
+          },
+          { onConflict: "course_id,hole_number,green_type" },
+        );
+      if (error) throw error;
+      setGreenCenters((prev) => ({
+        ...prev,
+        [currentHole.hole_number]: { lat, lng },
+      }));
+      setGreenToast({ holeNumber: currentHole.hole_number });
+      setGreenDialogOpen(false);
+      setGreenDialogStatus("idle");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "位置情報を取得できませんでした";
+      setGreenDialogError(msg);
+      setGreenDialogStatus("error");
+    }
+  }
+
+  // Auto-dismiss the green-center success toast after 3 seconds.
+  useEffect(() => {
+    if (!greenToast) return;
+    const t = setTimeout(() => setGreenToast(null), 3000);
+    return () => clearTimeout(t);
+  }, [greenToast]);
 
   function switchHoleMode() {
     const newMode = holeMode === "shot" ? "score" : "shot";
@@ -699,6 +769,7 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
         onSetGreenDirection={(deg) =>
           setGreenDirections((prev) => ({ ...prev, [currentHoleNumber]: deg }))
         }
+        greenCenter={greenCenters[currentHoleNumber] ?? null}
       />
 
 
@@ -738,6 +809,28 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
         onPuttsChange={updateHolePutts}
       />
 
+      {/* Green-center registration — disabled when no course is linked to the round */}
+      {currentHole && (
+        <button
+          onClick={() => {
+            setGreenDialogError(null);
+            setGreenDialogStatus("idle");
+            setGreenDialogOpen(true);
+          }}
+          disabled={!golfCourseId}
+          className={`w-full py-2.5 rounded-xl text-sm font-semibold border transition-colors
+                      active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 ${
+            greenCenters[currentHole.hole_number]
+              ? "bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100"
+              : "bg-white border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+          }`}
+        >
+          {greenCenters[currentHole.hole_number]
+            ? `📍 グリーンセンター登録済み（再登録）`
+            : `📍 グリーンセンターを登録`}
+        </button>
+      )}
+
       {/* Modals */}
       {confirmEarlyEnd && (
         <EarlyEndModal
@@ -751,6 +844,86 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
         />
       )}
 
+      {greenDialogOpen && currentHole && (
+        <GreenCenterDialog
+          holeNumber={currentHole.hole_number}
+          status={greenDialogStatus}
+          errorMessage={greenDialogError}
+          onConfirm={handleConfirmGreenCenter}
+          onCancel={() => {
+            if (greenDialogStatus === "saving") return;
+            setGreenDialogOpen(false);
+            setGreenDialogStatus("idle");
+            setGreenDialogError(null);
+          }}
+        />
+      )}
+
+      {greenToast && (
+        <div
+          role="status"
+          className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 px-4 py-3 rounded-xl
+                     bg-emerald-600 text-white text-sm font-semibold shadow-lg"
+        >
+          ✅ ホール{greenToast.holeNumber}のグリーンセンターを登録しました
+        </div>
+      )}
+
+    </div>
+  );
+}
+
+// ── GreenCenterDialog ──────────────────────────────────────────────────
+
+function GreenCenterDialog({
+  holeNumber, status, errorMessage, onConfirm, onCancel,
+}: {
+  holeNumber: number;
+  status: "idle" | "saving" | "error";
+  errorMessage: string | null;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+      <div className="w-full max-w-sm bg-white rounded-2xl shadow-xl p-5 space-y-3">
+        <h3 className="text-base font-bold text-emerald-800 text-center">
+          📍 ホール{holeNumber} グリーンセンター登録
+        </h3>
+        <p className="text-sm text-gray-700 leading-relaxed text-center">
+          グリーンの中央に立って<br />「登録」を押してください
+        </p>
+        <p className="text-xs text-gray-500 leading-relaxed text-center">
+          ※カップの位置ではなく、グリーンの中心点を狙ってください
+        </p>
+        {status === "error" && errorMessage && (
+          <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg p-2 text-center">
+            {errorMessage}
+          </p>
+        )}
+        <div className="flex gap-2 pt-1">
+          <button
+            onClick={onCancel}
+            disabled={status === "saving"}
+            className="flex-1 py-2.5 rounded-xl text-sm font-semibold
+                       bg-gray-100 hover:bg-gray-200 text-gray-700
+                       disabled:opacity-50 disabled:cursor-not-allowed
+                       active:scale-95 transition-colors"
+          >
+            キャンセル
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={status === "saving"}
+            className="flex-1 py-2.5 rounded-xl text-sm font-semibold
+                       bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white
+                       disabled:opacity-60 disabled:cursor-not-allowed shadow-sm
+                       active:scale-95 transition-colors"
+          >
+            {status === "saving" ? "📡 取得中…" : "登録"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

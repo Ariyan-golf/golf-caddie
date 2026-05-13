@@ -19,7 +19,7 @@ export default async function RoundDetailPage({ params }: Props) {
   const [{ data: round }, { data: profile }] = await Promise.all([
     supabase
       .from("rounds")
-      .select("*, golf_courses(course_type)")
+      .select("*, golf_courses(course_type), course_tees(green_type)")
       .eq("id", id)
       .eq("user_id", user!.id)
       .single(),
@@ -82,11 +82,35 @@ export default async function RoundDetailPage({ params }: Props) {
     }
   }
 
+  // green_type: course_tees uses Japanese labels; the green_centers table is
+  // constrained to 'main' / 'sub'. Map here once so HoleRecorder and dialog
+  // never have to reason about the Japanese values.
+  const rawGreenType = (round.course_tees as { green_type?: string } | null)?.green_type ?? null;
+  const greenType: "main" | "sub" =
+    rawGreenType === "サブグリーン" ? "sub" : "main";
+
   const { data: holes } = await supabase
     .from("holes")
     .select("*, shots(*)")
     .eq("round_id", id)
     .order("hole_number");
+
+  // Pre-fetch existing green centers for this course + green_type so the
+  // round-UI can immediately reflect "registered" state on each hole tab.
+  const initialGreenCenters: Record<number, { lat: number; lng: number }> = {};
+  if (round.golf_course_id) {
+    const { data: centers } = await supabase
+      .from("green_centers")
+      .select("hole_number, latitude, longitude")
+      .eq("course_id", round.golf_course_id)
+      .eq("green_type", greenType);
+    for (const c of centers ?? []) {
+      initialGreenCenters[c.hole_number as number] = {
+        lat: c.latitude as number,
+        lng: c.longitude as number,
+      };
+    }
+  }
 
   return (
     <div className="max-w-lg mx-auto p-4 space-y-4">
@@ -115,6 +139,9 @@ export default async function RoundDetailPage({ params }: Props) {
         paymentStatus={(round.payment_status ?? "paid") as "pending" | "paid"}
         golfCourseName={round.course_name ?? ""}
         inputMode={inputMode}
+        golfCourseId={round.golf_course_id ?? null}
+        greenType={greenType}
+        initialGreenCenters={initialGreenCenters}
       />
     </div>
   );

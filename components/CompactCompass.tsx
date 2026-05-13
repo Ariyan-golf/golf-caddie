@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useDeviceOrientation } from "@/hooks/useDeviceOrientation";
+import { calculateDistance, metersToYards } from "@/lib/distance";
 
 const WIND_DIR_DEG: Record<string, number> = {
   "北": 0, "北東": 45, "東": 90, "南東": 135,
@@ -15,6 +16,7 @@ interface Props {
   onToggle: () => void;
   greenDirection: number | null;
   onSetGreenDirection: (deg: number) => void;
+  greenCenter?: { lat: number; lng: number } | null;
 }
 
 const SIZE = 120;
@@ -35,9 +37,19 @@ function shortestDelta(a: number, b: number): number {
 export function CompactCompass({
   windDirection, windSpeed, visible, onToggle,
   greenDirection, onSetGreenDirection,
+  greenCenter = null,
 }: Props) {
   const { heading, requestPermission, sensorState } = useDeviceOrientation();
   const [pendingSet, setPendingSet] = useState(false);
+
+  // Remaining-distance readout: ephemeral, auto-clears after 3s. Whatever
+  // is shown here (distance / error / null) lives entirely in this state.
+  const [remaining, setRemaining] = useState<
+    { kind: "distance"; yards: number; meters: number }
+    | { kind: "message"; text: string }
+    | null
+  >(null);
+  const [remainingLoading, setRemainingLoading] = useState(false);
 
   // After tapping "Set" on iOS, permission resolves first; the first heading
   // event arrives a moment later. Once heading turns non-null, commit it.
@@ -47,6 +59,51 @@ export function CompactCompass({
       setPendingSet(false);
     }
   }, [pendingSet, heading, onSetGreenDirection]);
+
+  // Clear remaining-distance state whenever the current hole's green center
+  // changes (HoleRecorder swaps the prop on hole switch).
+  useEffect(() => {
+    setRemaining(null);
+  }, [greenCenter]);
+
+  // Auto-dismiss the remaining-distance readout after 3 seconds.
+  useEffect(() => {
+    if (!remaining) return;
+    const t = setTimeout(() => setRemaining(null), 3000);
+    return () => clearTimeout(t);
+  }, [remaining]);
+
+  async function handleShowRemaining() {
+    if (remainingLoading) return;
+    if (!greenCenter) {
+      setRemaining({ kind: "message", text: "グリーン未登録です" });
+      return;
+    }
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      setRemaining({ kind: "message", text: "位置情報を取得できませんでした" });
+      return;
+    }
+    setRemainingLoading(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const distM = calculateDistance(
+          { latitude: pos.coords.latitude, longitude: pos.coords.longitude },
+          { latitude: greenCenter.lat, longitude: greenCenter.lng },
+        );
+        setRemaining({
+          kind: "distance",
+          yards: metersToYards(distM),
+          meters: Math.round(distM * 10) / 10,
+        });
+        setRemainingLoading(false);
+      },
+      () => {
+        setRemaining({ kind: "message", text: "位置情報を取得できませんでした" });
+        setRemainingLoading(false);
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
+    );
+  }
 
   async function handleSetGreen() {
     if (heading !== null) {
@@ -192,6 +249,26 @@ export function CompactCompass({
                   {pendingSet ? "取得中…" : "再設定"}
                 </button>
               </div>
+            )}
+
+            {/* Remaining-distance — shows for 3s after tap, then clears */}
+            <button
+              onClick={handleShowRemaining}
+              disabled={remainingLoading}
+              className="self-start text-xs font-semibold px-3 py-1.5 rounded-full
+                         bg-emerald-100 hover:bg-emerald-200 active:bg-emerald-300
+                         text-emerald-800 border border-emerald-200
+                         transition-colors active:scale-95
+                         disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {remainingLoading ? "📡 取得中…" : "📍 残り距離を見る"}
+            </button>
+            {remaining && (
+              <p className="text-xs text-emerald-800 font-semibold tabular-nums leading-tight">
+                {remaining.kind === "distance"
+                  ? `残り ${remaining.yards}ヤード（${remaining.meters}m）`
+                  : remaining.text}
+              </p>
             )}
           </div>
         </div>
