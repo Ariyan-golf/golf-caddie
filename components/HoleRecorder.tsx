@@ -180,6 +180,7 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
   const [dmLoading, setDmLoading] = useState<"idle" | "start" | "end">("idle");
   const [shotNextAction, setShotNextAction] = useState<"before" | "after">("before");
   const [confirmingShot, setConfirmingShot] = useState(false);
+  const [shotMode, setShotMode] = useState<"idle" | "recording">("idle");
 
   // Wind compass visibility — persisted to localStorage
   const [windVisible, setWindVisible] = useState(true);
@@ -394,12 +395,29 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
   }, [currentHoleNumber]);
 
   function selectHole(n: number) {
-    // Drop uncommitted shot state when switching holes
+    // Drop uncommitted shot state + collapse the recording panel
     setDmStart(null);
     setDmEnd(null);
     setDmDistance(null);
     setShotNextAction("before");
+    setShotMode("idle");
     setCurrentHoleNumber(n);
+  }
+
+  function handleEnterRecordingMode() {
+    setDmStart(null);
+    setDmEnd(null);
+    setDmDistance(null);
+    setShotNextAction("before");
+    setShotMode("recording");
+  }
+
+  function handleCancelShot() {
+    setDmStart(null);
+    setDmEnd(null);
+    setDmDistance(null);
+    setShotNextAction("before");
+    setShotMode("idle");
   }
 
   async function handleShotStart() {
@@ -465,13 +483,8 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
     setDmDistance(null);
     setShotNextAction("before");
     setConfirmingShot(false);
-  }
-
-  function handleCloseShot() {
-    setDmStart(null);
-    setDmEnd(null);
-    setDmDistance(null);
-    setShotNextAction("before");
+    // Collapse back to the idle "⛳ 飛距離を測る" entry button
+    setShotMode("idle");
   }
 
   async function updateHolePar(par: number) {
@@ -618,22 +631,29 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
         />
       )}
 
-      {/* Shot recording panel */}
-      <ShotRecordPanel
-        hasCurrentHole={!!currentHole}
-        creating={creating}
-        dmStart={dmStart}
-        dmEnd={dmEnd}
-        dmDistance={dmDistance}
-        dmLoading={dmLoading}
-        nextAction={shotNextAction}
-        shotCount={currentHole?.shots.length ?? 0}
-        confirming={confirmingShot}
-        onShotStart={handleShotStart}
-        onShotEnd={handleShotEnd}
-        onConfirmShot={handleConfirmShot}
-        onCloseShot={handleCloseShot}
-      />
+      {/* Shot recording — toggleable. Idle: single ⛳ entry button.
+          Recording: 打つ前 → 止まった場所 → confirm/cancel flow. */}
+      {shotMode === "idle" ? (
+        <IdleShotButton
+          disabled={!currentHole || creating}
+          onStart={handleEnterRecordingMode}
+        />
+      ) : (
+        <ActiveShotPanel
+          hasCurrentHole={!!currentHole}
+          creating={creating}
+          dmStart={dmStart}
+          dmEnd={dmEnd}
+          dmDistance={dmDistance}
+          dmLoading={dmLoading}
+          shotCount={currentHole?.shots.length ?? 0}
+          confirming={confirmingShot}
+          onShotStart={handleShotStart}
+          onShotEnd={handleShotEnd}
+          onConfirmShot={handleConfirmShot}
+          onCancel={handleCancelShot}
+        />
+      )}
 
       {/* Compact score entry: パー / 打数 / パット */}
       <CompactScoreEntry
@@ -658,8 +678,6 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
         />
       )}
 
-      {/* One-time iPhone back-tap hint, gated by localStorage */}
-      <BackTapHintModal />
     </div>
   );
 }
@@ -2263,10 +2281,33 @@ function useCountUp(target: number | null, duration = 500): number {
   return value;
 }
 
-function ShotRecordPanel({
+// ── IdleShotButton: collapsed-state entry point ─────────────────────
+
+function IdleShotButton({
+  disabled, onStart,
+}: {
+  disabled: boolean;
+  onStart: () => void;
+}) {
+  return (
+    <button
+      onClick={onStart}
+      disabled={disabled}
+      className="w-full py-4 rounded-2xl bg-green-600 hover:bg-green-700 active:bg-green-800
+                 text-white font-bold text-lg shadow-md transition-colors active:scale-95
+                 disabled:opacity-50 disabled:cursor-not-allowed"
+    >
+      ⛳ 飛距離を測る
+    </button>
+  );
+}
+
+// ── ActiveShotPanel: full 3-step record flow (DM start → end → confirm) ─
+
+function ActiveShotPanel({
   hasCurrentHole, creating,
-  dmStart, dmEnd, dmDistance, dmLoading, nextAction, shotCount, confirming,
-  onShotStart, onShotEnd, onConfirmShot, onCloseShot,
+  dmStart, dmEnd, dmDistance, dmLoading, shotCount, confirming,
+  onShotStart, onShotEnd, onConfirmShot, onCancel,
 }: {
   hasCurrentHole: boolean;
   creating: boolean;
@@ -2274,53 +2315,56 @@ function ShotRecordPanel({
   dmEnd: { lat: number; lng: number } | null;
   dmDistance: { yards: number; meters: number } | null;
   dmLoading: "idle" | "start" | "end";
-  nextAction: "before" | "after";
   shotCount: number;
   confirming: boolean;
   onShotStart: () => void;
   onShotEnd: () => void;
   onConfirmShot: () => void;
-  onCloseShot: () => void;
+  onCancel: () => void;
 }) {
   const disabled = !hasCurrentHole || creating;
-  const hasPending = !!(dmStart || dmEnd || dmDistance);
   const animYards  = useCountUp(dmDistance?.yards  ?? null);
   const animMeters = useCountUp(dmDistance?.meters ?? null);
 
+  const startDone = !!dmStart;
+  const endDone   = !!dmEnd;
+
   return (
     <div className="space-y-1.5">
-      {/* Start button */}
+      {/* 打つ前: vivid green until tapped, then pale-green disabled ✅ */}
       <button
         onClick={onShotStart}
-        disabled={disabled || dmLoading !== "idle" || nextAction !== "before" || confirming}
-        className={`w-full py-3.5 rounded-2xl border-2 font-bold text-base transition-colors
+        disabled={disabled || dmLoading !== "idle" || startDone || confirming}
+        className={`w-full py-3.5 rounded-2xl font-bold text-base transition-colors
                     active:scale-95 disabled:cursor-not-allowed ${
-          nextAction === "before"
-            ? "border-green-600 bg-green-500 hover:bg-green-600 text-white shadow-md"
-            : "border-green-200 bg-white text-green-400 opacity-60"
+          startDone
+            ? "bg-green-50 text-gray-500 border-2 border-green-100"
+            : "bg-green-500 hover:bg-green-600 text-white shadow-md border-2 border-green-600"
         }`}
       >
         {dmLoading === "start"
           ? "📡 GPS取得中..."
-          : dmStart
+          : startDone
             ? "✅ 打点を記録済み"
             : `📍 第${shotCount + 1}打 打つ前に押してね`}
       </button>
 
-      {/* End button */}
+      {/* 止まった場所: grey-disabled until 打つ前 done; vivid when active; pale-green ✅ after */}
       <button
         onClick={onShotEnd}
-        disabled={disabled || dmLoading !== "idle" || !dmStart || !!dmEnd || confirming}
-        className={`w-full py-3.5 rounded-2xl border-2 font-bold text-base transition-colors
+        disabled={disabled || dmLoading !== "idle" || !startDone || endDone || confirming}
+        className={`w-full py-3.5 rounded-2xl font-bold text-base transition-colors
                     active:scale-95 disabled:cursor-not-allowed ${
-          dmStart && !dmEnd
-            ? "border-green-600 bg-green-500 hover:bg-green-600 text-white shadow-md"
-            : "border-green-200 bg-white text-green-400 opacity-60"
+          endDone
+            ? "bg-green-50 text-gray-500 border-2 border-green-100"
+            : startDone
+              ? "bg-green-500 hover:bg-green-600 text-white shadow-md border-2 border-green-600"
+              : "bg-gray-100 text-gray-400 border-2 border-gray-200"
         }`}
       >
         {dmLoading === "end"
           ? "📡 GPS取得中..."
-          : dmEnd
+          : endDone
             ? "✅ 着地点を記録済み"
             : "📍 止まった場所で押してね"}
       </button>
@@ -2338,9 +2382,7 @@ function ShotRecordPanel({
         </div>
       )}
 
-      {/* Confirm — INSERT into shots table. While confirming, flip to a
-          disabled grey style with success text so the user gets immediate
-          visual feedback and can't double-tap. */}
+      {/* Confirm — INSERT into shots. Immediate grey/disabled feedback prevents double-tap. */}
       {dmDistance && (
         <button
           onClick={onConfirmShot}
@@ -2356,13 +2398,13 @@ function ShotRecordPanel({
         </button>
       )}
 
-      {/* Small close-link to abort the in-progress measurement */}
-      {hasPending && !confirming && (
+      {/* Cancel — always visible while recording; small, discreet blue underline */}
+      {!confirming && (
         <button
-          onClick={onCloseShot}
-          className="block mx-auto text-[11px] text-gray-400 hover:text-gray-600 underline"
+          onClick={onCancel}
+          className="block mx-auto text-xs text-blue-600 hover:text-blue-800 underline py-1"
         >
-          閉じる
+          キャンセル
         </button>
       )}
     </div>
@@ -2487,41 +2529,3 @@ function QuickPickRow({
   );
 }
 
-// ── BackTapHintModal: shown once on first round-screen visit ──────────
-
-function BackTapHintModal() {
-  const STORAGE_KEY = "back_tap_hint_shown";
-  const [show, setShow] = useState(false);
-
-  useEffect(() => {
-    try {
-      if (localStorage.getItem(STORAGE_KEY) !== "true") setShow(true);
-    } catch {
-      // storage disabled — silently skip
-    }
-  }, []);
-
-  function dismiss() {
-    try { localStorage.setItem(STORAGE_KEY, "true"); } catch { /* ignore */ }
-    setShow(false);
-  }
-
-  if (!show) return null;
-  return (
-    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl max-w-sm w-full p-5 space-y-3 shadow-xl">
-        <h2 className="font-bold text-green-800 text-base">💡 ラウンド中のヒント</h2>
-        <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-line">
-          {`iPhoneの 設定 → アクセシビリティ → タッチ → 「背面タップ」 をOFFにすると、誤動作なく快適にお使いいただけます。`}
-        </p>
-        <button
-          onClick={dismiss}
-          className="w-full py-2.5 rounded-xl bg-green-600 hover:bg-green-700 active:bg-green-800
-                     text-white font-bold text-sm transition-colors active:scale-95"
-        >
-          OK
-        </button>
-      </div>
-    </div>
-  );
-}
