@@ -7,7 +7,7 @@ import { ShotRecorder } from "./ShotRecorder";
 import type { Club } from "@/types";
 import { CLUB_LABELS } from "@/types";
 import { calculateDistance, metersToYards } from "@/lib/distance";
-import { stopGpsTracking, getBestShotPosition } from "@/lib/gps";
+import { stopGpsTracking, getBestShotPosition, getLatestPosition } from "@/lib/gps";
 import { releaseWakeLock } from "@/lib/wakeLock";
 import { isBetaMode } from "@/lib/betaMode";
 import Link from "next/link";
@@ -230,6 +230,31 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
     localStorage.removeItem(COMPASS_STORAGE_KEY);
   }, [isRoundDone]);
 
+  // Real-time distance readout: while dmStart is set and dmEnd is not yet
+  // captured, poll the GPS buffer and update dmDistance so the number ticks
+  // upward as the cart moves. Kalman smoothing is still applied at endpoint
+  // capture by getBestShotPosition() — the live readout uses the raw latest
+  // accepted point so it feels responsive (≤20m accuracy gate is already
+  // applied in lib/gps.ts before a point enters the buffer).
+  useEffect(() => {
+    if (!dmStart || dmEnd) return;
+    const tick = () => {
+      const p = getLatestPosition();
+      if (!p) return;
+      const distM = calculateDistance(
+        { latitude: dmStart.lat, longitude: dmStart.lng },
+        { latitude: p.lat, longitude: p.lng },
+      );
+      setDmDistance({
+        yards: metersToYards(distM),
+        meters: Math.round(distM * 10) / 10,
+      });
+    };
+    tick();
+    const interval = setInterval(tick, 400);
+    return () => clearInterval(interval);
+  }, [dmStart, dmEnd]);
+
   // ── Actions ─────────────────────────────────────────────────────────
 
   function switchHoleMode() {
@@ -442,7 +467,9 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
       if (!best) return;
       setDmStart({ lat: best.lat, lng: best.lng });
       setDmEnd(null);
-      setDmDistance(null);
+      // Seed at zero so "飛距離 0ヤード（0m）" is visible before the first
+      // live tick lands. The polling effect overwrites this on next GPS update.
+      setDmDistance({ yards: 0, meters: 0 });
       setShotNextAction("after");
     } finally {
       setDmLoading("idle");
@@ -2241,40 +2268,6 @@ function ScoreTable({
 
 // CompactCompass moved to ./CompactCompass.tsx
 
-// ── ShotRecordPanel: DM measurement + confirm-insert ─────────────────
-
-// Smooth count-up from 0 to `target` on each new target value.
-// 500ms with ease-out cubic — light enough to never stutter on a phone.
-function useCountUp(target: number | null, duration = 500): number {
-  const [value, setValue] = useState<number>(target ?? 0);
-  const prevTargetRef = useRef<number | null>(null);
-
-  useEffect(() => {
-    if (target == null) {
-      setValue(0);
-      prevTargetRef.current = null;
-      return;
-    }
-    // If the target didn't change, skip re-animating.
-    if (prevTargetRef.current === target) return;
-    prevTargetRef.current = target;
-
-    let raf = 0;
-    const start = performance.now();
-    function step(now: number) {
-      const t = Math.min(1, (now - start) / duration);
-      const eased = 1 - Math.pow(1 - t, 3);
-      setValue(target! * eased);
-      if (t < 1) raf = requestAnimationFrame(step);
-      else setValue(target!);
-    }
-    raf = requestAnimationFrame(step);
-    return () => cancelAnimationFrame(raf);
-  }, [target, duration]);
-
-  return value;
-}
-
 // ── IdleShotSection: collapsed-state entry + last-shot memo + club hint ──
 
 function IdleShotSection({
@@ -2329,8 +2322,6 @@ function ActiveShotPanel({
   onCancel: () => void;
 }) {
   const disabled = !hasCurrentHole || creating;
-  const animYards  = useCountUp(dmDistance?.yards  ?? null);
-  const animMeters = useCountUp(dmDistance?.meters ?? null);
 
   const startDone = !!dmStart;
   const endDone   = !!dmEnd;
@@ -2397,15 +2388,15 @@ function ActiveShotPanel({
             : "📍 止まった場所で押してね"}
       </button>
 
-      {/* Distance readout with count-up animation */}
+      {/* Distance readout — ticks live from dmStart until dmEnd is captured */}
       {dmDistance && (
         <div className="text-center py-1">
           <span className="text-sm text-green-600">飛距離 </span>
           <span className="text-xl font-bold text-green-900 tabular-nums">
-            {Math.round(animYards)}ヤード
+            {Math.round(dmDistance.yards)}ヤード
           </span>
           <span className="text-sm text-green-500 tabular-nums ml-1">
-            （{Math.round(animMeters)}m）
+            （{Math.round(dmDistance.meters)}m）
           </span>
         </div>
       )}
