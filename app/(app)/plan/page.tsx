@@ -4,6 +4,7 @@ import Link from "next/link";
 import { CheckoutButton } from "./CheckoutButton";
 import { RoundPaymentButton } from "@/components/RoundPaymentButton";
 import { CancelButton } from "./CancelButton";
+import { isBetaMode } from "@/lib/betaMode";
 
 const PLANS = [
   {
@@ -89,6 +90,8 @@ export default async function PlanPage({ searchParams }: Props) {
     standard: "スタンダード",
     premium: "プレミアム",
   };
+
+  const beta = isBetaMode();
 
   return (
     <div className="max-w-lg mx-auto p-4 space-y-6 pb-24">
@@ -204,12 +207,14 @@ export default async function PlanPage({ searchParams }: Props) {
         })}
       </div>
 
-      <div className="card bg-blue-50 border-blue-200 space-y-3 text-sm text-blue-700">
-        <p className="font-semibold text-blue-800">⛳ 提携ゴルフ場でのご利用</p>
-        <p>通常220円、サブスク会員は280円となります。</p>
-        <p>サブスクとは別料金です。当日1回のみ有効です。</p>
-        <RoundPaymentButton />
-      </div>
+      {!beta && (
+        <div className="card bg-blue-50 border-blue-200 space-y-3 text-sm text-blue-700">
+          <p className="font-semibold text-blue-800">⛳ 提携ゴルフ場でのご利用</p>
+          <p>通常220円、サブスク会員は280円となります。</p>
+          <p>サブスクとは別料金です。当日1回のみ有効です。</p>
+          <RoundPaymentButton />
+        </div>
+      )}
 
       <div className="card bg-gray-50 border-gray-200 space-y-2 text-sm text-gray-600">
         <p className="font-semibold text-gray-700">お支払いについて</p>
