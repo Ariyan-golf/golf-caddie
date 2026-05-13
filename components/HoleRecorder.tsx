@@ -168,6 +168,18 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
   const [endedEarly, setEndedEarly] = useState(false);
   const [showBetaModal, setShowBetaModal] = useState(false);
 
+  // ── Step 2-1 unified-screen state ───────────────────────────────────
+  const [currentHoleNumber, setCurrentHoleNumber] = useState<number>(
+    initialHoles.find((h) => h.score === null)?.hole_number ??
+    initialHoles.at(-1)?.hole_number ??
+    startHole
+  );
+  const [dmStart, setDmStart] = useState<{ lat: number; lng: number } | null>(null);
+  const [dmEnd, setDmEnd] = useState<{ lat: number; lng: number } | null>(null);
+  const [dmDistance, setDmDistance] = useState<{ yards: number; meters: number } | null>(null);
+  const [dmLoading, setDmLoading] = useState<"idle" | "start" | "end">("idle");
+  const [shotNextAction, setShotNextAction] = useState<"before" | "after">("before");
+
   // Wind compass visibility — persisted to localStorage
   const [windVisible, setWindVisible] = useState(true);
   useEffect(() => {
@@ -178,7 +190,7 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
     localStorage.setItem(COMPASS_STORAGE_KEY, String(windVisible));
   }, [windVisible]);
 
-  const currentHole  = phase !== "par_select" ? holes.at(-1) ?? null : null;
+  const currentHole  = holes.find((h) => h.hole_number === currentHoleNumber) ?? null;
   const holeCardRefs = useRef<Record<number, HTMLDivElement | null>>({});
 
   function scrollToHole(holeNumber: number) {
@@ -356,6 +368,130 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
 
   // ── Render ─────────────────────────────────────────────────────────
 
+  // ── Step 2-1 unified-UI handlers ───────────────────────────────────
+
+  async function ensureHoleExists(n: number) {
+    if (holes.some((h) => h.hole_number === n)) return;
+    setCreating(true);
+    const defaultPar = courseHoles?.find((c) => c.hole_number === n)?.par ?? 4;
+    const supabase = createClient();
+    const { data, error } = await supabase
+      .from("holes")
+      .insert({ round_id: roundId, hole_number: n, par: defaultPar })
+      .select("*, shots(*)")
+      .single();
+    setCreating(false);
+    if (!error && data) {
+      setHoles((prev) => [...prev, data as Hole]);
+    }
+  }
+
+  // Auto-create the hole row when the selected hole number changes
+  useEffect(() => {
+    void ensureHoleExists(currentHoleNumber);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentHoleNumber]);
+
+  function selectHole(n: number) {
+    // Drop uncommitted shot state when switching holes
+    setDmStart(null);
+    setDmEnd(null);
+    setDmDistance(null);
+    setShotNextAction("before");
+    setCurrentHoleNumber(n);
+  }
+
+  async function handleShotStart() {
+    setDmLoading("start");
+    try {
+      const best = await getBestShotPosition();
+      if (!best) return;
+      setDmStart({ lat: best.lat, lng: best.lng });
+      setDmEnd(null);
+      setDmDistance(null);
+      setShotNextAction("after");
+    } finally {
+      setDmLoading("idle");
+    }
+  }
+
+  async function handleShotEnd() {
+    if (!dmStart) return;
+    setDmLoading("end");
+    try {
+      const best = await getBestShotPosition();
+      if (!best) return;
+      setDmEnd({ lat: best.lat, lng: best.lng });
+      const distM = calculateDistance(
+        { latitude: dmStart.lat, longitude: dmStart.lng },
+        { latitude: best.lat, longitude: best.lng },
+      );
+      setDmDistance({ yards: metersToYards(distM), meters: Math.round(distM * 10) / 10 });
+      // After end is captured, "before" is what comes next (for the *next* shot)
+      // — but only after the user confirms the current measurement. Until then,
+      // we don't gate so the confirm button is the obvious next action.
+    } finally {
+      setDmLoading("idle");
+    }
+  }
+
+  async function handleConfirmShot() {
+    if (!currentHole || !dmStart || !dmEnd || !dmDistance) return;
+    const supabase = createClient();
+    const { error } = await supabase.from("shots").insert({
+      hole_id: currentHole.id,
+      round_id: roundId,
+      shot_number: currentHole.shots.length + 1,
+      start_lat: dmStart.lat,
+      start_lng: dmStart.lng,
+      end_lat: dmEnd.lat,
+      end_lng: dmEnd.lng,
+      distance_meters: dmDistance.meters,
+      distance_yards: dmDistance.yards,
+      club_input_at: inputMode === "realtime" ? "当日" : "事後",
+    });
+    if (error) {
+      console.error("[confirm-shot] insert error:", error.message);
+      return;
+    }
+    await refreshCurrent();
+    setDmStart(null);
+    setDmEnd(null);
+    setDmDistance(null);
+    setShotNextAction("before");
+  }
+
+  function handleCloseShot() {
+    setDmStart(null);
+    setDmEnd(null);
+    setDmDistance(null);
+    setShotNextAction("before");
+  }
+
+  async function updateHolePar(par: number) {
+    if (!currentHole) return;
+    const supabase = createClient();
+    await supabase.from("holes").update({ par }).eq("id", currentHole.id);
+    setHoles((prev) => prev.map((h) => (h.id === currentHole.id ? { ...h, par } : h)));
+  }
+
+  async function updateHoleScoreUnified(score: number | null) {
+    if (!currentHole) return;
+    const supabase = createClient();
+    await supabase.from("holes").update({ score }).eq("id", currentHole.id);
+    const updated = holes.map((h) => (h.id === currentHole.id ? { ...h, score } : h));
+    setHoles(updated);
+    const total = updated.reduce((s, h) => s + (h.score ?? 0), 0);
+    await supabase.from("rounds").update({ total_score: total }).eq("id", roundId);
+  }
+
+  async function updateHolePutts(putts: number | null) {
+    if (!currentHole) return;
+    const supabase = createClient();
+    await supabase.from("holes").update({ putts }).eq("id", currentHole.id);
+    setHoles((prev) => prev.map((h) => (h.id === currentHole.id ? { ...h, putts } : h)));
+  }
+
   async function handleRoundEndConfirm() {
     setConfirmLoading(true);
     // Handicap differential only meaningful for full 18H rounds.
@@ -434,17 +570,75 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
     );
   }
 
+  const totalDiff = totalScore - totalPar;
+
   return (
-    <div className="space-y-3">
-      <GpsIndicator />
-      <HoleTabs
+    <div className="space-y-2 pb-3">
+      {/* Header — round name · GPS strength */}
+      <div className="flex items-center justify-between gap-2 px-1 pt-1">
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-bold text-green-800 truncate">
+            {golfCourseName || "ラウンド"}
+            {completedHoles.length > 0 && (
+              <span className="ml-2 text-xs font-normal text-green-500 tabular-nums">
+                {completedHoles.length}H {totalScore}
+                {totalDiff !== 0 && (
+                  <span className="ml-0.5">({totalDiff > 0 ? "+" : ""}{totalDiff})</span>
+                )}
+              </span>
+            )}
+          </p>
+        </div>
+        <GpsIndicator />
+      </div>
+
+      {/* 4-row score table: H / P / 打 / パ + end-round at far right */}
+      <ScoreTable
         holes={holes}
         startHole={startHole}
-        activeHoleNumber={currentHole?.hole_number ?? null}
-        onTabClick={scrollToHole}
+        courseHoles={courseHoles}
+        currentHoleNumber={currentHoleNumber}
+        onSelectHole={selectHole}
         onEndRound={() => setConfirmEarlyEnd(true)}
       />
 
+      {/* Compact wind compass — half-height */}
+      {(windDirection || windSpeed) && (
+        <CompactCompass
+          windDirection={windDirection ?? null}
+          windSpeed={windSpeed ?? null}
+          visible={windVisible}
+          onToggle={() => setWindVisible((v) => !v)}
+        />
+      )}
+
+      {/* Shot recording panel */}
+      <ShotRecordPanel
+        hasCurrentHole={!!currentHole}
+        creating={creating}
+        dmStart={dmStart}
+        dmEnd={dmEnd}
+        dmDistance={dmDistance}
+        dmLoading={dmLoading}
+        nextAction={shotNextAction}
+        shotCount={currentHole?.shots.length ?? 0}
+        onShotStart={handleShotStart}
+        onShotEnd={handleShotEnd}
+        onConfirmShot={handleConfirmShot}
+        onCloseShot={handleCloseShot}
+      />
+
+      {/* Compact score entry: パー / 打数 / パット */}
+      <CompactScoreEntry
+        par={currentHole?.par ?? null}
+        score={currentHole?.score ?? null}
+        putts={currentHole?.putts ?? null}
+        onParChange={updateHolePar}
+        onScoreChange={updateHoleScoreUnified}
+        onPuttsChange={updateHolePutts}
+      />
+
+      {/* Modals */}
       {confirmEarlyEnd && (
         <EarlyEndModal
           completed={completedHoles.length}
@@ -455,148 +649,6 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
           onCancel={() => setConfirmEarlyEnd(false)}
           confirming={confirmLoading}
         />
-      )}
-
-      {(windDirection || windSpeed) && (
-        <WindCompassSection
-          windDirection={windDirection}
-          windSpeed={windSpeed}
-          visible={windVisible}
-          onToggle={() => setWindVisible((v) => !v)}
-        />
-      )}
-
-      {/* ① 現在ホールの入力エリア — タブ直下に固定 */}
-      <div>
-        {phase === "par_select" && holes.length < 18 && (
-          <div className="space-y-3">
-            {holes.length === 0 && (
-              <button
-                onClick={() => router.back()}
-                className="flex items-center gap-1 text-green-600 text-sm font-medium"
-              >
-                ← ラウンド情報に戻る
-              </button>
-            )}
-            {(() => {
-              const nextHole = nextHoleNumber(holes.length);
-              const autoPar  = courseHoles?.find((ch) => ch.hole_number === nextHole)?.par;
-              return autoPar != null
-                ? <AutoParCard holeNumber={nextHole} par={autoPar} onCreate={handleStartHole} creating={creating} />
-                : <ParSelector holeNumber={nextHole} onCreate={handleStartHole} creating={creating} />;
-            })()}
-
-            {holes.length > 0 && (
-              confirmGoBack ? (
-                <div className="card border-amber-200 bg-amber-50 space-y-3">
-                  <div className="flex items-start gap-2">
-                    <span className="text-xl flex-shrink-0">↩️</span>
-                    <div>
-                      <p className="font-semibold text-amber-800 text-base">前のホールに戻りますか？</p>
-                      <p className="text-amber-700 text-sm mt-1">
-                        ホール {holes.at(-1)?.hole_number} のスコアがリセットされ、
-                        {holeMode === "score" ? "スコアを再入力できます。" : "パット数を再入力できます。"}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={goBackToPrevHole}
-                      disabled={goingBack}
-                      className="flex-1 py-3.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-base font-semibold transition-colors disabled:opacity-50"
-                    >
-                      {goingBack ? "戻り中..." : "戻る"}
-                    </button>
-                    <button
-                      onClick={() => setConfirmGoBack(false)}
-                      className="flex-1 py-3.5 rounded-xl bg-gray-100 text-gray-700 text-base font-semibold hover:bg-gray-200 transition-colors"
-                    >
-                      キャンセル
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <button
-                  onClick={() => setConfirmGoBack(true)}
-                  className="w-full py-4 rounded-xl border border-gray-200 text-gray-500 text-base font-medium hover:bg-gray-50 transition-colors"
-                >
-                  ← 前のホールに戻る
-                </button>
-              )
-            )}
-          </div>
-        )}
-
-        {phase === "shooting" && currentHole && (
-          <ActiveHoleCard
-            hole={currentHole}
-            roundId={roundId}
-            penalties={penalties}
-            onAddPenalty={() => setPenalties((p) => p + 1)}
-            onRemovePenalty={() => setPenalties((p) => Math.max(0, p - 1))}
-            onShotRecorded={refreshCurrent}
-            onHoleout={handleHoleout}
-            editing={editing}
-            onToggleEdit={toggleEdit}
-            onUpdateClub={updateClub}
-            onUpdateLie={updateLie}
-            onUpdateBallShape={updateBallShape}
-            inputMode={inputMode}
-          />
-        )}
-
-        {phase === "putt_select" && currentHole && (
-          <PuttSelector
-            shotCount={currentHole.shots.length}
-            penalties={penalties}
-            par={currentHole.par}
-            isLastHole={holes.length === 18}
-            onSelect={completeHole}
-          />
-        )}
-
-        {phase === "score_entry" && currentHole && (
-          <ScoreEntryCard
-            hole={currentHole}
-            isLastHole={holes.length === 18}
-            onComplete={completeHoleByScore}
-            roundShotHistory={roundShotHistory}
-            onShotDistanceRecorded={(entry) => setRoundShotHistory((prev) => [...prev, entry])}
-            inputMode={inputMode}
-          />
-        )}
-      </div>
-
-      {/* ② 完了済みホール一覧 — 入力エリアの下にスクロール */}
-      {completedHoles.length > 0 && (
-        <>
-          <div className="flex items-center justify-between bg-green-700 text-white rounded-xl px-4 py-2">
-            <span className="text-base font-medium">{completedHoles.length}H 終了</span>
-            <span className="text-xl font-bold tabular-nums">
-              {totalScore}
-              <span className="text-base font-normal ml-1 opacity-80">
-                ({totalScore - totalPar >= 0 ? "+" : ""}{totalScore - totalPar})
-              </span>
-            </span>
-          </div>
-
-          {completedHoles.map((hole) => (
-            <div key={hole.id} ref={(el) => { holeCardRefs.current[hole.hole_number] = el; }}>
-              <CompletedHoleCard
-                hole={hole}
-                mode={mode}
-                expanded={expandedHole === hole.id}
-                editing={editing}
-                onToggle={() => setExpanded(expandedHole === hole.id ? null : hole.id)}
-                onToggleEdit={toggleEdit}
-                onUpdateClub={updateClub}
-                onUpdateLie={updateLie}
-                onUpdateBallShape={updateBallShape}
-                onUpdateScore={updateScore}
-              />
-            </div>
-          ))}
-        </>
       )}
     </div>
   );
@@ -2018,6 +2070,315 @@ function RoundComplete({
           </tbody>
         </table>
       </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Step 2-1 unified-UI subcomponents (single-screen layout)
+// ─────────────────────────────────────────────────────────────────────
+
+// ── ScoreTable: 4-row × 18-col + end-round cell ─────────────────────
+
+function ScoreTable({
+  holes, startHole, courseHoles, currentHoleNumber, onSelectHole, onEndRound,
+}: {
+  holes: Hole[];
+  startHole: number;
+  courseHoles?: { hole_number: number; par: number }[];
+  currentHoleNumber: number;
+  onSelectHole: (n: number) => void;
+  onEndRound: () => void;
+}) {
+  const playOrder = Array.from({ length: 18 }, (_, i) => ((startHole - 1 + i) % 18) + 1);
+  const holeMap = Object.fromEntries(holes.map((h) => [h.hole_number, h]));
+  const colRefs = useRef<Record<number, HTMLButtonElement | null>>({});
+
+  useEffect(() => {
+    colRefs.current[currentHoleNumber]?.scrollIntoView({
+      behavior: "smooth", block: "nearest", inline: "center",
+    });
+  }, [currentHoleNumber]);
+
+  function cellCls(n: number, row: "H" | "P" | "score" | "putts") {
+    const active = n === currentHoleNumber;
+    if (!active) {
+      if (row === "H") return "bg-green-50 text-green-700 font-bold";
+      if (row === "P") return "bg-white text-green-500";
+      return "bg-white text-green-700";
+    }
+    if (row === "H") return "bg-green-600 text-white font-bold";
+    return "bg-green-100 text-green-800 font-bold";
+  }
+
+  return (
+    <div className="overflow-x-auto -mx-4 px-4 sticky top-0 z-10 bg-white border-b border-green-100 py-1">
+      <div className="flex items-stretch gap-0.5 min-w-max">
+        {/* Row labels (sticky left) */}
+        <div className="flex flex-col gap-0.5 pr-1 text-[10px] font-bold text-green-400 text-right">
+          <div className="h-7 leading-7">H</div>
+          <div className="h-7 leading-7">P</div>
+          <div className="h-7 leading-7">打</div>
+          <div className="h-7 leading-7">パ</div>
+        </div>
+        {/* 18 hole columns */}
+        {playOrder.map((n) => {
+          const hole = holeMap[n] as Hole | undefined;
+          const par = hole?.par ?? courseHoles?.find((c) => c.hole_number === n)?.par ?? null;
+          const scoreTxt = hole?.score != null ? String(hole.score) : "";
+          const puttsTxt = hole?.putts != null ? String(hole.putts) : "";
+          return (
+            <button
+              key={n}
+              ref={(el) => { colRefs.current[n] = el; }}
+              onClick={() => onSelectHole(n)}
+              className="flex flex-col gap-0.5 active:scale-95 transition-transform"
+            >
+              <div className={`w-9 h-7 rounded-t-md flex items-center justify-center text-sm tabular-nums ${cellCls(n, "H")}`}>
+                {n}
+              </div>
+              <div className={`w-9 h-7 flex items-center justify-center text-sm tabular-nums ${cellCls(n, "P")}`}>
+                {par ?? "-"}
+              </div>
+              <div className={`w-9 h-7 flex items-center justify-center text-sm tabular-nums ${cellCls(n, "score")}`}>
+                {scoreTxt}
+              </div>
+              <div className={`w-9 h-7 rounded-b-md flex items-center justify-center text-sm tabular-nums ${cellCls(n, "putts")}`}>
+                {puttsTxt}
+              </div>
+            </button>
+          );
+        })}
+        {/* End-round cell (column 19) */}
+        <button
+          onClick={onEndRound}
+          aria-label="ラウンドを終了する"
+          className="ml-0.5 w-10 flex flex-col items-center justify-center
+                     bg-red-600 hover:bg-red-700 active:bg-red-800 text-white
+                     rounded-md font-bold transition-colors active:scale-95 shadow-sm"
+        >
+          <span className="text-lg leading-none">🏁</span>
+          <span className="text-[10px] mt-0.5">終了</span>
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── CompactCompass: ~80px tall horizontal layout ────────────────────
+
+function CompactCompass({
+  windDirection, windSpeed, visible, onToggle,
+}: {
+  windDirection: string | null;
+  windSpeed: string | null;
+  visible: boolean;
+  onToggle: () => void;
+}) {
+  const deg = windDirection ? (DIR_DEG[windDirection] ?? 0) : 0;
+  const arrow = windDirection ? (WIND_ARROWS[windDirection] ?? "🧭") : "🧭";
+  return (
+    <div className="flex items-center justify-between gap-2 px-2 py-1 bg-sky-50 rounded-xl border border-sky-100">
+      {visible ? (
+        <div className="flex items-center gap-2 flex-1 min-w-0">
+          <svg viewBox="0 0 60 60" className="w-12 h-12 flex-shrink-0">
+            <circle cx={30} cy={30} r={26} fill="none" stroke="#bae6fd" strokeWidth="1.5" />
+            <line x1={30 - 26} y1={30} x2={30 + 26} y2={30} stroke="#7dd3fc" strokeWidth="0.7" strokeDasharray="2 2" />
+            <line x1={30} y1={30 - 26} x2={30} y2={30 + 26} stroke="#7dd3fc" strokeWidth="0.7" strokeDasharray="2 2" />
+            <g transform={`rotate(${deg} 30 30)`}>
+              <line x1={30} y1={30 + 16} x2={30} y2={30 - 18} stroke="#0284c7" strokeWidth="2" strokeLinecap="round" />
+              <polygon points={`30,${30 - 22} 27,${30 - 17} 33,${30 - 17}`} fill="#0284c7" />
+              <line x1={27} y1={30 + 16} x2={30} y2={30 + 11} stroke="#0284c7" strokeWidth="1.5" strokeLinecap="round" />
+              <line x1={33} y1={30 + 16} x2={30} y2={30 + 11} stroke="#0284c7" strokeWidth="1.5" strokeLinecap="round" />
+            </g>
+            <circle cx={30} cy={30} r={1.5} fill="#0284c7" />
+          </svg>
+          <div className="flex flex-col leading-tight">
+            <span className="text-sm font-bold text-sky-700">
+              {arrow} {windDirection ?? "—"}
+            </span>
+            <span className="text-xs text-sky-500">{windSpeed ?? "—"}</span>
+          </div>
+        </div>
+      ) : (
+        <div className="text-xs text-sky-500">
+          🧭 風向きOFF
+        </div>
+      )}
+      <button
+        onClick={onToggle}
+        className={`text-[10px] font-semibold px-2 py-1 rounded-full border transition-colors flex-shrink-0 ${
+          visible
+            ? "bg-sky-100 border-sky-300 text-sky-700"
+            : "bg-gray-100 border-gray-200 text-gray-500"
+        }`}
+      >
+        {visible ? "OFF" : "ON"}
+      </button>
+    </div>
+  );
+}
+
+// ── ShotRecordPanel: DM measurement + confirm-insert ─────────────────
+
+function ShotRecordPanel({
+  hasCurrentHole, creating,
+  dmStart, dmEnd, dmDistance, dmLoading, nextAction, shotCount,
+  onShotStart, onShotEnd, onConfirmShot, onCloseShot,
+}: {
+  hasCurrentHole: boolean;
+  creating: boolean;
+  dmStart: { lat: number; lng: number } | null;
+  dmEnd: { lat: number; lng: number } | null;
+  dmDistance: { yards: number; meters: number } | null;
+  dmLoading: "idle" | "start" | "end";
+  nextAction: "before" | "after";
+  shotCount: number;
+  onShotStart: () => void;
+  onShotEnd: () => void;
+  onConfirmShot: () => void;
+  onCloseShot: () => void;
+}) {
+  const disabled = !hasCurrentHole || creating;
+  const hasPending = !!(dmStart || dmEnd || dmDistance);
+
+  return (
+    <div className="space-y-1.5">
+      {/* Start button */}
+      <button
+        onClick={onShotStart}
+        disabled={disabled || dmLoading !== "idle" || nextAction !== "before"}
+        className={`w-full py-3.5 rounded-2xl border-2 font-bold text-base transition-colors
+                    active:scale-95 disabled:cursor-not-allowed ${
+          nextAction === "before"
+            ? "border-green-600 bg-green-500 hover:bg-green-600 text-white shadow-md"
+            : "border-green-200 bg-white text-green-400 opacity-60"
+        }`}
+      >
+        {dmLoading === "start"
+          ? "📡 GPS取得中..."
+          : dmStart
+            ? "✅ 打点を記録済み"
+            : `📍 第${shotCount + 1}打 打つ前に押してね`}
+      </button>
+
+      {/* End button */}
+      <button
+        onClick={onShotEnd}
+        disabled={disabled || dmLoading !== "idle" || !dmStart || !!dmEnd}
+        className={`w-full py-3.5 rounded-2xl border-2 font-bold text-base transition-colors
+                    active:scale-95 disabled:cursor-not-allowed ${
+          dmStart && !dmEnd
+            ? "border-green-600 bg-green-500 hover:bg-green-600 text-white shadow-md"
+            : "border-green-200 bg-white text-green-400 opacity-60"
+        }`}
+      >
+        {dmLoading === "end"
+          ? "📡 GPS取得中..."
+          : dmEnd
+            ? "✅ 着地点を記録済み"
+            : "📍 止まった場所で押してね"}
+      </button>
+
+      {/* Distance readout */}
+      {dmDistance && (
+        <div className="text-center py-1">
+          <span className="text-sm text-green-600">飛距離 </span>
+          <span className="text-xl font-bold text-green-900 tabular-nums">
+            {dmDistance.yards}ヤード
+          </span>
+          <span className="text-sm text-green-500 tabular-nums ml-1">
+            （{Math.round(dmDistance.meters)}m）
+          </span>
+        </div>
+      )}
+
+      {/* Confirm — INSERT into shots table */}
+      {dmDistance && (
+        <button
+          onClick={onConfirmShot}
+          disabled={disabled}
+          className="w-full py-3.5 rounded-2xl bg-green-700 hover:bg-green-800 active:bg-green-900
+                     text-white font-bold text-base transition-colors active:scale-95 shadow-md disabled:opacity-60"
+        >
+          このショットを記録する
+        </button>
+      )}
+
+      {/* Small close-link to abort the in-progress measurement */}
+      {hasPending && (
+        <button
+          onClick={onCloseShot}
+          className="block mx-auto text-[11px] text-gray-400 hover:text-gray-600 underline"
+        >
+          閉じる
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ── CompactScoreEntry: -/+ counters for par / score / putts ─────────
+
+function CompactScoreEntry({
+  par, score, putts, onParChange, onScoreChange, onPuttsChange,
+}: {
+  par: number | null;
+  score: number | null;
+  putts: number | null;
+  onParChange: (par: number) => void;
+  onScoreChange: (score: number | null) => void;
+  onPuttsChange: (putts: number | null) => void;
+}) {
+  const rows: Array<{
+    label: string;
+    value: number | null;
+    onChange: (v: number) => void;
+    onClear?: () => void;
+    min: number;
+    max: number;
+    placeholder?: string;
+  }> = [
+    { label: "パー", value: par,   onChange: onParChange,   min: 3, max: 6,  placeholder: "-" },
+    { label: "打数", value: score, onChange: (v) => onScoreChange(v), onClear: () => onScoreChange(null), min: 1, max: 20, placeholder: "-" },
+    { label: "パット", value: putts, onChange: (v) => onPuttsChange(v), onClear: () => onPuttsChange(null), min: 0, max: 10, placeholder: "-" },
+  ];
+
+  return (
+    <div className="card !p-2.5 space-y-1.5">
+      {rows.map((r) => {
+        const v = r.value;
+        return (
+          <div key={r.label} className="flex items-center justify-between">
+            <span className="text-sm font-semibold text-green-700 w-12">{r.label}</span>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => {
+                  if (v == null) return;
+                  if (v <= r.min && r.onClear) { r.onClear(); return; }
+                  r.onChange(Math.max(r.min, v - 1));
+                }}
+                disabled={v == null}
+                className="w-9 h-9 rounded-lg bg-gray-100 hover:bg-gray-200 active:bg-gray-300
+                           text-gray-700 font-bold text-lg transition-colors active:scale-95
+                           disabled:opacity-40"
+              >
+                −
+              </button>
+              <span className="text-2xl font-bold text-green-900 tabular-nums w-10 text-center">
+                {v ?? r.placeholder ?? "-"}
+              </span>
+              <button
+                onClick={() => r.onChange(v == null ? r.min : Math.min(r.max, v + 1))}
+                className="w-9 h-9 rounded-lg bg-green-600 hover:bg-green-700 active:bg-green-800
+                           text-white font-bold text-lg transition-colors active:scale-95"
+              >
+                ＋
+              </button>
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
