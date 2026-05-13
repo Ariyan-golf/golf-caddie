@@ -356,11 +356,13 @@ export function NewRoundForm({ linkedCourseId }: { linkedCourseId?: string }) {
       )}
 
       {/* ── プレー日 ─────────────────────────────────────── */}
-      <div>
+      {/* pb-16: keeps the next field (スタートホール) clear of the iOS Safari
+          Forms Assistant bar (≈44px) that appears above the date picker. */}
+      <div className="pb-16">
         <label className="label">プレー日</label>
         <input
           type="date"
-          className="input"
+          className="input scroll-mb-24"
           value={date}
           onChange={(e) => setDate(e.target.value)}
           required
@@ -368,7 +370,10 @@ export function NewRoundForm({ linkedCourseId }: { linkedCourseId?: string }) {
       </div>
 
       {/* ── スタートホール ──────────────────────────────── */}
-      <div>
+      {/* scroll-mt-24: when iOS auto-scrolls into this section after the
+          date picker closes, leave room above so the buttons aren't sliced
+          by the Forms Assistant bar. */}
+      <div className="scroll-mt-24">
         <label className="label">スタートホール *</label>
         <div className="grid grid-cols-2 gap-3 mt-1">
           {([1, 10] as StartHole[]).map((hole) => (
