@@ -12,6 +12,7 @@ import { releaseWakeLock } from "@/lib/wakeLock";
 import { isBetaMode } from "@/lib/betaMode";
 import Link from "next/link";
 import { GpsIndicator } from "./GpsIndicator";
+import { CompactCompass } from "./CompactCompass";
 
 // ── Local types ─────────────────────────────────────────────────────
 
@@ -189,6 +190,11 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
   const [confirmingShot, setConfirmingShot] = useState(false);
   const [shotMode, setShotMode] = useState<"idle" | "recording">("idle");
   const [lastShot, setLastShot] = useState<LastShotMemo | null>(null);
+
+  // Per-hole green direction (absolute heading 0-359°). Keyed by hole number;
+  // automatically "cleared" on hole switch because the key just isn't present yet
+  // for the next hole. Lives in component state only — resets on app reload by design.
+  const [greenDirections, setGreenDirections] = useState<Record<number, number>>({});
 
   // Wind compass visibility — persisted to localStorage
   const [windVisible, setWindVisible] = useState(true);
@@ -655,15 +661,19 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
         onEndRound={() => setConfirmEarlyEnd(true)}
       />
 
-      {/* Compact wind compass — half-height */}
-      {(windDirection || windSpeed) && (
-        <CompactCompass
-          windDirection={windDirection ?? null}
-          windSpeed={windSpeed ?? null}
-          visible={windVisible}
-          onToggle={() => setWindVisible((v) => !v)}
-        />
-      )}
+      {/* Compact wind compass — half-height. Always rendered so the green-direction
+          control is reachable even when wind data is unavailable. */}
+      <CompactCompass
+        windDirection={windDirection ?? null}
+        windSpeed={windSpeed ?? null}
+        visible={windVisible}
+        onToggle={() => setWindVisible((v) => !v)}
+        greenDirection={greenDirections[currentHoleNumber] ?? null}
+        onSetGreenDirection={(deg) =>
+          setGreenDirections((prev) => ({ ...prev, [currentHoleNumber]: deg }))
+        }
+      />
+
 
       {/* Shot recording — toggleable. Idle: single ⛳ entry button.
           Recording: 打つ前 → 止まった場所 → confirm/cancel flow. */}
@@ -2229,59 +2239,7 @@ function ScoreTable({
   );
 }
 
-// ── CompactCompass: ~80px tall horizontal layout ────────────────────
-
-function CompactCompass({
-  windDirection, windSpeed, visible, onToggle,
-}: {
-  windDirection: string | null;
-  windSpeed: string | null;
-  visible: boolean;
-  onToggle: () => void;
-}) {
-  const deg = windDirection ? (DIR_DEG[windDirection] ?? 0) : 0;
-  const arrow = windDirection ? (WIND_ARROWS[windDirection] ?? "🧭") : "🧭";
-  return (
-    <div className="flex items-center justify-between gap-2 px-2 py-1 bg-sky-50 rounded-xl border border-sky-100">
-      {visible ? (
-        <div className="flex items-center gap-2 flex-1 min-w-0">
-          <svg viewBox="0 0 60 60" className="w-12 h-12 flex-shrink-0">
-            <circle cx={30} cy={30} r={26} fill="none" stroke="#bae6fd" strokeWidth="1.5" />
-            <line x1={30 - 26} y1={30} x2={30 + 26} y2={30} stroke="#7dd3fc" strokeWidth="0.7" strokeDasharray="2 2" />
-            <line x1={30} y1={30 - 26} x2={30} y2={30 + 26} stroke="#7dd3fc" strokeWidth="0.7" strokeDasharray="2 2" />
-            <g transform={`rotate(${deg} 30 30)`}>
-              <line x1={30} y1={30 + 16} x2={30} y2={30 - 18} stroke="#0284c7" strokeWidth="2" strokeLinecap="round" />
-              <polygon points={`30,${30 - 22} 27,${30 - 17} 33,${30 - 17}`} fill="#0284c7" />
-              <line x1={27} y1={30 + 16} x2={30} y2={30 + 11} stroke="#0284c7" strokeWidth="1.5" strokeLinecap="round" />
-              <line x1={33} y1={30 + 16} x2={30} y2={30 + 11} stroke="#0284c7" strokeWidth="1.5" strokeLinecap="round" />
-            </g>
-            <circle cx={30} cy={30} r={1.5} fill="#0284c7" />
-          </svg>
-          <div className="flex flex-col leading-tight">
-            <span className="text-sm font-bold text-sky-700">
-              {arrow} {windDirection ?? "—"}
-            </span>
-            <span className="text-xs text-sky-500">{windSpeed ?? "—"}</span>
-          </div>
-        </div>
-      ) : (
-        <div className="text-xs text-sky-500">
-          🧭 風向きOFF
-        </div>
-      )}
-      <button
-        onClick={onToggle}
-        className={`text-[10px] font-semibold px-2 py-1 rounded-full border transition-colors flex-shrink-0 ${
-          visible
-            ? "bg-sky-100 border-sky-300 text-sky-700"
-            : "bg-gray-100 border-gray-200 text-gray-500"
-        }`}
-      >
-        {visible ? "OFF" : "ON"}
-      </button>
-    </div>
-  );
-}
+// CompactCompass moved to ./CompactCompass.tsx
 
 // ── ShotRecordPanel: DM measurement + confirm-insert ─────────────────
 
