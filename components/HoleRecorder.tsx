@@ -64,6 +64,13 @@ interface RoundShotEntry {
   meters: number;
 }
 
+interface LastShotMemo {
+  holeNumber: number;
+  shotNumber: number;
+  distanceYards: number;
+  distanceMeters: number;
+}
+
 type Phase = "par_select" | "shooting" | "putt_select" | "score_entry";
 
 // ── Helpers ──────────────────────────────────────────────────────────
@@ -181,6 +188,7 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
   const [shotNextAction, setShotNextAction] = useState<"before" | "after">("before");
   const [confirmingShot, setConfirmingShot] = useState(false);
   const [shotMode, setShotMode] = useState<"idle" | "recording">("idle");
+  const [lastShot, setLastShot] = useState<LastShotMemo | null>(null);
 
   // Wind compass visibility — persisted to localStorage
   const [windVisible, setWindVisible] = useState(true);
@@ -401,6 +409,7 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
     setDmDistance(null);
     setShotNextAction("before");
     setShotMode("idle");
+    setLastShot(null);
     setCurrentHoleNumber(n);
   }
 
@@ -456,12 +465,19 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
 
   async function handleConfirmShot() {
     if (!currentHole || !dmStart || !dmEnd || !dmDistance || confirmingShot) return;
+    const snapshot: LastShotMemo = {
+      holeNumber: currentHole.hole_number,
+      shotNumber: currentHole.shots.length + 1,
+      distanceYards: dmDistance.yards,
+      distanceMeters: dmDistance.meters,
+    };
     setConfirmingShot(true);
+    setLastShot(snapshot);
     const supabase = createClient();
     const { error } = await supabase.from("shots").insert({
       hole_id: currentHole.id,
       round_id: roundId,
-      shot_number: currentHole.shots.length + 1,
+      shot_number: snapshot.shotNumber,
       start_lat: dmStart.lat,
       start_lng: dmStart.lng,
       end_lat: dmEnd.lat,
@@ -472,12 +488,13 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
     });
     if (error) {
       console.error("[confirm-shot] insert error:", error.message);
+      setLastShot(null);
       setConfirmingShot(false);
       return;
     }
     await refreshCurrent();
-    // Brief "✅ 記録しました" feedback before clearing the panel
-    await new Promise((r) => setTimeout(r, 600));
+    // 2s feedback ("✅ 第N打 記録しました / 飛距離 …") before clearing the panel
+    await new Promise((r) => setTimeout(r, 2000));
     setDmStart(null);
     setDmEnd(null);
     setDmDistance(null);
@@ -634,9 +651,10 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
       {/* Shot recording — toggleable. Idle: single ⛳ entry button.
           Recording: 打つ前 → 止まった場所 → confirm/cancel flow. */}
       {shotMode === "idle" ? (
-        <IdleShotButton
+        <IdleShotSection
           disabled={!currentHole || creating}
           onStart={handleEnterRecordingMode}
+          lastShot={lastShot}
         />
       ) : (
         <ActiveShotPanel
@@ -648,6 +666,7 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
           dmLoading={dmLoading}
           shotCount={currentHole?.shots.length ?? 0}
           confirming={confirmingShot}
+          lastShot={lastShot}
           onShotStart={handleShotStart}
           onShotEnd={handleShotEnd}
           onConfirmShot={handleConfirmShot}
@@ -2281,24 +2300,35 @@ function useCountUp(target: number | null, duration = 500): number {
   return value;
 }
 
-// ── IdleShotButton: collapsed-state entry point ─────────────────────
+// ── IdleShotSection: collapsed-state entry + last-shot memo + club hint ──
 
-function IdleShotButton({
-  disabled, onStart,
+function IdleShotSection({
+  disabled, onStart, lastShot,
 }: {
   disabled: boolean;
   onStart: () => void;
+  lastShot: LastShotMemo | null;
 }) {
   return (
-    <button
-      onClick={onStart}
-      disabled={disabled}
-      className="w-full py-4 rounded-2xl bg-green-600 hover:bg-green-700 active:bg-green-800
-                 text-white font-bold text-lg shadow-md transition-colors active:scale-95
-                 disabled:opacity-50 disabled:cursor-not-allowed"
-    >
-      ⛳ 飛距離を測る
-    </button>
+    <div className="space-y-1.5">
+      {lastShot && (
+        <p className="text-center text-sm text-gray-600 tabular-nums">
+          📊 直前のショット：第{lastShot.shotNumber}打 {lastShot.distanceYards}ヤード（{lastShot.distanceMeters}m）
+        </p>
+      )}
+      <button
+        onClick={onStart}
+        disabled={disabled}
+        className="w-full py-4 rounded-2xl bg-green-600 hover:bg-green-700 active:bg-green-800
+                   text-white font-bold text-lg shadow-md transition-colors active:scale-95
+                   disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        ⛳ 飛距離を測る
+      </button>
+      <p className="text-center text-xs text-gray-500 mt-2">
+        💡 使ったクラブは「球筋」画面から後で記録できます
+      </p>
+    </div>
   );
 }
 
@@ -2306,7 +2336,7 @@ function IdleShotButton({
 
 function ActiveShotPanel({
   hasCurrentHole, creating,
-  dmStart, dmEnd, dmDistance, dmLoading, shotCount, confirming,
+  dmStart, dmEnd, dmDistance, dmLoading, shotCount, confirming, lastShot,
   onShotStart, onShotEnd, onConfirmShot, onCancel,
 }: {
   hasCurrentHole: boolean;
@@ -2317,6 +2347,7 @@ function ActiveShotPanel({
   dmLoading: "idle" | "start" | "end";
   shotCount: number;
   confirming: boolean;
+  lastShot: LastShotMemo | null;
   onShotStart: () => void;
   onShotEnd: () => void;
   onConfirmShot: () => void;
@@ -2328,6 +2359,21 @@ function ActiveShotPanel({
 
   const startDone = !!dmStart;
   const endDone   = !!dmEnd;
+
+  // 2s feedback panel after "このショットを記録する" tap — uses the captured snapshot
+  if (confirming && lastShot) {
+    return (
+      <div className="w-full py-5 rounded-2xl bg-gray-100 border-2 border-gray-200
+                      text-center space-y-1.5 shadow-inner">
+        <p className="text-base font-bold text-gray-700">
+          ✅ 第{lastShot.shotNumber}打 記録しました
+        </p>
+        <p className="text-sm text-gray-600 tabular-nums">
+          飛距離 {lastShot.distanceYards}ヤード（{lastShot.distanceMeters}m）
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-1.5">
@@ -2382,19 +2428,17 @@ function ActiveShotPanel({
         </div>
       )}
 
-      {/* Confirm — INSERT into shots. Immediate grey/disabled feedback prevents double-tap. */}
+      {/* Confirm — INSERT into shots. While confirming, the early-return above swaps
+          this for a feedback panel — this branch only renders the active button. */}
       {dmDistance && (
         <button
           onClick={onConfirmShot}
           disabled={disabled || confirming}
-          className={`w-full py-3.5 rounded-2xl font-bold text-base transition-colors
-                      active:scale-95 shadow-md disabled:cursor-not-allowed ${
-            confirming
-              ? "bg-gray-200 text-gray-400"
-              : "bg-green-700 hover:bg-green-800 active:bg-green-900 text-white"
-          }`}
+          className="w-full py-3.5 rounded-2xl font-bold text-base transition-colors
+                     active:scale-95 shadow-md disabled:cursor-not-allowed
+                     bg-green-700 hover:bg-green-800 active:bg-green-900 text-white"
         >
-          {confirming ? "✅ 記録しました" : "このショットを記録する"}
+          このショットを記録する
         </button>
       )}
 
