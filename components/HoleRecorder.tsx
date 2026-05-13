@@ -1327,13 +1327,19 @@ function ScoreEntryCard({
   onShotDistanceRecorded: (entry: RoundShotEntry) => void;
   inputMode: "post_round" | "realtime";
 }) {
-  // DM = per-club distance measurement. Requires a club, so it's a realtime-only feature.
-  const dmEnabled = inputMode === "realtime";
+  // DM panel is visible in both modes — only the per-club controls (clubドロップダウン
+  // and the persist-to-shot_distances "記録する" button) are realtime-only, since
+  // shot_distances.club is NOT NULL. In post_round, users still get the live
+  // distance readout + in-round cumulative history.
+  const dmCanSave = inputMode === "realtime";
   const [strokes, setStrokes] = useState(hole.score ?? hole.par);
   const [putts, setPutts]     = useState(hole.putts ?? 2);
 
-  // Distance measurement state
-  const [showDM, setShowDM]         = useState(false);
+  // Distance measurement state — auto-expand in post_round mode so the GPS
+  // distance buttons are visible the moment the hole opens (post_round users
+  // rely on DM for per-shot position capture; entry-button-then-tap is
+  // friction they don't need).
+  const [showDM, setShowDM]         = useState(inputMode === "post_round");
   const [showHistory, setShowHistory] = useState(false);
   const [dmStart, setDmStart]       = useState<{lat: number; lng: number} | null>(null);
   const [dmEnd, setDmEnd]           = useState<{lat: number; lng: number} | null>(null);
@@ -1345,15 +1351,16 @@ function ScoreEntryCard({
   // Sequential button enforcement: which action is up next
   const [nextAction, setNextAction] = useState<"before" | "after">("before");
 
-  // Reset DM state when the hole changes (1H → 2H, etc.)
+  // Reset DM state when the hole changes (1H → 2H, etc.) — keep DM expanded
+  // in post_round mode across hole changes so buttons stay visible.
   useEffect(() => {
-    setShowDM(false);
+    setShowDM(inputMode === "post_round");
     setDmStart(null);
     setDmEnd(null);
     setDmDistance(null);
     setDmSaved(false);
     setNextAction("before");
-  }, [hole.id]);
+  }, [hole.id, inputMode]);
 
   async function handleDmStart() {
     setDmLoading("start");
@@ -1437,8 +1444,8 @@ function ScoreEntryCard({
         <p className="text-base text-green-500">パー {hole.par}</p>
       </div>
 
-      {/* Shot distance measurement — realtime mode only (requires per-shot club) */}
-      {dmEnabled && (
+      {/* Shot distance measurement — visible in both modes. Club picker /
+          persist-save are gated by dmCanSave further below. */}
       <div className="space-y-2">
         {dmHistory.length > 0 && (
           <div className="bg-green-50 rounded-xl px-4 py-3 space-y-1.5">
@@ -1502,19 +1509,21 @@ function ScoreEntryCard({
           </>
         ) : (
           <div className="border-2 border-green-200 rounded-2xl p-4 space-y-3 bg-green-50">
-            <div>
-              <p className="text-xs font-semibold text-green-600 mb-1.5">使用クラブ</p>
-              <select
-                value={dmClub}
-                onChange={(e) => setDmClub(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl border border-green-200 bg-white text-green-900
-                           text-sm font-medium focus:outline-none focus:ring-2 focus:ring-green-400"
-              >
-                {DM_CLUBS.map((c) => (
-                  <option key={c.value} value={c.value}>{c.label}</option>
-                ))}
-              </select>
-            </div>
+            {dmCanSave && (
+              <div>
+                <p className="text-xs font-semibold text-green-600 mb-1.5">使用クラブ</p>
+                <select
+                  value={dmClub}
+                  onChange={(e) => setDmClub(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border border-green-200 bg-white text-green-900
+                             text-sm font-medium focus:outline-none focus:ring-2 focus:ring-green-400"
+                >
+                  {DM_CLUBS.map((c) => (
+                    <option key={c.value} value={c.value}>{c.label}</option>
+                  ))}
+                </select>
+              </div>
+            )}
             <button
               onClick={handleDmStart}
               disabled={dmLoading !== "idle" || nextAction !== "before"}
@@ -1562,7 +1571,7 @@ function ScoreEntryCard({
               >
                 閉じる
               </button>
-              {dmDistance && (
+              {dmDistance && dmCanSave && (
                 <button
                   onClick={handleDmSave}
                   disabled={dmSaved}
@@ -1576,7 +1585,6 @@ function ScoreEntryCard({
           </div>
         )}
       </div>
-      )}
 
       {/* Stroke counter */}
       <div className="space-y-2">
