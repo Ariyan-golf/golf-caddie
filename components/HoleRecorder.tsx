@@ -9,6 +9,9 @@ import { CLUB_LABELS } from "@/types";
 import { calculateDistance, metersToYards } from "@/lib/distance";
 import { stopGpsTracking, getBestShotPosition } from "@/lib/gps";
 import { releaseWakeLock } from "@/lib/wakeLock";
+import { isBetaMode } from "@/lib/betaMode";
+import Link from "next/link";
+import { GpsIndicator } from "./GpsIndicator";
 
 // ── Local types ─────────────────────────────────────────────────────
 
@@ -18,6 +21,7 @@ interface Shot {
   club: string | null;
   distance_yards: number | null;
   lie_type: string | null;
+  ball_shape: string | null;
   ball_direction: string | null;
   start_lat: number | null;
   start_lng: number | null;
@@ -50,6 +54,7 @@ interface HoleRecorderProps {
   courseHoles?: CourseHole[];
   paymentStatus?: "pending" | "paid";
   golfCourseName?: string;
+  inputMode?: "post_round" | "realtime";
 }
 
 interface RoundShotEntry {
@@ -68,13 +73,17 @@ const UTIL_CLUBS:  Club[] = ["u2", "u3", "u4", "u5", "u6", "u7"];
 const IRON_CLUBS:  Club[] = ["2i", "3i", "4i", "5i", "6i", "7i", "8i", "9i"];
 const WEDGE_CLUBS: Club[] = ["pw", "aw", "gw", "sw", "lw"];
 
-const BALL_DIRECTION_OPTIONS = ["hook", "draw", "straight", "fade", "slice"] as const;
-const BALL_DIRECTION_LABELS: Record<string, string> = {
-  hook: "フック", draw: "ドロー", straight: "ストレート", fade: "フェード", slice: "スライス",
+// Ball shape (球筋): 7 values per spec — incl. mishits トップ/チョロ
+export const BALL_SHAPE_OPTIONS = [
+  "フック", "ドロー", "ストレート", "フェード", "スライス", "トップ", "チョロ",
+] as const;
+export const BALL_SHAPE_SHORT: Record<string, string> = {
+  "フック": "フック", "ドロー": "ドロー", "ストレート": "ST",
+  "フェード": "フェード", "スライス": "スライス", "トップ": "トップ", "チョロ": "チョロ",
 };
-const BALL_DIRECTION_SHORT: Record<string, string> = {
-  hook: "フック", draw: "ドロー", straight: "ST", fade: "フェード", slice: "スライス",
-};
+
+// Ball direction (左右): 3 values, separate from ball_shape
+export const BALL_DIRECTION_OPTIONS = ["左", "真っ直ぐ", "右"] as const;
 
 // ── Lie: 2-stage system ──────────────────────────────────────────────
 
@@ -129,7 +138,8 @@ function scoreLabel(score: number, par: number) {
 
 // ── Main component ──────────────────────────────────────────────────
 
-export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "shot", windDirection, windSpeed, courseRating, slopeRating, courseHoles, paymentStatus = "paid", golfCourseName = "" }: HoleRecorderProps) {
+export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "shot", windDirection, windSpeed, courseRating, slopeRating, courseHoles, paymentStatus = "paid", golfCourseName = "", inputMode = "post_round" }: HoleRecorderProps) {
+  const betaMode = isBetaMode();
   const router = useRouter();
   const lastHole = initialHoles.at(-1);
   const initPhase: Phase =
@@ -143,7 +153,7 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
   const [holeMode, setHoleMode]     = useState<"shot" | "score">(mode);
   const [creating, setCreating]     = useState(false);
   const [expandedHole, setExpanded] = useState<string | null>(null);
-  const [editing, setEditing] = useState<{ id: string; type: "club" | "lie" | "direction" } | null>(null);
+  const [editing, setEditing] = useState<{ id: string; type: "club" | "lie" | "shape" } | null>(null);
   const [confirmGoBack, setConfirmGoBack] = useState(false);
   const [goingBack, setGoingBack]   = useState(false);
   const [penalties, setPenalties]   = useState(0);
@@ -156,6 +166,7 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
   const [payError, setPayError] = useState("");
   const [confirmEarlyEnd, setConfirmEarlyEnd] = useState(false);
   const [endedEarly, setEndedEarly] = useState(false);
+  const [showBetaModal, setShowBetaModal] = useState(false);
 
   // Wind compass visibility — persisted to localStorage
   const [windVisible, setWindVisible] = useState(true);
@@ -273,11 +284,11 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
     setEditing(null);
   }
 
-  async function updateBallDirection(shotId: string, dir: string) {
+  async function updateBallShape(shotId: string, shape: string) {
     const supabase = createClient();
-    await supabase.from("shots").update({ ball_direction: dir }).eq("id", shotId);
+    await supabase.from("shots").update({ ball_shape: shape }).eq("id", shotId);
     setHoles((prev) => prev.map((h) => ({
-      ...h, shots: h.shots.map((s) => s.id === shotId ? { ...s, ball_direction: dir } : s),
+      ...h, shots: h.shots.map((s) => s.id === shotId ? { ...s, ball_shape: shape } : s),
     })));
     setEditing(null);
   }
@@ -337,7 +348,7 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
     setPhase(holeMode === "score" ? "score_entry" : "putt_select");
   }
 
-  function toggleEdit(id: string, type: "club" | "lie" | "direction") {
+  function toggleEdit(id: string, type: "club" | "lie" | "shape") {
     setEditing((prev) =>
       prev?.id === id && prev.type === type ? null : { id, type }
     );
@@ -365,7 +376,9 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
     setConfirmLoading(false);
     setRoundEndConfirmed(true);
     if (!isRoundDone) setEndedEarly(true);
-    if (paymentStatus === "pending") {
+    if (betaMode) {
+      setShowBetaModal(true);
+    } else if (paymentStatus === "pending") {
       setShowPaymentModal(true);
     }
   }
@@ -403,10 +416,10 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
           totalPar={totalPar}
           mode={mode}
           handicapDiff={handicapDiff}
-          paymentPending={paymentStatus === "pending"}
+          paymentPending={!betaMode && paymentStatus === "pending"}
           onPayNow={() => setShowPaymentModal(true)}
         />
-        {showPaymentModal && (
+        {!betaMode && showPaymentModal && (
           <PaymentRequiredModal
             onPay={handlePayNow}
             onClose={() => setShowPaymentModal(false)}
@@ -414,12 +427,16 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
             error={payError}
           />
         )}
+        {betaMode && showBetaModal && (
+          <BetaCompleteModal onClose={() => setShowBetaModal(false)} />
+        )}
       </>
     );
   }
 
   return (
     <div className="space-y-3">
+      <GpsIndicator />
       <HoleTabs
         holes={holes}
         startHole={startHole}
@@ -523,7 +540,8 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
             onToggleEdit={toggleEdit}
             onUpdateClub={updateClub}
             onUpdateLie={updateLie}
-            onUpdateBallDirection={updateBallDirection}
+            onUpdateBallShape={updateBallShape}
+            inputMode={inputMode}
           />
         )}
 
@@ -544,6 +562,7 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
             onComplete={completeHoleByScore}
             roundShotHistory={roundShotHistory}
             onShotDistanceRecorded={(entry) => setRoundShotHistory((prev) => [...prev, entry])}
+            inputMode={inputMode}
           />
         )}
       </div>
@@ -572,7 +591,7 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
                 onToggleEdit={toggleEdit}
                 onUpdateClub={updateClub}
                 onUpdateLie={updateLie}
-                onUpdateBallDirection={updateBallDirection}
+                onUpdateBallShape={updateBallShape}
                 onUpdateScore={updateScore}
               />
             </div>
@@ -726,7 +745,7 @@ function ParSelector({
 function ActiveHoleCard({
   hole, roundId, penalties, onAddPenalty, onRemovePenalty,
   onShotRecorded, onHoleout,
-  editing, onToggleEdit, onUpdateClub, onUpdateLie, onUpdateBallDirection,
+  editing, onToggleEdit, onUpdateClub, onUpdateLie, onUpdateBallShape, inputMode,
 }: {
   hole: Hole;
   roundId: string;
@@ -735,11 +754,12 @@ function ActiveHoleCard({
   onRemovePenalty: () => void;
   onShotRecorded: () => void;
   onHoleout: () => void;
-  editing: { id: string; type: "club" | "lie" | "direction" } | null;
-  onToggleEdit: (id: string, type: "club" | "lie" | "direction") => void;
+  editing: { id: string; type: "club" | "lie" | "shape" } | null;
+  onToggleEdit: (id: string, type: "club" | "lie" | "shape") => void;
   onUpdateClub: (id: string, club: Club) => void;
   onUpdateLie: (id: string, lie: string) => void;
-  onUpdateBallDirection: (id: string, dir: string) => void;
+  onUpdateBallShape: (id: string, shape: string) => void;
+  inputMode: "post_round" | "realtime";
 }) {
   const lastShot = hole.shots.at(-1);
   const prevShot =
@@ -781,7 +801,8 @@ function ActiveHoleCard({
           onToggleEdit={onToggleEdit}
           onUpdateClub={onUpdateClub}
           onUpdateLie={onUpdateLie}
-          onUpdateBallDirection={onUpdateBallDirection}
+          onUpdateBallShape={onUpdateBallShape}
+          inputMode={inputMode}
         />
       )}
 
@@ -791,6 +812,7 @@ function ActiveHoleCard({
         shotNumber={hole.shots.length + 1}
         prevShot={prevShot}
         onShotRecorded={onShotRecorded}
+        inputMode={inputMode}
       />
 
       {penalties > 0 ? (
@@ -909,17 +931,17 @@ function PuttSelector({
 }
 
 function CompletedHoleCard({
-  hole, mode, expanded, editing, onToggle, onToggleEdit, onUpdateClub, onUpdateLie, onUpdateBallDirection, onUpdateScore,
+  hole, mode, expanded, editing, onToggle, onToggleEdit, onUpdateClub, onUpdateLie, onUpdateBallShape, onUpdateScore,
 }: {
   hole: Hole;
   mode: "shot" | "score";
   expanded: boolean;
-  editing: { id: string; type: "club" | "lie" | "direction" } | null;
+  editing: { id: string; type: "club" | "lie" | "shape" } | null;
   onToggle: () => void;
-  onToggleEdit: (id: string, type: "club" | "lie" | "direction") => void;
+  onToggleEdit: (id: string, type: "club" | "lie" | "shape") => void;
   onUpdateClub: (id: string, club: Club) => void;
   onUpdateLie: (id: string, lie: string) => void;
-  onUpdateBallDirection: (id: string, dir: string) => void;
+  onUpdateBallShape: (id: string, shape: string) => void;
   onUpdateScore: (holeId: string, newScore: number) => void;
 }) {
   const [scoreEditing, setScoreEditing] = useState(false);
@@ -972,7 +994,8 @@ function CompletedHoleCard({
         />
       )}
 
-      {/* Shot detail (expandable) */}
+      {/* Shot detail (expandable). Read-only after the hole is logged — keep
+          showing values entered during the round (or post-round via stats). */}
       {expanded && hole.shots.length > 0 && (
         <div className="mt-3 pt-3 border-t border-green-50">
           <ShotList
@@ -981,7 +1004,8 @@ function CompletedHoleCard({
             onToggleEdit={onToggleEdit}
             onUpdateClub={onUpdateClub}
             onUpdateLie={onUpdateLie}
-            onUpdateBallDirection={onUpdateBallDirection}
+            onUpdateBallShape={onUpdateBallShape}
+            inputMode="realtime"
           />
         </div>
       )}
@@ -1047,21 +1071,23 @@ function ScoreEditor({ hole, onSave, onClose }: {
 // Button order: 番手 → 球筋 → ライ
 
 function ShotList({
-  shots, editing, onToggleEdit, onUpdateClub, onUpdateLie, onUpdateBallDirection,
+  shots, editing, onToggleEdit, onUpdateClub, onUpdateLie, onUpdateBallShape, inputMode,
 }: {
   shots: Shot[];
-  editing: { id: string; type: "club" | "lie" | "direction" } | null;
-  onToggleEdit: (id: string, type: "club" | "lie" | "direction") => void;
+  editing: { id: string; type: "club" | "lie" | "shape" } | null;
+  onToggleEdit: (id: string, type: "club" | "lie" | "shape") => void;
   onUpdateClub: (id: string, club: Club) => void;
   onUpdateLie: (id: string, lie: string) => void;
-  onUpdateBallDirection: (id: string, dir: string) => void;
+  onUpdateBallShape: (id: string, shape: string) => void;
+  inputMode: "post_round" | "realtime";
 }) {
+  const isPostRound = inputMode === "post_round";
   return (
     <div className="space-y-1">
       {[...shots].sort((a, b) => a.shot_number - b.shot_number).map((shot) => {
-        const clubOpen = editing?.id === shot.id && editing.type === "club";
-        const dirOpen  = editing?.id === shot.id && editing.type === "direction";
-        const lieOpen  = editing?.id === shot.id && editing.type === "lie";
+        const clubOpen  = editing?.id === shot.id && editing.type === "club";
+        const shapeOpen = editing?.id === shot.id && editing.type === "shape";
+        const lieOpen   = editing?.id === shot.id && editing.type === "lie";
         const clubLabel = shot.club ? (CLUB_LABELS[shot.club as Club] ?? shot.club) : null;
 
         return (
@@ -1077,35 +1103,37 @@ function ShotList({
                     {shot.distance_yards}y
                   </span>
                 )}
-                {/* ① 番手 */}
-                <button
-                  onClick={() => onToggleEdit(shot.id, "club")}
-                  className={`text-sm px-3 py-2.5 rounded-lg border font-bold transition-colors ${
-                    clubLabel
-                      ? clubOpen
-                        ? "bg-green-700 border-green-700 text-white"
-                        : "bg-green-600 border-green-600 text-white"
-                      : clubOpen
-                        ? "bg-green-100 border-green-400 text-green-700"
-                        : "bg-gray-50 border-gray-200 text-gray-400"
-                  }`}
-                >
-                  {clubLabel ?? "番手"}
-                </button>
+                {/* ① 番手 — hidden in post_round mode (entered later in stats) */}
+                {!isPostRound && (
+                  <button
+                    onClick={() => onToggleEdit(shot.id, "club")}
+                    className={`text-sm px-3 py-2.5 rounded-lg border font-bold transition-colors ${
+                      clubLabel
+                        ? clubOpen
+                          ? "bg-green-700 border-green-700 text-white"
+                          : "bg-green-600 border-green-600 text-white"
+                        : clubOpen
+                          ? "bg-green-100 border-green-400 text-green-700"
+                          : "bg-gray-50 border-gray-200 text-gray-400"
+                    }`}
+                  >
+                    {clubLabel ?? "番手"}
+                  </button>
+                )}
                 {/* ② 球筋 */}
                 <button
-                  onClick={() => onToggleEdit(shot.id, "direction")}
+                  onClick={() => onToggleEdit(shot.id, "shape")}
                   className={`text-sm px-3 py-2.5 rounded-lg border font-bold transition-colors ${
-                    shot.ball_direction
-                      ? dirOpen
+                    shot.ball_shape
+                      ? shapeOpen
                         ? "bg-green-700 border-green-700 text-white"
                         : "bg-green-100 border-green-300 text-green-700"
-                      : dirOpen
+                      : shapeOpen
                         ? "bg-green-100 border-green-400 text-green-700"
                         : "bg-gray-50 border-gray-200 text-gray-400"
                   }`}
                 >
-                  {shot.ball_direction ? BALL_DIRECTION_SHORT[shot.ball_direction] : "球筋"}
+                  {shot.ball_shape ? BALL_SHAPE_SHORT[shot.ball_shape] ?? shot.ball_shape : "球筋"}
                 </button>
                 {/* ③ ライ */}
                 <button
@@ -1125,8 +1153,8 @@ function ShotList({
               </div>
             </div>
 
-            {/* Club picker */}
-            {clubOpen && (
+            {/* Club picker — only available in realtime mode */}
+            {clubOpen && !isPostRound && (
               <div className="pb-2 space-y-1.5">
                 {[WOOD_CLUBS, UTIL_CLUBS, IRON_CLUBS, WEDGE_CLUBS].map((row, i) => (
                   <div
@@ -1149,17 +1177,17 @@ function ShotList({
               </div>
             )}
 
-            {/* Ball direction picker */}
-            {dirOpen && (
-              <div className="grid grid-cols-5 gap-1.5 pb-2">
-                {BALL_DIRECTION_OPTIONS.map((dir) => (
-                  <button key={dir} onClick={() => onUpdateBallDirection(shot.id, dir)}
+            {/* Ball shape picker */}
+            {shapeOpen && (
+              <div className="grid grid-cols-4 gap-1.5 pb-2">
+                {BALL_SHAPE_OPTIONS.map((shape) => (
+                  <button key={shape} onClick={() => onUpdateBallShape(shot.id, shape)}
                     className={`py-3.5 rounded-lg text-sm font-bold border transition-colors ${
-                      shot.ball_direction === dir
+                      shot.ball_shape === shape
                         ? "bg-green-600 border-green-600 text-white"
                         : "bg-white border-green-200 text-green-700 hover:bg-green-50"
                     }`}>
-                    {BALL_DIRECTION_LABELS[dir]}
+                    {shape}
                   </button>
                 ))}
               </div>
@@ -1290,14 +1318,17 @@ const DM_CLUBS = [
 // ── ScoreEntryCard: score mode hole completion ────────────────────────
 
 function ScoreEntryCard({
-  hole, isLastHole, onComplete, roundShotHistory, onShotDistanceRecorded,
+  hole, isLastHole, onComplete, roundShotHistory, onShotDistanceRecorded, inputMode,
 }: {
   hole: Hole;
   isLastHole: boolean;
   onComplete: (score: number, putts: number) => void;
   roundShotHistory: RoundShotEntry[];
   onShotDistanceRecorded: (entry: RoundShotEntry) => void;
+  inputMode: "post_round" | "realtime";
 }) {
+  // DM = per-club distance measurement. Requires a club, so it's a realtime-only feature.
+  const dmEnabled = inputMode === "realtime";
   const [strokes, setStrokes] = useState(hole.score ?? hole.par);
   const [putts, setPutts]     = useState(hole.putts ?? 2);
 
@@ -1406,7 +1437,8 @@ function ScoreEntryCard({
         <p className="text-base text-green-500">パー {hole.par}</p>
       </div>
 
-      {/* Shot distance measurement */}
+      {/* Shot distance measurement — realtime mode only (requires per-shot club) */}
+      {dmEnabled && (
       <div className="space-y-2">
         {dmHistory.length > 0 && (
           <div className="bg-green-50 rounded-xl px-4 py-3 space-y-1.5">
@@ -1544,6 +1576,7 @@ function ScoreEntryCard({
           </div>
         )}
       </div>
+      )}
 
       {/* Stroke counter */}
       <div className="space-y-2">
@@ -1789,6 +1822,36 @@ function EarlyEndModal({
             {confirming ? "集計中..." : "終了する"}
           </button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Beta-period completion modal (replaces payment modal while NEXT_PUBLIC_BETA_MODE=true) ─
+
+function BetaCompleteModal({ onClose }: { onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="bg-white rounded-2xl max-w-sm w-full p-6 space-y-4 shadow-xl">
+        <div className="text-center space-y-2">
+          <span className="text-4xl">🎉</span>
+          <h2 className="text-lg font-bold text-green-800">お疲れさまでした！</h2>
+        </div>
+        <p className="text-sm text-gray-700 leading-relaxed text-center whitespace-pre-line">
+          {`現在はテスト期間中です。
+課金は不要で、ラウンドデータは
+そのまま保存されました。
+
+引き続きご自由にお試しください。`}
+        </p>
+        <Link
+          href="/history"
+          onClick={onClose}
+          className="block w-full text-center py-3 rounded-xl bg-green-600 hover:bg-green-700 active:bg-green-800
+                     text-white text-sm font-bold transition-colors"
+        >
+          スタッツを見る
+        </Link>
       </div>
     </div>
   );

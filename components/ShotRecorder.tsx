@@ -17,12 +17,13 @@ interface ShotRecorderProps {
   shotNumber: number;
   prevShot: PrevShot | null;
   onShotRecorded: () => void;
+  inputMode?: "post_round" | "realtime";
 }
 
 type State = "idle" | "locating";
 
 export function ShotRecorder({
-  holeId, roundId, shotNumber, prevShot, onShotRecorded,
+  holeId, roundId, shotNumber, prevShot, onShotRecorded, inputMode = "post_round",
 }: ShotRecorderProps) {
   const [state, setState] = useState<State>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -64,6 +65,7 @@ export function ShotRecorder({
       shot_number: shotNumber,
       start_lat: lat,
       start_lng: lng,
+      club_input_at: inputMode === "realtime" ? "当日" : "事後",
     });
 
     if (err) {

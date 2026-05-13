@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { CLUB_LABELS } from "@/types";
 import type { Club } from "@/types";
 import { ClubAveragesSection } from "@/components/ClubAveragesSection";
+import { UnfilledShotsSection, type UnfilledShot } from "@/components/UnfilledShotsSection";
 
 export default async function HistoryPage() {
   const supabase = await createClient();
@@ -52,6 +53,42 @@ export default async function HistoryPage() {
     .order("created_at", { ascending: false })
     .limit(40);
 
+  // Unfilled shots (post-round mode): club IS NULL with a round attached
+  const { data: unfilledRaw } = await supabase
+    .from("shots")
+    .select(`
+      id, shot_number, distance_yards, club, ball_shape, ball_direction,
+      lie_vertical, lie_horizontal, note, hole_id, round_id,
+      holes!inner(hole_number, rounds!inner(user_id, course_name, date))
+    `)
+    .is("club", null)
+    .eq("holes.rounds.user_id", user!.id)
+    .order("created_at", { ascending: false })
+    .limit(200);
+
+  const unfilledShots: UnfilledShot[] = (unfilledRaw ?? []).map((row) => {
+    const hole = row.holes as unknown as {
+      hole_number: number;
+      rounds: { course_name: string; date: string };
+    };
+    return {
+      id: row.id,
+      shot_number: row.shot_number,
+      distance_yards: row.distance_yards,
+      club: row.club,
+      ball_shape: row.ball_shape,
+      ball_direction: row.ball_direction,
+      lie_vertical: row.lie_vertical,
+      lie_horizontal: row.lie_horizontal,
+      note: row.note,
+      hole_id: row.hole_id,
+      hole_number: hole.hole_number,
+      round_id: row.round_id,
+      round_date: hole.rounds.date,
+      course_name: hole.rounds.course_name,
+    };
+  });
+
   return (
     <div className="max-w-lg mx-auto p-4 space-y-6 pb-8">
       <div className="pt-4">
@@ -62,6 +99,8 @@ export default async function HistoryPage() {
       </div>
 
       <ClubAveragesSection initialStats={clubStats} />
+
+      <UnfilledShotsSection initialShots={unfilledShots} />
 
       {recentShots && recentShots.length > 0 && (
         <div className="card">

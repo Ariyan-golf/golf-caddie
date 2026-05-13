@@ -16,14 +16,24 @@ export default async function RoundDetailPage({ params }: Props) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
-  const { data: round } = await supabase
-    .from("rounds")
-    .select("*, golf_courses(course_type)")
-    .eq("id", id)
-    .eq("user_id", user!.id)
-    .single();
+  const [{ data: round }, { data: profile }] = await Promise.all([
+    supabase
+      .from("rounds")
+      .select("*, golf_courses(course_type)")
+      .eq("id", id)
+      .eq("user_id", user!.id)
+      .single(),
+    supabase
+      .from("profiles")
+      .select("input_mode")
+      .eq("id", user!.id)
+      .maybeSingle(),
+  ]);
 
   if (!round) notFound();
+
+  const inputMode: "post_round" | "realtime" =
+    profile?.input_mode === "realtime" ? "realtime" : "post_round";
 
   const courseType: string = (round.golf_courses as { course_type?: string } | null)?.course_type ?? "18H";
 
@@ -104,6 +114,7 @@ export default async function RoundDetailPage({ params }: Props) {
         courseHoles={courseHoles}
         paymentStatus={(round.payment_status ?? "paid") as "pending" | "paid"}
         golfCourseName={round.course_name ?? ""}
+        inputMode={inputMode}
       />
     </div>
   );

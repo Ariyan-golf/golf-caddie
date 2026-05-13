@@ -6,12 +6,18 @@
 
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { todayJST } from "@/lib/day-pass";
+import { isBetaMode } from "@/lib/betaMode";
 import { NextResponse } from "next/server";
 
 export async function GET(request: Request) {
   const authHeader = request.headers.get("authorization");
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  if (isBetaMode()) {
+    console.log("[cleanup-pending-rounds] beta mode active — skipping deletion");
+    return NextResponse.json({ ok: true, skipped: "beta_mode", deleted: 0 });
   }
 
   const admin = createAdminClient(
