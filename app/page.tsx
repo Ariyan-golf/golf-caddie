@@ -5,9 +5,11 @@ import Link from "next/link";
 import Image from "next/image";
 import { Navigation } from "@/components/Navigation";
 import { LogoutButton } from "@/components/LogoutButton";
-import { RoundPaymentButton } from "@/components/RoundPaymentButton";
 import { RoundBarGraph } from "@/components/RoundBarGraph";
 import { EventRankingSection, type EventRankingData } from "@/components/EventRankingSection";
+
+// v4: 無料体験は3ラウンドまで（app/(app)/round/new/page.tsx と同値）
+const FREE_ROUND_LIMIT = 3;
 
 export const dynamic = "force-dynamic";
 
@@ -117,7 +119,7 @@ export default async function HomePage() {
 
   const [{ data: profile }, { data: roundsRaw }, { data: clubStats }, { data: handicapData }] =
     await Promise.all([
-      supabase.from("profiles").select("display_name, day_pass_date, plan").eq("id", user.id).single(),
+      supabase.from("profiles").select("display_name, plan, round_count").eq("id", user.id).single(),
       supabase
         .from("rounds")
         .select("id, course_name, date, total_score, holes(putts)")
@@ -139,12 +141,11 @@ export default async function HomePage() {
         .limit(20),
     ]);
 
-  // v4: 月額サブスク会員 or 本日のday_pass を持っているか。
+  // v4: 月額サブスク会員かどうかの判定。
   // standard は v4 で廃止済みだが既存ユーザー保護のためサブスク扱い。
-  const isPaidToday = profile?.day_pass_date === todayStr;
   const isSubscriber = profile?.plan === "premium" || profile?.plan === "premium_paid" || profile?.plan === "standard";
-  const hasFullAccess = isPaidToday || isSubscriber;
-  const roundPrice = isSubscriber ? 280 : 220;
+  const roundCount = profile?.round_count ?? 0;
+  const remainingFree = Math.max(FREE_ROUND_LIMIT - roundCount, 0);
 
   // スコアあり10ラウンド分のグラフデータ
   const graphData = (roundsRaw ?? []).map((r) => {
@@ -270,32 +271,34 @@ export default async function HomePage() {
         {/* Score & putts bar graph */}
         <RoundBarGraph data={graphData} />
 
-        {/* Partnership payment / Day pass status */}
-        {hasFullAccess ? (
-          <div className="card bg-green-50 border-green-300 space-y-3">
+        {/* Plan status (v4: 月額サブスク利用中 or 無料体験中) */}
+        {isSubscriber ? (
+          <div className="card bg-green-50 border-green-300">
             <div className="flex items-center gap-3">
               <span className="text-2xl">✅</span>
               <div>
-                <p className="font-semibold text-green-800 text-sm">
-                  {isPaidToday ? "本日のラウンド利用中" : "月額サブスク利用中"}
-                </p>
-                <p className="text-xs text-green-600">
-                  {isPaidToday ? "本日23:59まで全機能利用可能" : `※ゴルフ場ラウンドは別料金（${roundPrice}円/回）`}
-                </p>
+                <p className="font-semibold text-green-800 text-sm">月額サブスク利用中</p>
+                <p className="text-xs text-green-600">全機能利用可・データ永続保持</p>
               </div>
             </div>
-            {!isPaidToday && <RoundPaymentButton />}
           </div>
         ) : (
-          <div className="card space-y-3">
-            <div className="flex items-center gap-3">
-              <span className="text-2xl">⛳</span>
-              <div>
-                <p className="font-semibold text-green-700 text-sm">提携ゴルフ場と連携</p>
-                <p className="text-xs text-green-500">{roundPrice}円／ラウンド</p>
+          <div className="card bg-amber-50 border-amber-200 space-y-3">
+            <div className="flex items-start gap-3">
+              <span className="text-2xl flex-shrink-0">⛳</span>
+              <div className="flex-1">
+                <p className="font-semibold text-amber-800 text-sm">無料体験中</p>
+                <p className="text-xs text-amber-700 mt-0.5 leading-relaxed">
+                  残り <span className="font-bold">{remainingFree}</span> / {FREE_ROUND_LIMIT} ラウンド・データは1日後に削除されます
+                </p>
               </div>
             </div>
-            <RoundPaymentButton />
+            <Link
+              href="/plan"
+              className="block w-full text-center py-2.5 rounded-xl bg-green-600 hover:bg-green-700 text-white text-sm font-semibold transition-colors"
+            >
+              月額サブスクに登録する（330円/月）→
+            </Link>
           </div>
         )}
 
