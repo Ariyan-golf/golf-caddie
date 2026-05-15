@@ -387,9 +387,9 @@ export function AiCaddieClient({ clubAverages, hasAccess }: Props) {
         <div className="space-y-3">
           {!hasAccess ? (
             <div className="card bg-amber-50 border-amber-200 text-center space-y-2 py-4">
-              <p className="text-sm font-semibold text-amber-800">🔒 詳細アドバイスはプレミアム限定</p>
+              <p className="text-sm font-semibold text-amber-800">🔒 詳細アドバイスはサブスク会員限定</p>
               <p className="text-xs text-amber-700 leading-relaxed">
-                プレミアムプランまたは当日のラウンド利用料でご利用いただけます。
+                月額サブスク（330円/月）または当日のラウンド利用料でご利用いただけます。
               </p>
             </div>
           ) : (

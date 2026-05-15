@@ -45,13 +45,13 @@ function PremiumGate() {
     <div className="card space-y-5 text-center py-8">
       <div className="text-5xl">🔒</div>
       <div className="space-y-2">
-        <h2 className="text-xl font-bold text-green-800">プレミアムプラン限定</h2>
+        <h2 className="text-xl font-bold text-green-800">月額サブスク会員限定</h2>
         <p className="text-base text-green-600 leading-relaxed">
-          AIマネージャーはプレミアムプランのユーザーのみご利用いただける機能です。
+          AIマネージャーは月額サブスク会員（330円/月）のみご利用いただける機能です。
         </p>
       </div>
       <div className="bg-green-50 rounded-xl p-4 text-left space-y-2">
-        <p className="text-base font-semibold text-green-700">プレミアムプランの特典</p>
+        <p className="text-base font-semibold text-green-700">月額サブスクの特典</p>
         <ul className="space-y-1.5 text-base text-green-700">
           <li className="flex items-center gap-2">
             <span className="text-green-500">✓</span> AIマネージャー（コース情報案内）
@@ -62,11 +62,17 @@ function PremiumGate() {
           <li className="flex items-center gap-2">
             <span className="text-green-500">✓</span> スイング分析（無制限）
           </li>
+          <li className="flex items-center gap-2">
+            <span className="text-green-500">✓</span> 全機能利用可・データ永続保持
+          </li>
         </ul>
       </div>
-      <p className="text-sm text-green-400">
-        プレミアムへのアップグレードはサポートまでお問い合わせください。
-      </p>
+      <a
+        href="/plan"
+        className="inline-block w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-3 rounded-xl text-base transition-colors"
+      >
+        月額サブスクに登録（330円/月）
+      </a>
     </div>
   );
 }

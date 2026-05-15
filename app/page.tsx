@@ -139,11 +139,11 @@ export default async function HomePage() {
         .limit(20),
     ]);
 
-  // 本日day_pass有効か判定
+  // v4: 月額サブスク会員 or 本日のday_pass を持っているか。
+  // standard は v4 で廃止済みだが既存ユーザー保護のためサブスク扱い。
   const isPaidToday = profile?.day_pass_date === todayStr;
-  const isPremium = profile?.plan === "premium";
-  const isSubscriber = profile?.plan === "standard" || profile?.plan === "premium";
-  const hasFullAccess = isPaidToday || isPremium;
+  const isSubscriber = profile?.plan === "premium" || profile?.plan === "premium_paid" || profile?.plan === "standard";
+  const hasFullAccess = isPaidToday || isSubscriber;
   const roundPrice = isSubscriber ? 280 : 220;
 
   // スコアあり10ラウンド分のグラフデータ
@@ -277,7 +277,7 @@ export default async function HomePage() {
               <span className="text-2xl">✅</span>
               <div>
                 <p className="font-semibold text-green-800 text-sm">
-                  {isPaidToday ? "本日のラウンド利用中" : isPremium ? "プレミアムプラン利用中" : "スタンダードプラン利用中"}
+                  {isPaidToday ? "本日のラウンド利用中" : "月額サブスク利用中"}
                 </p>
                 <p className="text-xs text-green-600">
                   {isPaidToday ? "本日23:59まで全機能利用可能" : `※ゴルフ場ラウンドは別料金（${roundPrice}円/回）`}
