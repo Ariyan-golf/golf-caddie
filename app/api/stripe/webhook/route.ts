@@ -5,9 +5,9 @@ import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 import type Stripe from "stripe";
 
-const PLAN_MAP: Record<string, "standard" | "premium"> = {
-  standard: "standard",
-  premium:  "premium",
+// v4で月額330円1本（premium）に統一。旧 standard プランは廃止。
+const PLAN_MAP: Record<string, "premium"> = {
+  premium: "premium",
 };
 
 function adminClient() {
@@ -20,9 +20,9 @@ function adminClient() {
 /**
  * プラン変更と同時に referral_code を管理する
  * - premium 昇格時: referral_code が未設定なら自動生成
- * - standard / free 降格時: referral_code を null にクリア
+ * - free 降格時: referral_code を null にクリア
  */
-async function updateUserPlan(userId: string, plan: "free" | "standard" | "premium") {
+async function updateUserPlan(userId: string, plan: "free" | "premium") {
   const db = adminClient();
 
   if (plan === "premium") {
@@ -38,7 +38,7 @@ async function updateUserPlan(userId: string, plan: "free" | "standard" | "premi
     }
     await db.from("profiles").update(updates).eq("id", userId);
   } else {
-    // standard / free への変更時は招待コードを無効化
+    // free への変更時は招待コードを無効化
     await db.from("profiles").update({ plan, referral_code: null }).eq("id", userId);
   }
 }
@@ -115,7 +115,7 @@ export async function POST(request: Request) {
       ) {
         await recordRoundPayment(session);
       } else {
-        // サブスクプラン変更
+        // サブスクプラン変更（v4: premium のみ受付）
         const userId = session.metadata?.user_id ?? session.client_reference_id;
         const plan   = session.metadata?.plan ?? session.metadata?.plan_at_purchase;
         if (userId && plan && PLAN_MAP[plan]) {

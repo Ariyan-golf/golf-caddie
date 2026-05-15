@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-export function CheckoutButton({ plan, label }: { plan: "standard" | "premium"; label: string }) {
+export function CheckoutButton({ plan, label }: { plan: "premium"; label: string }) {
   const [loading, setLoading] = useState(false);
 
   async function handleClick() {

@@ -9,8 +9,10 @@ export async function POST(request: Request) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { plan } = await request.json() as { plan: PlanKey };
-  if (!PLANS[plan]) {
+  // v4: plan は "premium" のみ受け付ける（旧 "standard" は廃止）
+  const body = await request.json() as { plan?: PlanKey | string };
+  const plan = body.plan === "premium" ? "premium" : null;
+  if (!plan || !PLANS[plan]) {
     return NextResponse.json({ error: "無効なプランです" }, { status: 400 });
   }
 

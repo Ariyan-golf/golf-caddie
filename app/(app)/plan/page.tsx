@@ -6,57 +6,46 @@ import { RoundPaymentButton } from "@/components/RoundPaymentButton";
 import { CancelButton } from "./CancelButton";
 import { isBetaMode } from "@/lib/betaMode";
 
+// v4: 月額サブスク330円1本に統一。
+// - free: 3回ラウンドの無料体験、データは1日後削除
+// - premium: 全機能利用可、データ永続保持
 const PLANS = [
   {
     key: "free",
-    name: "無料プラン",
+    name: "無料体験",
     price: "0円",
     period: "",
-    description: "まずは試してみたい方へ",
+    description: "3回ラウンド・データは1日後削除",
     features: [
+      "全機能利用可（お試し）",
       "ラウンド記録（3回まで）",
-      "直近3ラウンド閲覧",
-      "GPS飛距離計測",
-      "番手別平均飛距離",
+      "データは翌日0:30に自動削除",
     ],
-    limits: ["AIキャディ機能なし", "スイング分析なし"],
+    limits: [
+      "データは永続保持されません",
+      "4回目以降はサブスク登録が必要",
+    ],
     color: "border-gray-200",
     badge: null,
   },
   {
-    key: "standard",
-    name: "スタンダード",
-    price: "220円",
-    period: "/月",
-    description: "本格的にスコアアップを目指す方へ",
+    key: "premium",
+    name: "月額サブスク",
+    price: "330円",
+    period: "/月（税込）",
+    description: "全機能利用可・データ永続保持",
     features: [
-      "ラウンド記録（無制限）",
-      "全期間データ閲覧",
-      "GPS飛距離計測",
-      "番手別平均飛距離",
-      "球筋分析",
-      "ハンディキャップ分析",
+      "スコア記録（全期間データ永続保持）",
+      "GPS飛距離測定（精度±5m）",
+      "クラブ別平均飛距離の管理",
+      "AIキャディ即座アドバイス（4キャラ）",
+      "AIキャディ詳細アドバイス（風・ライ・傾斜込み）",
+      "方位センサー連動コンパス＋グリーン方向",
+      "グリーンセンター登録機能",
+      "月間ランキング「飛ばしっこごっこ」参加",
     ],
     limits: [],
     color: "border-green-400",
-    badge: "人気",
-  },
-  {
-    key: "premium",
-    name: "プレミアム",
-    price: "550円",
-    period: "/月",
-    description: "AIの力で一段上のゴルフへ",
-    features: [
-      "スタンダードの全機能",
-      "全期間データ閲覧",
-      "AIキャディ（ルール確認）",
-      "AIマネージャー（コース情報）",
-      "番手アドバイス（無制限）",
-      "優先サポート",
-    ],
-    limits: [],
-    color: "border-yellow-400",
     badge: "おすすめ",
   },
 ] as const;
@@ -86,10 +75,8 @@ export default async function PlanPage({ searchParams }: Props) {
   const roundCount = profile?.round_count ?? 0;
   const alreadyCancelled = !!profile?.cancelled_at;
 
-  const planLabel: Record<string, string> = {
-    standard: "スタンダード",
-    premium: "プレミアム",
-  };
+  // 旧 standard プランの既存ユーザーは premium と同等扱いで「月額サブスク」を現在のプランとして表示
+  const isSubscriber = currentPlan === "premium" || currentPlan === "standard";
 
   const beta = isBetaMode();
 
@@ -105,9 +92,7 @@ export default async function PlanPage({ searchParams }: Props) {
         <div className="bg-green-50 border border-green-300 rounded-xl p-4 flex items-start gap-3">
           <span className="text-2xl shrink-0">🎉</span>
           <div>
-            <p className="font-bold text-green-800">
-              {params.plan ? planLabel[params.plan] ?? "プラン" : "プラン"}へのアップグレード完了！
-            </p>
+            <p className="font-bold text-green-800">月額サブスクへの登録完了！</p>
             <p className="text-sm text-green-600 mt-0.5">
               ご登録ありがとうございます。すべての機能をご利用いただけます。
             </p>
@@ -138,14 +123,15 @@ export default async function PlanPage({ searchParams }: Props) {
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-center gap-2 text-sm">
           <span>🔒</span>
           <p className="text-amber-700">
-            無料プランの上限（3ラウンド）に達しています。アップグレードで無制限になります。
+            無料体験の上限（3ラウンド）に達しています。サブスク登録でデータが永続保持されます。
           </p>
         </div>
       )}
 
       <div className="space-y-4">
         {PLANS.map((plan) => {
-          const isCurrent = currentPlan === plan.key;
+          const isCurrent =
+            plan.key === "premium" ? isSubscriber : currentPlan === plan.key;
           return (
             <div
               key={plan.key}
@@ -198,8 +184,8 @@ export default async function PlanPage({ searchParams }: Props) {
                 </div>
               ) : (
                 <CheckoutButton
-                  plan={plan.key as "standard" | "premium"}
-                  label={`${plan.name}プランに申し込む（${plan.price}${plan.period}）`}
+                  plan="premium"
+                  label={`月額サブスクに登録（${plan.price}${plan.period}）`}
                 />
               )}
             </div>
