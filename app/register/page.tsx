@@ -246,6 +246,15 @@ export default function RegisterPage() {
               )}
             </div>
 
+            {/* 無料体験データ削除の注意 */}
+            <div className="bg-amber-50 border-2 border-amber-300 rounded-xl p-3 text-sm space-y-1">
+              <p className="font-semibold text-amber-800">⚠️ 無料体験について</p>
+              <p className="text-amber-700 leading-relaxed">
+                無料体験のラウンドデータは <strong>24時間後に自動削除</strong> されます。
+                データを永続保持するには <strong>月額サブスク（330円/月）</strong> への登録が必要です。
+              </p>
+            </div>
+
             <button type="submit" className="btn-primary" disabled={loading}>
               {loading ? "登録中..." : "アカウント作成"}
             </button>
