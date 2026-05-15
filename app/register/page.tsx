@@ -13,20 +13,56 @@ const INVITE_CODE_MAP: Record<string, { graduation_year: number }> = {
   TOKAI2029: { graduation_year: 2029 },
 };
 
+type Category = "pro_coach" | "amateur";
+type Gender = "male" | "female" | "undisclosed";
+
+const CATEGORY_OPTIONS = [
+  { value: "pro_coach", label: "プロ・コーチ" },
+  { value: "amateur",   label: "アマチュア" },
+] as const;
+
+const GENDER_OPTIONS = [
+  { value: "male",        label: "男性" },
+  { value: "female",      label: "女性" },
+  { value: "undisclosed", label: "未回答" },
+] as const;
+
 export default function RegisterPage() {
   const router = useRouter();
   const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [inviteCode, setInviteCode] = useState("");
+  const [category, setCategory] = useState<Category | "">("");
+  const [birthDate, setBirthDate] = useState("");
+  const [gender, setGender] = useState<Gender | "">("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
   const inviteInfo = INVITE_CODE_MAP[inviteCode.toUpperCase()] ?? null;
+  const todayStr = new Date().toISOString().slice(0, 10);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
+
+    if (!category) {
+      setError("カテゴリを選択してください");
+      return;
+    }
+    if (!birthDate) {
+      setError("生年月日を入力してください");
+      return;
+    }
+    if (birthDate < "1900-01-01" || birthDate > todayStr) {
+      setError("生年月日は1900年以降〜今日までで入力してください");
+      return;
+    }
+    if (!gender) {
+      setError("性別を選択してください");
+      return;
+    }
+
     setLoading(true);
 
     const supabase = createClient();
@@ -37,6 +73,9 @@ export default function RegisterPage() {
       options: {
         data: {
           display_name: displayName,
+          category,
+          birth_date: birthDate,
+          gender,
           ...(normalizedCode ? { invite_code: normalizedCode } : {}),
         },
       },
@@ -120,6 +159,65 @@ export default function RegisterPage() {
                 minLength={6}
                 autoComplete="new-password"
               />
+            </div>
+
+            {/* カテゴリ */}
+            <div>
+              <label className="label">カテゴリ</label>
+              <div className="grid grid-cols-2 gap-2">
+                {CATEGORY_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => setCategory(opt.value)}
+                    className={`py-2.5 rounded-xl text-sm font-semibold border-2 transition-colors ${
+                      category === opt.value
+                        ? "bg-green-600 border-green-600 text-white"
+                        : "bg-white border-green-200 text-green-700"
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* 生年月日 */}
+            <div>
+              <label className="label">生年月日</label>
+              <input
+                type="date"
+                className="input"
+                value={birthDate}
+                onChange={(e) => setBirthDate(e.target.value)}
+                required
+                min="1900-01-01"
+                max={todayStr}
+              />
+            </div>
+
+            {/* 性別 */}
+            <div>
+              <label className="label">性別</label>
+              <div className="grid grid-cols-3 gap-2">
+                {GENDER_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => setGender(opt.value)}
+                    className={`py-2.5 rounded-xl text-xs font-semibold border-2 transition-colors ${
+                      gender === opt.value
+                        ? "bg-green-600 border-green-600 text-white"
+                        : "bg-white border-green-200 text-green-700"
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+              <p className="mt-1 text-xs text-green-500">
+                「未回答」を選んだ場合、月間ランキングの集計対象外となります
+              </p>
             </div>
 
             {/* 招待コード */}
