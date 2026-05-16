@@ -259,11 +259,12 @@ export function CompactCompass({
               </div>
             )}
 
-            {/* Remaining-distance — shows for 3s after tap, then clears */}
+            {/* Remaining-distance — shows for 3s after tap, then clears.
+                Sized for glove-on tapping during a round (min 64px target). */}
             <button
               onClick={handleShowRemaining}
               disabled={remainingLoading}
-              className="self-start text-xs font-semibold px-3 py-1.5 rounded-full
+              className="w-full min-h-[64px] text-lg font-bold px-6 py-4 rounded-full
                          bg-emerald-100 hover:bg-emerald-200 active:bg-emerald-300
                          text-emerald-800 border border-emerald-200
                          transition-colors active:scale-95
@@ -272,7 +273,7 @@ export function CompactCompass({
               {remainingLoading ? "📡 取得中…" : "📍 残り距離を見る"}
             </button>
             {remaining && (
-              <p className="text-xs text-emerald-800 font-semibold tabular-nums leading-tight">
+              <p className="text-lg text-emerald-800 font-bold tabular-nums leading-tight">
                 {remaining.kind === "distance"
                   ? `残り ${remaining.yards}ヤード（${remaining.meters}m）`
                   : remaining.text}
