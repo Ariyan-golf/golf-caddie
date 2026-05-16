@@ -73,10 +73,13 @@ export function CompactCompass({
     setRemaining(null);
   }, [greenCenter]);
 
-  // Auto-dismiss the remaining-distance readout after 3 seconds.
+  // Auto-dismiss the remaining-distance readout after 5 seconds.
+  // 5s gives the player enough time to glance, address the ball, and re-check
+  // before swinging. Tapping again resets the timer (dependency on `remaining`
+  // re-runs the effect, the cleanup clears the prior timeout).
   useEffect(() => {
     if (!remaining) return;
-    const t = setTimeout(() => setRemaining(null), 3000);
+    const t = setTimeout(() => setRemaining(null), 5000);
     return () => clearTimeout(t);
   }, [remaining]);
 
