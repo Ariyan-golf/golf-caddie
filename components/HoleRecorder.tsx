@@ -1976,9 +1976,11 @@ function ScoreEntryCard({
 
 const COMPASS_STORAGE_KEY = "golfCaddieWindCompass";
 
+// Symbols point to where the wind is blowing TO (not where it comes from).
+// e.g. 北 (wind from north) → ↓ (blows south).
 const WIND_ARROWS: Record<string, string> = {
-  "北": "↑", "北東": "↗", "東": "→", "南東": "↘",
-  "南": "↓", "南西": "↙", "西": "←", "北西": "↖",
+  "北": "↓", "北東": "↙", "東": "←", "南東": "↖",
+  "南": "↑", "南西": "↗", "西": "→", "北西": "↘",
 };
 
 // Direction text → compass degrees (wind FROM this direction)
@@ -2006,8 +2008,7 @@ function WindCompassSection({
       <div className="flex items-center justify-between px-1">
         <div className="flex items-center gap-1.5 text-sm text-sky-600">
           <span className="text-base">{windDirection ? WIND_ARROWS[windDirection] ?? "🧭" : "🧭"}</span>
-          <span className="font-medium">{windDirection ?? "—"}</span>
-          <span className="text-sky-400 text-xs">/ {windSpeed ?? "—"}</span>
+          <span className="text-sky-400 text-xs">{windSpeed ?? "—"}</span>
         </div>
         <button
           onClick={onToggle}
@@ -2056,12 +2057,13 @@ function WindCompass({
         <text x={cx}      y={cy + r + 17} textAnchor="middle" fontSize="13" fill="#0ea5e9" fontWeight="700">南</text>
         <text x={cx + r + 13} y={cy + 5}  textAnchor="middle" fontSize="13" fill="#0ea5e9" fontWeight="700">東</text>
         <text x={cx - r - 13} y={cy + 5}  textAnchor="middle" fontSize="13" fill="#0ea5e9" fontWeight="700">西</text>
-        {/* Rotating wind arrow group */}
-        <g transform={`rotate(${deg} ${cx} ${cy})`}>
+        {/* Rotating wind arrow group — rotated by deg+180 so the arrowhead points to
+            where the wind is blowing TO (not where it comes from). */}
+        <g transform={`rotate(${(deg + 180) % 360} ${cx} ${cy})`}>
           {/* Shaft */}
           <line x1={cx} y1={cy + 48} x2={cx} y2={cy - 52}
                 stroke="#0284c7" strokeWidth="3" strokeLinecap="round" />
-          {/* Arrowhead pointing up (= wind origin direction) */}
+          {/* Arrowhead (= wind destination direction after rotation) */}
           <polygon
             points={`${cx},${cy - 66} ${cx - 9},${cy - 50} ${cx + 9},${cy - 50}`}
             fill="#0284c7"

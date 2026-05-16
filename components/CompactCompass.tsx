@@ -9,6 +9,13 @@ const WIND_DIR_DEG: Record<string, number> = {
   "南": 180, "南西": 225, "西": 270, "北西": 315,
 };
 
+// Symbol pointing to where the wind is blowing TO (not where it comes from).
+// e.g. 北 (wind from north) → ↓ (blows south).
+const WIND_TO_ARROW: Record<string, string> = {
+  "北": "↓", "北東": "↙", "東": "←", "南東": "↖",
+  "南": "↑", "南西": "↗", "西": "→", "北西": "↘",
+};
+
 interface Props {
   windDirection: string | null;
   windSpeed: string | null;
@@ -158,9 +165,10 @@ export function CompactCompass({
                 fill="#0ea5e9"
               />
 
-              {/* Wind arrow — rotates with (windDeg - heading) so it stays at its real-world bearing */}
+              {/* Wind arrow — points to where the wind is blowing TO (windDeg + 180), then
+                  counter-rotates by the device heading so it stays at its real-world bearing. */}
               {windDeg !== null && (
-                <g transform={`rotate(${windDeg - effectiveHeading} ${CX} ${CY})`}>
+                <g transform={`rotate(${windDeg + 180 - effectiveHeading} ${CX} ${CY})`}>
                   <line x1={CX} y1={CY + 14} x2={CX} y2={CY - 16} stroke="#0284c7" strokeWidth="2" strokeLinecap="round" />
                   <polygon points={`${CX},${CY - 20} ${CX - 3.5},${CY - 14} ${CX + 3.5},${CY - 14}`} fill="#0284c7" />
                   <line x1={CX - 3} y1={CY + 14} x2={CX} y2={CY + 9} stroke="#0284c7" strokeWidth="1.5" strokeLinecap="round" />
@@ -219,7 +227,7 @@ export function CompactCompass({
           <div className="flex-1 min-w-0 flex flex-col gap-1.5 py-1">
             <div className="leading-tight">
               <p className="text-sm font-bold text-sky-700">
-                風 {windDirection ?? "—"}
+                風 {windDirection ? (WIND_TO_ARROW[windDirection] ?? "—") : "—"}
               </p>
               <p className="text-xs text-sky-500">{windSpeed ?? "—"}</p>
             </div>
