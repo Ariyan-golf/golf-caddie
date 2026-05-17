@@ -47,3 +47,15 @@
            text-xs font-medium;
   }
 }
+
+@layer utilities {
+  /* Reserve room for the device status bar / notch. The max() fallback (1.5rem)
+     keeps the gap usable in browsers where env() resolves to 0 (i.e. when the
+     viewport isn't set to viewport-fit=cover). */
+  .safe-area-top {
+    padding-top: max(1.5rem, env(safe-area-inset-top));
+  }
+  .safe-area-bottom {
+    padding-bottom: max(0px, env(safe-area-inset-bottom));
+  }
+}

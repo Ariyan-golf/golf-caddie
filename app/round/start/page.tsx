@@ -24,7 +24,7 @@ export default async function RoundStartPage({ searchParams }: Props) {
     const lineHref = `/auth/line?redirect_to=${encodeURIComponent(redirectTo)}`;
 
     return (
-      <div className="min-h-screen p-4 max-w-md mx-auto flex flex-col justify-center space-y-6">
+      <div className="min-h-screen px-4 pb-4 safe-area-top max-w-md mx-auto flex flex-col justify-center space-y-6">
         <div className="text-center space-y-2">
           <span className="text-5xl">⛳</span>
           <h1 className="text-2xl font-bold text-green-800">ラウンド開始</h1>
@@ -87,7 +87,7 @@ export default async function RoundStartPage({ searchParams }: Props) {
   }
 
   return (
-    <div className="max-w-lg mx-auto p-4 pt-8 space-y-6 pb-24">
+    <div className="max-w-lg mx-auto px-4 pb-24 safe-area-top space-y-6">
       <div className="text-center space-y-2">
         <span className="text-5xl">⛳</span>
         <h1 className="text-2xl font-bold text-green-800">{course.name}</h1>
