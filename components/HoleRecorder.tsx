@@ -191,6 +191,7 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
   const [dmLoading, setDmLoading] = useState<"idle" | "start" | "end">("idle");
   const [shotNextAction, setShotNextAction] = useState<"before" | "after">("before");
   const [confirmingShot, setConfirmingShot] = useState(false);
+  const [shotError, setShotError] = useState<string | null>(null);
   const [shotMode, setShotMode] = useState<"idle" | "recording">("idle");
   const [lastShot, setLastShot] = useState<LastShotMemo | null>(null);
 
@@ -519,6 +520,7 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
     setDmEnd(null);
     setDmDistance(null);
     setShotNextAction("before");
+    setShotError(null);
     setShotMode("recording");
   }
 
@@ -578,8 +580,10 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
     // Eagerly show the feedback panel; idle reset is guaranteed by the finally below.
     setConfirmingShot(true);
     setLastShot(snapshot);
+    setShotError(null);
 
     let insertOk = false;
+    let insertErrMsg: string | null = null;
     try {
       const supabase = createClient();
       // Run INSERT and the 2-second display timer in parallel so the panel is
@@ -601,11 +605,13 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
       ]);
       if (insertResult.error) {
         console.error("[confirm-shot] insert error:", insertResult.error.message);
+        insertErrMsg = insertResult.error.message;
       } else {
         insertOk = true;
       }
     } catch (e) {
       console.error("[confirm-shot] unexpected error:", e);
+      insertErrMsg = e instanceof Error ? e.message : String(e);
     } finally {
       // Refresh in the background only when the INSERT succeeded.
       if (insertOk) {
@@ -613,6 +619,7 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
       } else {
         // Don't surface a phantom "直前のショット" if the write failed.
         setLastShot(null);
+        setShotError(insertErrMsg ?? "保存に失敗しました");
       }
       // ALWAYS unwind to idle so the user is never stuck on the panel.
       setDmStart(null);
@@ -780,6 +787,7 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
           disabled={!currentHole || creating}
           onStart={handleEnterRecordingMode}
           lastShot={lastShot}
+          error={shotError}
         />
       ) : (
         <ActiveShotPanel
@@ -2446,14 +2454,20 @@ function ScoreTable({
 // ── IdleShotSection: collapsed-state entry + last-shot memo + club hint ──
 
 function IdleShotSection({
-  disabled, onStart, lastShot,
+  disabled, onStart, lastShot, error,
 }: {
   disabled: boolean;
   onStart: () => void;
   lastShot: LastShotMemo | null;
+  error: string | null;
 }) {
   return (
     <div className="space-y-1.5">
+      {error && (
+        <p className="text-center text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+          ⚠️ 保存に失敗しました：{error}
+        </p>
+      )}
       {lastShot && (
         <p className="text-center text-sm text-gray-600 tabular-nums">
           📊 直前のショット：第{lastShot.shotNumber}打 {lastShot.distanceYards}ヤード（{lastShot.distanceMeters}m）

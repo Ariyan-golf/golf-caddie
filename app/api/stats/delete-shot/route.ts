@@ -9,11 +9,13 @@ export async function DELETE(req: Request) {
   const { shotId } = await req.json() as { shotId?: string };
   if (!shotId) return NextResponse.json({ error: "shotId is required" }, { status: 400 });
 
+  // RLS enforces ownership via holes→rounds.user_id, so an explicit user_id
+  // filter is not possible (shots has no user_id column). RLS will silently
+  // drop attempts to delete other users' shots.
   const { error } = await supabase
-    .from("shot_distances")
+    .from("shots")
     .delete()
-    .eq("id", shotId)
-    .eq("user_id", user.id);
+    .eq("id", shotId);
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ ok: true });

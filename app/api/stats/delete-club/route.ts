@@ -9,10 +9,10 @@ export async function DELETE(req: Request) {
   const { club } = await req.json() as { club?: string };
   if (!club) return NextResponse.json({ error: "club is required" }, { status: 400 });
 
+  // RLS enforces ownership via holes→rounds.user_id; shots has no user_id col.
   const { error } = await supabase
-    .from("shot_distances")
+    .from("shots")
     .delete()
-    .eq("user_id", user.id)
     .eq("club", club);
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });

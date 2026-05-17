@@ -9,10 +9,16 @@ export default async function HistoryPage() {
   const { data: { user } } = await supabase.auth.getUser();
 
   // ID・日付付きで全件取得（展開表示と個別削除に使用）
+  // shots テーブルから直接集計。RLS が holes→rounds.user_id 経由で所有権を強制する。
   const { data: shotRows } = await supabase
-    .from("shot_distances")
-    .select("id, club, distance_yards, distance_meters, created_at")
-    .eq("user_id", user!.id)
+    .from("shots")
+    .select(`
+      id, club, distance_yards, distance_meters, created_at,
+      holes!inner(rounds!inner(user_id))
+    `)
+    .eq("holes.rounds.user_id", user!.id)
+    .not("club", "is", null)
+    .not("distance_meters", "is", null)
     .order("created_at", { ascending: false });
 
   // クラブ別に集計しつつ個別ショットも保持
@@ -22,6 +28,7 @@ export default async function HistoryPage() {
   }>();
 
   for (const shot of shotRows ?? []) {
+    if (shot.club == null || shot.distance_meters == null) continue;
     const prev = clubMap.get(shot.club) ?? { totalMeters: 0, shots: [] };
     clubMap.set(shot.club, {
       totalMeters: prev.totalMeters + Number(shot.distance_meters),
