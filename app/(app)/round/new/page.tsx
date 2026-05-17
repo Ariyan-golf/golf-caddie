@@ -28,8 +28,8 @@ export default async function NewRoundPage({ searchParams }: PageProps) {
   const isBlocked = plan === "free" && roundCount >= FREE_ROUND_LIMIT && role !== "pro" && !dayPassActive;
 
   return (
-    <div className="max-w-lg mx-auto p-4 space-y-4">
-      <div className="pt-4">
+    <div className="max-w-lg mx-auto px-4 pb-4 safe-area-top space-y-4">
+      <div>
         <h1 className="text-2xl font-bold text-green-800">ラウンド開始</h1>
         <p className="text-sm text-green-600 mt-1">コース情報を入力してください</p>
       </div>
