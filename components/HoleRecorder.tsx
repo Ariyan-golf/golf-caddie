@@ -2525,7 +2525,7 @@ function ScoreTable({
     }, 0);
     const scoreSum = nums.reduce((s, n) => s + (holeMap[n]?.score ?? 0), 0);
     const puttsSum = nums.reduce((s, n) => s + (holeMap[n]?.putts ?? 0), 0);
-    const cell = "w-10 h-7 flex items-center justify-center text-sm tabular-nums bg-gray-200 text-gray-700 font-bold";
+    const cell = "w-12 h-7 flex items-center justify-center text-sm tabular-nums bg-gray-200 text-gray-700 font-bold";
     return (
       <div key={label} className="flex flex-col gap-0.5 ml-0.5">
         <div className={`${cell} rounded-t-md text-[11px]`}>{label}</div>
