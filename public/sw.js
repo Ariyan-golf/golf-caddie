@@ -1,5 +1,7 @@
 // Minimal service worker — network-first with static asset caching.
-const CACHE_NAME = "golf-caddie-v1";
+// v2 (2026-05-18): bumped cache key so existing clients drop any /manifest.json
+// HTML they may have cached while middleware was redirecting it to /login.
+const CACHE_NAME = "golf-caddie-v2";
 const STATIC_PATHS = ["/_next/static/", "/characters/", "/icon-"];
 
 self.addEventListener("install", () => {
@@ -28,9 +30,7 @@ self.addEventListener("fetch", (event) => {
       try {
         const response = await fetch(req);
         if (response.ok) {
-          const isStatic =
-            STATIC_PATHS.some((p) => url.pathname.startsWith(p)) ||
-            url.pathname === "/manifest.json";
+          const isStatic = STATIC_PATHS.some((p) => url.pathname.startsWith(p));
           if (isStatic) {
             const cache = await caches.open(CACHE_NAME);
             cache.put(req, response.clone());
