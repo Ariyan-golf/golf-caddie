@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { hasActiveDayPass } from "@/lib/day-pass";
 import Link from "next/link";
 import { NewRoundForm } from "./NewRoundForm";
+import { StickyHeader } from "./StickyHeader";
 
 const FREE_ROUND_LIMIT = 3;
 
@@ -29,10 +30,10 @@ export default async function NewRoundPage({ searchParams }: PageProps) {
 
   return (
     <div className="max-w-lg mx-auto px-4 pb-4 space-y-4">
-      <div className="sticky top-0 -mx-4 px-4 bg-green-50 safe-area-top pb-2 z-10">
+      <StickyHeader>
         <h1 className="text-2xl font-bold text-green-800">ラウンド開始</h1>
         <p className="text-sm text-green-600 mt-1">コース情報を入力してください</p>
-      </div>
+      </StickyHeader>
 
       {isBlocked ? (
         <div className="card space-y-4">
