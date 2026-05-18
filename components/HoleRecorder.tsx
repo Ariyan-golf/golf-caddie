@@ -725,7 +725,7 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
     }
   }
 
-  if (isRoundDone && !roundEndConfirmed) {
+  if ((isRoundDone || endedEarly) && !roundEndConfirmed) {
     return <RoundEndScreen onConfirm={handleRoundEndConfirm} confirming={confirmLoading} />;
   }
   if (isRoundDone || endedEarly) {
@@ -863,14 +863,15 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
 
       {/* Modals */}
       {confirmEarlyEnd && (
-        <EarlyEndModal
-          completed={completedHoles.length}
-          onConfirm={async () => {
+        <FinalConfirmModal
+          holes={holes}
+          startHole={startHole}
+          courseHoles={courseHoles}
+          onConfirm={() => {
             setConfirmEarlyEnd(false);
-            await handleRoundEndConfirm();
+            setEndedEarly(true);
           }}
           onCancel={() => setConfirmEarlyEnd(false)}
-          confirming={confirmLoading}
         />
       )}
 
@@ -2147,45 +2148,117 @@ function RoundEndScreen({ onConfirm, confirming }: { onConfirm: () => void; conf
   );
 }
 
-// ── Early-end confirmation modal ────────────────────────────────────
+// ── Final round-end confirmation modal (full 18H + OUT/IN/TOTAL) ─────
 
-function EarlyEndModal({
-  completed, onConfirm, onCancel, confirming,
+function FinalConfirmModal({
+  holes, startHole, courseHoles, onConfirm, onCancel,
 }: {
-  completed: number;
+  holes: Hole[];
+  startHole: number;
+  courseHoles?: { hole_number: number; par: number }[];
   onConfirm: () => void;
   onCancel: () => void;
-  confirming: boolean;
 }) {
+  const playOrder = Array.from({ length: 18 }, (_, i) => ((startHole - 1 + i) % 18) + 1);
+  const holeMap = Object.fromEntries(holes.map((h) => [h.hole_number, h]));
+  const outOrder = playOrder.slice(0, 9);
+  const inOrder  = playOrder.slice(9);
+
+  function parOf(n: number): number | null {
+    return holeMap[n]?.par ?? courseHoles?.find((c) => c.hole_number === n)?.par ?? null;
+  }
+
+  const sumP   = (nums: number[]) => nums.reduce((s, n) => s + (parOf(n) ?? 0), 0);
+  const sumScr = (nums: number[]) => nums.reduce((s, n) => s + (holeMap[n]?.score ?? 0), 0);
+  const sumPtt = (nums: number[]) => nums.reduce((s, n) => s + (holeMap[n]?.putts ?? 0), 0);
+
+  const outP = sumP(outOrder), outScore = sumScr(outOrder), outPutts = sumPtt(outOrder);
+  const inP  = sumP(inOrder),  inScore  = sumScr(inOrder),  inPutts  = sumPtt(inOrder);
+  const totalP = outP + inP, totalScore = outScore + inScore, totalPutts = outPutts + inPutts;
+
+  const missing = playOrder.filter((n) => holeMap[n]?.score == null);
+
+  function holeRow(n: number) {
+    const hole = holeMap[n];
+    const par = parOf(n);
+    const score = hole?.score ?? null;
+    const putts = hole?.putts ?? null;
+    const isMissing = score == null;
+    return (
+      <tr key={n} className={`border-b border-gray-100 ${isMissing ? "bg-amber-50" : ""}`}>
+        <td className="py-1 px-2 text-left text-gray-700 font-medium tabular-nums">{n}</td>
+        <td className="py-1 px-2 text-center text-gray-500 tabular-nums">{par ?? "-"}</td>
+        <td className={`py-1 px-2 text-center tabular-nums font-medium ${isMissing ? "text-amber-700" : "text-gray-800"}`}>
+          {score ?? "—"}
+        </td>
+        <td className="py-1 px-2 text-center text-gray-500 tabular-nums">{putts ?? "—"}</td>
+      </tr>
+    );
+  }
+
+  function sumRow(label: string, p: number, s: number, pt: number, emphasize = false) {
+    const trCls = emphasize
+      ? "border-t-2 border-b-2 border-gray-400 bg-gray-200"
+      : "border-b-2 border-gray-300 bg-gray-100";
+    return (
+      <tr key={label} className={`${trCls} font-bold`}>
+        <td className="py-1.5 px-2 text-left text-gray-700">{label}</td>
+        <td className="py-1.5 px-2 text-center text-gray-700 tabular-nums">{p || "-"}</td>
+        <td className="py-1.5 px-2 text-center text-gray-900 tabular-nums">{s || "-"}</td>
+        <td className="py-1.5 px-2 text-center text-gray-700 tabular-nums">{pt || "-"}</td>
+      </tr>
+    );
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="bg-white rounded-2xl max-w-sm w-full p-6 space-y-4 shadow-xl">
-        <div className="text-center space-y-2">
-          <span className="text-4xl">🏁</span>
-          <h2 className="text-lg font-bold text-red-700">ラウンドを終了しますか？</h2>
+      <div className="bg-white rounded-2xl max-w-md w-full max-h-[90vh] flex flex-col shadow-xl">
+        <div className="p-5 pb-3 border-b border-gray-100 text-center space-y-1">
+          <h2 className="text-lg font-bold text-red-700">🏁 ラウンド終了確認</h2>
+          <p className="text-xs text-gray-600 leading-relaxed">
+            この内容で終了しますか？修正があれば戻って修正してください。
+          </p>
+          {missing.length > 0 && (
+            <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-1.5 mt-2 leading-relaxed">
+              ⚠️ 未入力ホールがあります（{missing.map((n) => `${n}H`).join("、")}）
+            </p>
+          )}
         </div>
-        <p className="text-sm text-gray-700 leading-relaxed text-center">
-          現在 {completed}/18H 完了です。本当にラウンドを終了しますか？
-        </p>
-        <p className="text-xs text-gray-500 leading-relaxed text-center">
-          GPS取得と画面起動ロックを解除し、これまでの記録を集計します。
-        </p>
-        <div className="flex gap-2">
+
+        <div className="overflow-y-auto flex-1 px-3 pb-2">
+          <table className="w-full text-sm">
+            <thead className="sticky top-0 bg-white z-10">
+              <tr className="text-gray-400 text-xs border-b border-gray-200">
+                <th className="py-1.5 px-2 text-left font-medium">H</th>
+                <th className="py-1.5 px-2 text-center font-medium">P</th>
+                <th className="py-1.5 px-2 text-center font-medium">打</th>
+                <th className="py-1.5 px-2 text-center font-medium">パ</th>
+              </tr>
+            </thead>
+            <tbody>
+              {outOrder.map(holeRow)}
+              {sumRow("OUT", outP, outScore, outPutts)}
+              {inOrder.map(holeRow)}
+              {sumRow("IN", inP, inScore, inPutts)}
+              {sumRow("TOTAL", totalP, totalScore, totalPutts, true)}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="p-4 pt-3 border-t border-gray-100 flex gap-2">
           <button
             onClick={onCancel}
-            disabled={confirming}
             className="flex-1 py-3 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700
-                       text-sm font-bold transition-colors disabled:opacity-60"
+                       text-sm font-bold transition-colors"
           >
-            キャンセル
+            戻って修正する
           </button>
           <button
             onClick={onConfirm}
-            disabled={confirming}
             className="flex-1 py-3 rounded-xl bg-red-600 hover:bg-red-700 active:bg-red-800
-                       text-white text-sm font-bold transition-colors disabled:opacity-60"
+                       text-white text-sm font-bold transition-colors"
           >
-            {confirming ? "集計中..." : "終了する"}
+            この内容で終了する
           </button>
         </div>
       </div>
@@ -2417,6 +2490,52 @@ function ScoreTable({
     return "bg-green-100 text-green-800 font-bold";
   }
 
+  function holeCol(n: number) {
+    const hole = holeMap[n] as Hole | undefined;
+    const par = hole?.par ?? courseHoles?.find((c) => c.hole_number === n)?.par ?? null;
+    const scoreTxt = hole?.score != null ? String(hole.score) : "";
+    const puttsTxt = hole?.putts != null ? String(hole.putts) : "";
+    return (
+      <button
+        key={n}
+        ref={(el) => { colRefs.current[n] = el; }}
+        onClick={() => onSelectHole(n)}
+        className="flex flex-col gap-0.5 active:scale-95 transition-transform"
+      >
+        <div className={`w-9 h-7 rounded-t-md flex items-center justify-center text-sm tabular-nums ${cellCls(n, "H")}`}>
+          {n}
+        </div>
+        <div className={`w-9 h-7 flex items-center justify-center text-sm tabular-nums ${cellCls(n, "P")}`}>
+          {par ?? "-"}
+        </div>
+        <div className={`w-9 h-7 flex items-center justify-center text-sm tabular-nums ${cellCls(n, "score")}`}>
+          {scoreTxt}
+        </div>
+        <div className={`w-9 h-7 rounded-b-md flex items-center justify-center text-sm tabular-nums ${cellCls(n, "putts")}`}>
+          {puttsTxt}
+        </div>
+      </button>
+    );
+  }
+
+  function summaryCol(label: string, nums: number[]) {
+    const parSum = nums.reduce((s, n) => {
+      const par = holeMap[n]?.par ?? courseHoles?.find((c) => c.hole_number === n)?.par ?? null;
+      return s + (par ?? 0);
+    }, 0);
+    const scoreSum = nums.reduce((s, n) => s + (holeMap[n]?.score ?? 0), 0);
+    const puttsSum = nums.reduce((s, n) => s + (holeMap[n]?.putts ?? 0), 0);
+    const cell = "w-10 h-7 flex items-center justify-center text-sm tabular-nums bg-gray-200 text-gray-700 font-bold";
+    return (
+      <div key={label} className="flex flex-col gap-0.5 ml-0.5">
+        <div className={`${cell} rounded-t-md text-[11px]`}>{label}</div>
+        <div className={cell}>{parSum || ""}</div>
+        <div className={cell}>{scoreSum || ""}</div>
+        <div className={`${cell} rounded-b-md`}>{puttsSum || ""}</div>
+      </div>
+    );
+  }
+
   return (
     <div className="overflow-x-auto -mx-4 px-4 sticky top-0 z-10 bg-white border-b border-green-100 py-1">
       <div className="flex items-stretch gap-0.5 min-w-max">
@@ -2427,35 +2546,13 @@ function ScoreTable({
           <div className="h-7 leading-7">打</div>
           <div className="h-7 leading-7">パ</div>
         </div>
-        {/* 18 hole columns */}
-        {playOrder.map((n) => {
-          const hole = holeMap[n] as Hole | undefined;
-          const par = hole?.par ?? courseHoles?.find((c) => c.hole_number === n)?.par ?? null;
-          const scoreTxt = hole?.score != null ? String(hole.score) : "";
-          const puttsTxt = hole?.putts != null ? String(hole.putts) : "";
-          return (
-            <button
-              key={n}
-              ref={(el) => { colRefs.current[n] = el; }}
-              onClick={() => onSelectHole(n)}
-              className="flex flex-col gap-0.5 active:scale-95 transition-transform"
-            >
-              <div className={`w-9 h-7 rounded-t-md flex items-center justify-center text-sm tabular-nums ${cellCls(n, "H")}`}>
-                {n}
-              </div>
-              <div className={`w-9 h-7 flex items-center justify-center text-sm tabular-nums ${cellCls(n, "P")}`}>
-                {par ?? "-"}
-              </div>
-              <div className={`w-9 h-7 flex items-center justify-center text-sm tabular-nums ${cellCls(n, "score")}`}>
-                {scoreTxt}
-              </div>
-              <div className={`w-9 h-7 rounded-b-md flex items-center justify-center text-sm tabular-nums ${cellCls(n, "putts")}`}>
-                {puttsTxt}
-              </div>
-            </button>
-          );
-        })}
-        {/* End-round cell (column 19) */}
+        {/* First 9 hole columns + OUT summary */}
+        {playOrder.slice(0, 9).map(holeCol)}
+        {summaryCol("OUT", playOrder.slice(0, 9))}
+        {/* Last 9 hole columns + IN summary */}
+        {playOrder.slice(9).map(holeCol)}
+        {summaryCol("IN", playOrder.slice(9))}
+        {/* End-round cell */}
         <button
           onClick={onEndRound}
           aria-label="ラウンドを終了する"
