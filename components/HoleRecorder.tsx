@@ -2552,6 +2552,8 @@ function ScoreTable({
         {/* Last 9 hole columns + IN summary */}
         {playOrder.slice(9).map(holeCol)}
         {summaryCol("IN", playOrder.slice(9))}
+        {/* TOTAL summary (all 18 holes) */}
+        {summaryCol("TOTAL", playOrder)}
         {/* End-round cell */}
         <button
           onClick={onEndRound}
