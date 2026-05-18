@@ -38,18 +38,24 @@ function degreesToDirection(deg: number): WindDirection {
  * 失敗時は null を返す
  */
 export async function fetchWeather(lat: number, lon: number): Promise<WeatherData | null> {
+  const url =
+    `https://api.open-meteo.com/v1/forecast` +
+    `?latitude=${lat.toFixed(4)}&longitude=${lon.toFixed(4)}` +
+    `&current=temperature_2m,wind_speed_10m,wind_direction_10m,weather_code`;
+  console.log("[weather] fetching", url);
   try {
-    const url =
-      `https://api.open-meteo.com/v1/forecast` +
-      `?latitude=${lat.toFixed(4)}&longitude=${lon.toFixed(4)}` +
-      `&current=temperature_2m,wind_speed_10m,wind_direction_10m,weather_code`;
-
     const res = await fetch(url, { cache: "no-store" });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      console.error("[weather] fetch non-ok", { status: res.status, statusText: res.statusText, url });
+      return null;
+    }
 
     const json = await res.json();
     const cur  = json?.current;
-    if (!cur) return null;
+    if (!cur) {
+      console.error("[weather] response missing .current", { url, json });
+      return null;
+    }
 
     // Open-Meteo のデフォルト単位: wind_speed_10m = km/h
     const kmh  = cur.wind_speed_10m     as number;
@@ -66,7 +72,9 @@ export async function fetchWeather(lat: number, lon: number): Promise<WeatherDat
       windDegrees:   deg,
       temperature:   Math.round(temp),
     };
-  } catch {
+  } catch (e) {
+    const err = e instanceof Error ? e : new Error(String(e));
+    console.error("[weather] fetch threw", { name: err.name, message: err.message, url });
     return null;
   }
 }

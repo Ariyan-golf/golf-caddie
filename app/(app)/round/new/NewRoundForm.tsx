@@ -152,21 +152,53 @@ export function NewRoundForm({ linkedCourseId }: { linkedCourseId?: string }) {
   }
 
   async function handleAutoWeather() {
-    if (!navigator.geolocation) { setWeatherStatus("error"); return; }
+    console.log("[weather] start fetch");
+    if (!navigator.geolocation) {
+      console.error("[weather] navigator.geolocation is undefined", {
+        userAgent: typeof navigator !== "undefined" ? navigator.userAgent : "n/a",
+        isSecureContext: typeof window !== "undefined" ? window.isSecureContext : "n/a",
+      });
+      setWeatherStatus("error");
+      return;
+    }
     setWeatherStatus("locating");
+    const options: PositionOptions = { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 };
+    console.log("[weather] calling getCurrentPosition", options);
     navigator.geolocation.getCurrentPosition(
       async (pos) => {
+        console.log("[weather] getCurrentPosition OK", {
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+          accuracy: pos.coords.accuracy,
+        });
         setWeatherStatus("fetching");
         const data = await fetchWeather(pos.coords.latitude, pos.coords.longitude);
-        if (!data) { setWeatherStatus("error"); return; }
+        if (!data) {
+          console.error("[weather] fetchWeather returned null");
+          setWeatherStatus("error");
+          return;
+        }
+        console.log("[weather] fetchWeather OK", data);
         setWeather(data.weather);
         setWindSpeed(data.windSpeed);
         setWindDirection(data.windDirection);
         setTemperature(data.temperature);
         setWeatherStatus("ok");
       },
-      () => setWeatherStatus("error"),
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
+      (err) => {
+        console.error("[weather] getCurrentPosition ERR", {
+          code: err.code,
+          codeMeaning:
+            err.code === 1 ? "PERMISSION_DENIED"
+            : err.code === 2 ? "POSITION_UNAVAILABLE"
+            : err.code === 3 ? "TIMEOUT"
+            : "UNKNOWN",
+          message: err.message,
+          options,
+        });
+        setWeatherStatus("error");
+      },
+      options,
     );
   }
 

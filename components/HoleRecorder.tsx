@@ -279,13 +279,35 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
     try {
       const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
         if (typeof navigator === "undefined" || !navigator.geolocation) {
+          console.error("[green-center] navigator.geolocation unavailable");
           reject(new Error("位置情報を取得できませんでした"));
           return;
         }
+        const options: PositionOptions = { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 };
+        console.log("[green-center] calling getCurrentPosition", options);
         navigator.geolocation.getCurrentPosition(
-          (p) => resolve(p),
-          (err) => reject(err),
-          { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
+          (p) => {
+            console.log("[green-center] getCurrentPosition OK", {
+              lat: p.coords.latitude,
+              lng: p.coords.longitude,
+              accuracy: p.coords.accuracy,
+            });
+            resolve(p);
+          },
+          (err) => {
+            console.error("[green-center] getCurrentPosition ERR", {
+              code: err.code,
+              codeMeaning:
+                err.code === 1 ? "PERMISSION_DENIED"
+                : err.code === 2 ? "POSITION_UNAVAILABLE"
+                : err.code === 3 ? "TIMEOUT"
+                : "UNKNOWN",
+              message: err.message,
+              options,
+            });
+            reject(err);
+          },
+          options,
         );
       });
       const lat = pos.coords.latitude;

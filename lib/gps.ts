@@ -74,7 +74,16 @@ export function startGpsTracking(): Promise<void> {
         );
       },
       (err) => {
-        console.warn("[gps] watchPosition error:", err.message);
+        console.error("[gps] watchPosition ERR", {
+          code: err.code,
+          codeMeaning:
+            err.code === 1 ? "PERMISSION_DENIED"
+            : err.code === 2 ? "POSITION_UNAVAILABLE"
+            : err.code === 3 ? "TIMEOUT"
+            : "UNKNOWN",
+          message: err.message,
+          options: { enableHighAccuracy: true, maximumAge: 1000, timeout: 30000 },
+        });
       },
       { enableHighAccuracy: true, maximumAge: 1000, timeout: 30000 }
     );
@@ -218,11 +227,20 @@ export async function getBestShotPosition(): Promise<BestShotPosition | null> {
     };
   }
 
-  if (typeof window === "undefined" || !("geolocation" in navigator)) return null;
+  if (typeof window === "undefined" || !("geolocation" in navigator)) {
+    console.error("[gps] fallback unavailable — no navigator.geolocation");
+    return null;
+  }
   console.log("[gps] no history — falling back to getCurrentPosition");
+  const options: PositionOptions = { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 };
   return new Promise<BestShotPosition | null>((resolve) => {
     navigator.geolocation.getCurrentPosition(
       (pos) => {
+        console.log("[gps] fallback getCurrentPosition OK", {
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+          accuracy: pos.coords.accuracy,
+        });
         resolve({
           lat: pos.coords.latitude,
           lng: pos.coords.longitude,
@@ -231,8 +249,20 @@ export async function getBestShotPosition(): Promise<BestShotPosition | null> {
           sampleCount: 1,
         });
       },
-      () => resolve(null),
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
+      (err) => {
+        console.error("[gps] fallback getCurrentPosition ERR", {
+          code: err.code,
+          codeMeaning:
+            err.code === 1 ? "PERMISSION_DENIED"
+            : err.code === 2 ? "POSITION_UNAVAILABLE"
+            : err.code === 3 ? "TIMEOUT"
+            : "UNKNOWN",
+          message: err.message,
+          options,
+        });
+        resolve(null);
+      },
+      options,
     );
   });
 }
