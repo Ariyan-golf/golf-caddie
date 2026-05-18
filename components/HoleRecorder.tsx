@@ -7,7 +7,7 @@ import { ShotRecorder } from "./ShotRecorder";
 import type { Club } from "@/types";
 import { CLUB_LABELS } from "@/types";
 import { calculateDistance, metersToYards } from "@/lib/distance";
-import { stopGpsTracking, getBestShotPosition, getLatestPosition } from "@/lib/gps";
+import { stopGpsTracking, getBestShotPosition } from "@/lib/gps";
 import { releaseWakeLock } from "@/lib/wakeLock";
 import { isBetaMode } from "@/lib/betaMode";
 import Link from "next/link";
@@ -245,30 +245,9 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
     localStorage.removeItem(COMPASS_STORAGE_KEY);
   }, [isRoundDone]);
 
-  // Real-time distance readout: while dmStart is set and dmEnd is not yet
-  // captured, poll the GPS buffer and update dmDistance so the number ticks
-  // upward as the cart moves. Kalman smoothing is still applied at endpoint
-  // capture by getBestShotPosition() — the live readout uses the raw latest
-  // accepted point so it feels responsive (≤20m accuracy gate is already
-  // applied in lib/gps.ts before a point enters the buffer).
-  useEffect(() => {
-    if (!dmStart || dmEnd) return;
-    const tick = () => {
-      const p = getLatestPosition();
-      if (!p) return;
-      const distM = calculateDistance(
-        { latitude: dmStart.lat, longitude: dmStart.lng },
-        { latitude: p.lat, longitude: p.lng },
-      );
-      setDmDistance({
-        yards: metersToYards(distM),
-        meters: Math.round(distM * 10) / 10,
-      });
-    };
-    tick();
-    const interval = setInterval(tick, 400);
-    return () => clearInterval(interval);
-  }, [dmStart, dmEnd]);
+  // Live distance polling was removed when watchPosition was dropped for
+  // battery reasons (see lib/gps.ts). Distance is now seeded at 0 by
+  // handleShotStart and replaced with the real value when 止まった場所 fires.
 
   // ── Actions ─────────────────────────────────────────────────────────
 

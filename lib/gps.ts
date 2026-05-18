@@ -1,11 +1,12 @@
 "use client";
 
-// Continuous GPS tracking module (Day 1 of GPS improvement plan).
-// Day 2 adds HDOP threshold & outlier removal in getRecentPositions(),
-// plus a getBestShotPosition() helper that applies a Kalman filter.
-// Singleton — only one watchPosition runs at a time.
-
-import { KalmanFilter2D } from "./kalmanFilter";
+// Single-shot GPS module.
+// Previous design used continuous watchPosition which kept the GPS chip alive
+// for the entire round, draining ~50% battery in 9 holes (5/16 大隅CC).
+// Now every GPS read is a one-shot getCurrentPosition triggered by a user
+// action (打つ前 / 止まった場所 / グリーンセンター / 残り距離 / 天気自動取得).
+// The buffer/Kalman/HDOP infrastructure is removed — a single fresh fix is
+// already filtered by enableHighAccuracy + the OS's own Kalman smoothing.
 
 export interface GpsPoint {
   lat: number;
@@ -14,31 +15,20 @@ export interface GpsPoint {
   timestamp: number;
 }
 
-const BUFFER_CAPACITY = 50;
-const ACCURACY_THRESHOLD_M = 20;
 const MAX_TRACKING_DURATION_MS = 6 * 60 * 60 * 1000;
-
-// Day 2 filtering: stricter accuracy cap for shot-time selection, and a
-// physical-impossibility speed ceiling. Golf cart top speed ≈ 25 km/h ≈ 7 m/s,
-// running ≈ 5 m/s; 15 m/s rejects only true GPS jitter jumps.
-const SHOT_ACCURACY_MAX_M = 30;
-const MAX_PLAUSIBLE_SPEED_MPS = 15;
-
 const UNFINISHED_ROUND_FLAG = "golf_caddie_round_in_progress";
 const AUTO_STOPPED_FLAG = "golf_caddie_gps_auto_stopped";
 
-let watchId: number | null = null;
-let buffer: GpsPoint[] = [];
+const SHARED_OPTIONS: PositionOptions = {
+  enableHighAccuracy: true,
+  timeout: 15000,
+  maximumAge: 0,
+};
+
 let active = false;
+let lastPosition: GpsPoint | null = null;
 let autoStopTimer: ReturnType<typeof setTimeout> | null = null;
 let beforeUnloadHandler: (() => void) | null = null;
-
-function pushPoint(p: GpsPoint): void {
-  buffer.push(p);
-  if (buffer.length > BUFFER_CAPACITY) {
-    buffer.shift();
-  }
-}
 
 export function startGpsTracking(): Promise<void> {
   return new Promise<void>((resolve) => {
@@ -48,45 +38,13 @@ export function startGpsTracking(): Promise<void> {
       return;
     }
     if (active) {
-      console.log("[gps] already tracking");
+      console.log("[gps] already active");
       resolve();
       return;
     }
 
     active = true;
-    buffer = [];
-
-    watchId = navigator.geolocation.watchPosition(
-      (pos) => {
-        const point: GpsPoint = {
-          lat: pos.coords.latitude,
-          lng: pos.coords.longitude,
-          accuracy: pos.coords.accuracy,
-          timestamp: pos.timestamp ?? Date.now(),
-        };
-        if (point.accuracy <= ACCURACY_THRESHOLD_M) {
-          pushPoint(point);
-        }
-        console.log(
-          `[gps] watch lat=${point.lat.toFixed(6)} lng=${point.lng.toFixed(6)} acc=${Math.round(point.accuracy)}m ${
-            point.accuracy <= ACCURACY_THRESHOLD_M ? "(accepted)" : "(rejected: low accuracy)"
-          }`
-        );
-      },
-      (err) => {
-        console.error("[gps] watchPosition ERR", {
-          code: err.code,
-          codeMeaning:
-            err.code === 1 ? "PERMISSION_DENIED"
-            : err.code === 2 ? "POSITION_UNAVAILABLE"
-            : err.code === 3 ? "TIMEOUT"
-            : "UNKNOWN",
-          message: err.message,
-          options: { enableHighAccuracy: true, maximumAge: 1000, timeout: 30000 },
-        });
-      },
-      { enableHighAccuracy: true, maximumAge: 1000, timeout: 30000 }
-    );
+    lastPosition = null;
 
     autoStopTimer = setTimeout(() => {
       console.warn("[gps] auto-stop after 6h");
@@ -110,6 +68,7 @@ export function startGpsTracking(): Promise<void> {
       // ignore storage failures
     }
 
+    console.log("[gps] single-shot mode active");
     resolve();
   });
 }
@@ -117,11 +76,8 @@ export function startGpsTracking(): Promise<void> {
 export function stopGpsTracking(): void {
   if (typeof window === "undefined") return;
 
-  if (watchId !== null && "geolocation" in navigator) {
-    navigator.geolocation.clearWatch(watchId);
-  }
-  watchId = null;
   active = false;
+  lastPosition = null;
 
   if (autoStopTimer) {
     clearTimeout(autoStopTimer);
@@ -143,114 +99,48 @@ export function stopGpsTracking(): void {
 }
 
 export function getLatestPosition(): GpsPoint | null {
-  if (buffer.length === 0) return null;
-  return buffer[buffer.length - 1];
-}
-
-function haversineMeters(a: GpsPoint, b: GpsPoint): number {
-  const R = 6371000;
-  const toRad = (d: number) => (d * Math.PI) / 180;
-  const dLat = toRad(b.lat - a.lat);
-  const dLng = toRad(b.lng - a.lng);
-  const lat1 = toRad(a.lat);
-  const lat2 = toRad(b.lat);
-  const h =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
-  return 2 * R * Math.asin(Math.sqrt(h));
-}
-
-export function getRecentPositions(seconds: number): GpsPoint[] {
-  const cutoff = Date.now() - seconds * 1000;
-  const recent = buffer.filter((p) => p.timestamp >= cutoff);
-
-  const filtered: GpsPoint[] = [];
-  for (const p of recent) {
-    if (p.accuracy > SHOT_ACCURACY_MAX_M) {
-      console.warn(
-        `[gps] outlier rejected (accuracy ${Math.round(p.accuracy)}m > ${SHOT_ACCURACY_MAX_M}m)`,
-      );
-      continue;
-    }
-    const prev = filtered[filtered.length - 1];
-    if (prev) {
-      const dtSec = Math.max(0.001, (p.timestamp - prev.timestamp) / 1000);
-      const dist = haversineMeters(prev, p);
-      const speed = dist / dtSec;
-      if (speed > MAX_PLAUSIBLE_SPEED_MPS) {
-        console.warn(
-          `[gps] outlier rejected (speed ${speed.toFixed(1)}m/s > ${MAX_PLAUSIBLE_SPEED_MPS}m/s, jump ${dist.toFixed(1)}m in ${dtSec.toFixed(2)}s)`,
-        );
-        continue;
-      }
-    }
-    filtered.push(p);
-  }
-  return filtered;
+  return lastPosition;
 }
 
 export interface BestShotPosition {
   lat: number;
   lng: number;
   accuracy: number;
-  source: "history+kalman" | "fallback-getCurrentPosition";
-  sampleCount: number;
+  source: "single-shot";
+  sampleCount: 1;
 }
 
-// Pick the most reliable single position for shot recording.
-// Strategy: take the last 5s of filtered history, run it through a 2D Kalman
-// filter (which already weights low-accuracy points down via accuracy²), and
-// return the smoothed final point. If no history is available (GPS just
-// started, buffer empty), fall back to a one-shot getCurrentPosition.
-export async function getBestShotPosition(): Promise<BestShotPosition | null> {
-  const recent = getRecentPositions(5);
-
-  if (recent.length > 0) {
-    const kalman = new KalmanFilter2D();
-    let smoothed = { lat: recent[0].lat, lng: recent[0].lng };
-    let bestAccuracy = Infinity;
-    for (const p of recent) {
-      smoothed = kalman.filter(p.lat, p.lng, p.accuracy, p.timestamp);
-      if (p.accuracy < bestAccuracy) bestAccuracy = p.accuracy;
-    }
-    console.log(
-      `[gps] best shot pos (history+kalman): lat=${smoothed.lat.toFixed(6)} lng=${smoothed.lng.toFixed(6)} ` +
-        `samples=${recent.length} bestAcc=${Math.round(bestAccuracy)}m ` +
-        `raw=[${recent[recent.length - 1].lat.toFixed(6)}, ${recent[recent.length - 1].lng.toFixed(6)}]`,
-    );
-    return {
-      lat: smoothed.lat,
-      lng: smoothed.lng,
-      accuracy: bestAccuracy,
-      source: "history+kalman",
-      sampleCount: recent.length,
-    };
-  }
-
+export function getBestShotPosition(): Promise<BestShotPosition | null> {
   if (typeof window === "undefined" || !("geolocation" in navigator)) {
-    console.error("[gps] fallback unavailable — no navigator.geolocation");
-    return null;
+    console.error("[gps] geolocation unavailable");
+    return Promise.resolve(null);
   }
-  console.log("[gps] no history — falling back to getCurrentPosition");
-  const options: PositionOptions = { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 };
+  console.log("[gps] single-shot getCurrentPosition", SHARED_OPTIONS);
   return new Promise<BestShotPosition | null>((resolve) => {
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        console.log("[gps] fallback getCurrentPosition OK", {
+        const point: GpsPoint = {
           lat: pos.coords.latitude,
           lng: pos.coords.longitude,
           accuracy: pos.coords.accuracy,
+          timestamp: pos.timestamp ?? Date.now(),
+        };
+        lastPosition = point;
+        console.log("[gps] single-shot OK", {
+          lat: point.lat,
+          lng: point.lng,
+          accuracy: point.accuracy,
         });
         resolve({
-          lat: pos.coords.latitude,
-          lng: pos.coords.longitude,
-          accuracy: pos.coords.accuracy,
-          source: "fallback-getCurrentPosition",
+          lat: point.lat,
+          lng: point.lng,
+          accuracy: point.accuracy,
+          source: "single-shot",
           sampleCount: 1,
         });
       },
       (err) => {
-        console.error("[gps] fallback getCurrentPosition ERR", {
+        console.error("[gps] single-shot ERR", {
           code: err.code,
           codeMeaning:
             err.code === 1 ? "PERMISSION_DENIED"
@@ -258,11 +148,11 @@ export async function getBestShotPosition(): Promise<BestShotPosition | null> {
             : err.code === 3 ? "TIMEOUT"
             : "UNKNOWN",
           message: err.message,
-          options,
+          options: SHARED_OPTIONS,
         });
         resolve(null);
       },
-      options,
+      SHARED_OPTIONS,
     );
   });
 }

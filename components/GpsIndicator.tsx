@@ -5,10 +5,16 @@ import { getLatestPosition, isGpsActive } from "@/lib/gps";
 
 type Strength = "good" | "ok" | "weak" | "off";
 
+// Under single-shot mode (no continuous watchPosition) `lastPosition` only
+// updates when the user taps a GPS button. A fix older than ~60s is no longer
+// meaningful for "current GPS strength", so we demote it back to "off".
+const FRESH_MS = 60_000;
+
 function classify(): { level: Strength; accuracy: number | null } {
   if (!isGpsActive()) return { level: "off", accuracy: null };
   const p = getLatestPosition();
   if (!p) return { level: "off", accuracy: null };
+  if (Date.now() - p.timestamp > FRESH_MS) return { level: "off", accuracy: null };
   if (p.accuracy <= 10) return { level: "good", accuracy: p.accuracy };
   if (p.accuracy <= 20) return { level: "ok", accuracy: p.accuracy };
   return { level: "weak", accuracy: p.accuracy };

@@ -100,7 +100,7 @@ export function AiCaddieClient({ clubAverages, hasAccess }: Props) {
   const [accuracy, setAccuracy] = useState<number | null>(null);
   const [manual, setManual]     = useState(false);
   const [manualY, setManualY]   = useState("");
-  const watchRef = useRef<number | null>(null);
+  const [gpsLoading, setGpsLoading] = useState(false);
 
   // Weather (Open-Meteo)
   const [weatherData, setWeatherData]       = useState<WeatherData | null>(null);
@@ -138,26 +138,62 @@ export function AiCaddieClient({ clubAverages, hasAccess }: Props) {
     });
   }, [pos]);
 
-  // GPS watch
-  useEffect(() => {
-    if (phase !== "caddie" || manual) return;
+  // Single-shot GPS fetch (replaces continuous watchPosition for battery).
+  // Called on caddie phase entry and via the user-facing "残り距離を見る" /
+  // "ピン位置をセット" buttons.
+  const fetchCurrentPos = useCallback(async (): Promise<Location | null> => {
     if (!navigator.geolocation) {
       setGpsErr("このデバイスはGPSに対応していません");
       setManual(true);
-      return;
+      return null;
     }
-    const id = navigator.geolocation.watchPosition(
-      (p) => {
-        setPos({ latitude: p.coords.latitude, longitude: p.coords.longitude, accuracy: p.coords.accuracy });
-        setAccuracy(p.coords.accuracy);
-        setGpsErr(null);
-      },
-      (e) => { if (e.code === 1) { setGpsErr("位置情報の許可が必要です。手動入力をお使いください。"); setManual(true); } },
-      { enableHighAccuracy: true, maximumAge: 3000 }
-    );
-    watchRef.current = id;
-    return () => { if (watchRef.current !== null) navigator.geolocation.clearWatch(watchRef.current); };
-  }, [phase, manual]);
+    const options: PositionOptions = { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 };
+    console.log("[ai-caddie] getCurrentPosition", options);
+    setGpsLoading(true);
+    return new Promise<Location | null>((resolve) => {
+      navigator.geolocation.getCurrentPosition(
+        (p) => {
+          const loc: Location = {
+            latitude: p.coords.latitude,
+            longitude: p.coords.longitude,
+            accuracy: p.coords.accuracy,
+          };
+          console.log("[ai-caddie] getCurrentPosition OK", loc);
+          setPos(loc);
+          setAccuracy(loc.accuracy ?? null);
+          setGpsErr(null);
+          setGpsLoading(false);
+          resolve(loc);
+        },
+        (e) => {
+          console.error("[ai-caddie] getCurrentPosition ERR", {
+            code: e.code,
+            codeMeaning:
+              e.code === 1 ? "PERMISSION_DENIED"
+              : e.code === 2 ? "POSITION_UNAVAILABLE"
+              : e.code === 3 ? "TIMEOUT"
+              : "UNKNOWN",
+            message: e.message,
+          });
+          if (e.code === 1) {
+            setGpsErr("位置情報の許可が必要です。手動入力をお使いください。");
+            setManual(true);
+          } else {
+            setGpsErr("GPS取得に失敗しました。もう一度お試しください。");
+          }
+          setGpsLoading(false);
+          resolve(null);
+        },
+        options,
+      );
+    });
+  }, []);
+
+  // Initial GPS fetch on caddie phase entry (no continuous tracking)
+  useEffect(() => {
+    if (phase !== "caddie" || manual) return;
+    void fetchCurrentPos();
+  }, [phase, manual, fetchCurrentPos]);
 
   // Stage 1: instant template advice
   function handleQuickAdvice() {
@@ -306,8 +342,16 @@ export function AiCaddieClient({ clubAverages, hasAccess }: Props) {
               <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-xl p-3">{gpsErr}</p>
             )}
             <div className="flex items-center gap-2 text-xs text-green-500">
-              <span className={`w-2 h-2 rounded-full shrink-0 ${pos ? "bg-green-400 animate-pulse" : "bg-gray-300"}`} />
-              {pos ? `GPS取得済み（精度 ±${Math.round(accuracy ?? 0)}m）` : "GPS取得中…"}
+              <span className={`w-2 h-2 rounded-full shrink-0 ${
+                gpsLoading ? "bg-amber-400 animate-pulse"
+                : pos ? "bg-green-400"
+                : "bg-gray-300"
+              }`} />
+              {gpsLoading
+                ? "GPS取得中…"
+                : pos
+                  ? `GPS取得済み（精度 ±${Math.round(accuracy ?? 0)}m）`
+                  : "未取得"}
             </div>
             {distMeters != null ? (
               <div className="text-center py-2">
@@ -316,16 +360,31 @@ export function AiCaddieClient({ clubAverages, hasAccess }: Props) {
               </div>
             ) : (
               <div className="text-center py-4 text-green-400 text-sm">
-                {pinPos ? "現在地を移動してください" : "ピン位置をセットしてください"}
+                {pinPos ? "ボール位置で「残り距離を見る」を押してください" : "ピン位置をセットしてください"}
               </div>
             )}
-            <button onClick={() => pos && setPinPos({ ...pos })} disabled={!pos}
-              className="btn-secondary py-3 text-sm disabled:opacity-40">
+            <button
+              onClick={async () => {
+                const loc = await fetchCurrentPos();
+                if (loc) setPinPos(loc);
+              }}
+              disabled={gpsLoading}
+              className="btn-secondary py-3 text-sm disabled:opacity-40"
+            >
               📍 {pinPos ? "ピン位置を更新（現在地）" : "ピン位置をセット（現在地）"}
             </button>
+            {pinPos && (
+              <button
+                onClick={() => { void fetchCurrentPos(); }}
+                disabled={gpsLoading}
+                className="btn-secondary py-3 text-sm disabled:opacity-40"
+              >
+                📏 残り距離を見る（現在地）
+              </button>
+            )}
             {!pinPos && (
               <p className="text-xs text-green-400 text-center leading-relaxed">
-                ピン（旗）の近くでボタンを押して記録。<br />ボール位置に戻ると残り距離が表示されます。
+                ピン（旗）の近くでボタンを押して記録。<br />ボール位置に戻り「残り距離を見る」を押すと距離が表示されます。
               </p>
             )}
           </div>
