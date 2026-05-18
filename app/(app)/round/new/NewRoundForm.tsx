@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { fetchWeather } from "@/lib/weather";
 import { startGpsTracking } from "@/lib/gps";
 import { acquireWakeLock } from "@/lib/wakeLock";
+import { GeoPermissionGuide } from "@/components/GeoPermissionGuide";
 import type { StartHole, Weather, WindSpeed, WindDirection } from "@/types";
 import { WEATHER_OPTIONS, WIND_SPEED_OPTIONS } from "@/types";
 
@@ -88,6 +89,7 @@ export function NewRoundForm({ linkedCourseId }: { linkedCourseId?: string }) {
   const [windDirection, setWindDirection]   = useState<WindDirection | null>(null);
   const [weatherStatus, setWeatherStatus]   = useState<WeatherStatus>("idle");
   const [temperature, setTemperature]       = useState<number | null>(null);
+  const [showGeoGuide, setShowGeoGuide]     = useState(false);
 
   // 登録済みゴルフ場を初回ロード
   useEffect(() => {
@@ -260,6 +262,7 @@ export function NewRoundForm({ linkedCourseId }: { linkedCourseId?: string }) {
   const inSectionOptions = sections.filter((s) => s !== outSection);
 
   return (
+    <>
     <form onSubmit={handleSubmit} className="card space-y-5">
       {error && (
         <div className="bg-red-50 border border-red-200 text-red-600 rounded-xl p-3 text-sm">
@@ -474,10 +477,16 @@ export function NewRoundForm({ linkedCourseId }: { linkedCourseId?: string }) {
               className="text-xs text-sky-500 underline ml-2">再取得</button>
           </div>
         ) : weatherStatus === "error" ? (
-          <div className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
-            <span className="text-xs text-amber-700">⚠️ 自動取得失敗 — 手動で入力してください</span>
+          <div className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 gap-2">
+            <button
+              type="button"
+              onClick={() => setShowGeoGuide(true)}
+              className="flex-1 text-left text-xs text-amber-700 underline decoration-dotted"
+            >
+              ⚠️ 自動取得失敗 — タップで設定方法を確認
+            </button>
             <button type="button" onClick={handleAutoWeather}
-              className="text-xs text-amber-600 underline ml-2">再試行</button>
+              className="text-xs text-amber-600 underline ml-2 whitespace-nowrap">再試行</button>
           </div>
         ) : autoLabel[weatherStatus] ? (
           <div className="flex items-center gap-2 bg-sky-50 border border-sky-200 rounded-xl px-3 py-2">
@@ -537,5 +546,7 @@ export function NewRoundForm({ linkedCourseId }: { linkedCourseId?: string }) {
         {loading ? "作成中..." : "ラウンドを開始する"}
       </button>
     </form>
+    {showGeoGuide && <GeoPermissionGuide onClose={() => setShowGeoGuide(false)} />}
+    </>
   );
 }
