@@ -41,6 +41,37 @@ function ToggleButton({
   );
 }
 
+const WIND_DIR_DEG_LOCAL: Record<string, number> = {
+  "北": 0, "北東": 45, "東": 90, "南東": 135,
+  "南": 180, "南西": 225, "西": 270, "北西": 315,
+};
+
+function WindDirectionCompass({ direction }: { direction: string }) {
+  const deg = WIND_DIR_DEG_LOCAL[direction];
+  if (deg === undefined) return null;
+  const arrowDeg = deg + 180;
+  return (
+    <div className="flex items-center gap-3 bg-sky-50 border border-sky-200 rounded-xl px-3 py-2 max-w-[240px] mx-auto">
+      <svg viewBox="0 0 80 80" className="flex-shrink-0" style={{ width: 80, height: 80 }} aria-label={`風向き ${direction}`}>
+        <circle cx="40" cy="40" r="34" fill="white" stroke="#7dd3fc" strokeWidth="1.5" />
+        <text x="40" y="14" textAnchor="middle" fontSize="9" fontWeight="700" fill="#dc2626">N</text>
+        <text x="68" y="44" textAnchor="middle" fontSize="9" fontWeight="700" fill="#475569">E</text>
+        <text x="40" y="73" textAnchor="middle" fontSize="9" fontWeight="700" fill="#475569">S</text>
+        <text x="12" y="44" textAnchor="middle" fontSize="9" fontWeight="700" fill="#475569">W</text>
+        <g transform={`rotate(${arrowDeg} 40 40)`}>
+          <line x1="40" y1="56" x2="40" y2="24" stroke="#0284c7" strokeWidth="2.5" strokeLinecap="round" />
+          <polygon points="40,18 35,26 45,26" fill="#0284c7" />
+        </g>
+        <circle cx="40" cy="40" r="2" fill="#0284c7" />
+      </svg>
+      <div className="leading-tight">
+        <p className="text-sm font-bold text-sky-700">風向き：{direction}</p>
+        <p className="text-xs text-sky-500">自動取得</p>
+      </div>
+    </div>
+  );
+}
+
 type WeatherStatus = "idle" | "locating" | "fetching" | "ok" | "error";
 
 interface GolfCourse {
@@ -523,18 +554,22 @@ export function NewRoundForm({ linkedCourseId }: { linkedCourseId?: string }) {
 
         <div>
           <p className="text-xs text-green-600 font-medium mb-1.5">風向き</p>
-          <div className="grid grid-cols-3 gap-2 max-w-[240px] mx-auto">
-            {compassGrid.flatMap((row, ri) =>
-              row.map((dir, ci) =>
-                dir ? (
-                  <ToggleButton key={dir} label={dir} selected={windDirection === dir}
-                    onClick={() => setWindDirection(windDirection === dir ? null : dir)} />
-                ) : (
-                  <div key={`empty-${ri}-${ci}`} />
+          {weatherStatus === "ok" && windDirection ? (
+            <WindDirectionCompass direction={windDirection} />
+          ) : (
+            <div className="grid grid-cols-3 gap-2 max-w-[240px] mx-auto">
+              {compassGrid.flatMap((row, ri) =>
+                row.map((dir, ci) =>
+                  dir ? (
+                    <ToggleButton key={dir} label={dir} selected={windDirection === dir}
+                      onClick={() => setWindDirection(windDirection === dir ? null : dir)} />
+                  ) : (
+                    <div key={`empty-${ri}-${ci}`} />
+                  )
                 )
-              )
-            )}
-          </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
 

@@ -234,11 +234,19 @@ export default async function HomePage() {
           <div>
             <p className="text-xs text-green-500 font-medium mb-0.5">GCAハンディ</p>
             <p className="text-xl font-bold text-green-800">
-              {gcaHandicap !== null ? gcaHandicap : "ラウンドデータ蓄積中"}
+              {gcaHandicap !== null ? (
+                gcaHandicap
+              ) : (
+                <>
+                  ラウンドデータ
+                  <br />
+                  蓄積中
+                </>
+              )}
             </p>
           </div>
           <p className="text-xs text-green-400 text-right leading-relaxed shrink-0 max-w-[140px]">
-            JGA方式に準じた計算です。<br />公式ハンディキャップではありません。
+            JGA方式に<br />準じた計算です。<br />公式ハンディキャップ<br />ではありません。
           </p>
         </div>
 
@@ -246,22 +254,25 @@ export default async function HomePage() {
         <div className="grid grid-cols-2 gap-3">
           <Link
             href="/round/new"
-            className="card flex flex-col items-center py-5 gap-2 hover:border-green-300 transition-colors"
+            className="card flex flex-col items-center py-3 gap-2 hover:border-green-300 transition-colors"
           >
-            <span className="text-3xl">🏌️</span>
+            <div className="w-20 h-20 flex items-center justify-center">
+              <span className="text-6xl">🏌️</span>
+            </div>
             <span className="font-semibold text-green-700 text-sm">ラウンド開始</span>
           </Link>
           <Link
             href="/ai-caddie"
-            className="card flex flex-col items-center py-5 gap-2 hover:border-green-300 transition-colors"
+            className="card flex flex-col items-center py-3 gap-2 hover:border-green-300 transition-colors overflow-hidden"
           >
-            <div className="w-12 h-12 overflow-hidden rounded-xl">
+            <div className="w-20 h-20 overflow-hidden rounded-xl flex items-start justify-center">
               <Image
                 src="/characters/ai.png"
                 alt="AIちゃん"
-                width={48}
-                height={48}
-                className="w-full h-full object-cover object-top"
+                width={120}
+                height={180}
+                className="object-top"
+                style={{ width: 120, height: "auto" }}
               />
             </div>
             <span className="font-semibold text-green-700 text-sm">AIキャディ</span>
