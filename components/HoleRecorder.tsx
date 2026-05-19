@@ -2564,29 +2564,28 @@ function RoundComplete({
   }
 
   function ScoreBadge({ score, par }: { score: number | null; par: number }) {
-    if (score == null) return <span className="text-gray-400">—</span>;
+    const box = "inline-flex items-center justify-center w-7 h-7 font-bold tabular-nums";
+    if (score == null) return <span className={`${box} text-gray-400`}>—</span>;
     const d = score - par;
-    const base = "inline-flex items-center justify-center w-6 h-6 font-bold tabular-nums text-[11px]";
 
-    // ボギー (+1) は SVG 三角
-    if (d === 1) {
-      return (
-        <span className={`${base} text-blue-500 relative`}>
-          <svg className="absolute inset-0 w-full h-full" viewBox="0 0 24 24" aria-hidden="true">
-            <polygon points="12,3 22,21 2,21" fill="none" stroke="currentColor" strokeWidth="2" />
-          </svg>
-          <span className="relative z-10">{score}</span>
-        </span>
-      );
+    if (d <= -2) {
+      // イーグル以下: 赤い丸囲み
+      return <span className={`${box} text-sm rounded-full border-2 border-red-600 text-red-600`}>{score}</span>;
     }
-
-    let cls = base + " ";
-    if (d <= -2)       cls += "text-red-700";
-    else if (d === -1) cls += "text-red-500";
-    else if (d === 0)  cls += "rounded-full border-2 border-gray-700 text-gray-700";
-    else if (d === 2)  cls += "border-2 border-blue-700 text-blue-700";
-    else               cls += "text-blue-900"; // d >= +3
-    return <span className={cls}>{score}</span>;
+    if (d === -1) {
+      // バーディ: 装飾なし、太い赤文字
+      return <span className={`${box} text-base text-red-600`}>{score}</span>;
+    }
+    if (d === 0) {
+      // パー: 黒/グレーの丸囲み
+      return <span className={`${box} text-sm rounded-full border-2 border-gray-800 text-gray-800`}>{score}</span>;
+    }
+    if (d === 1) {
+      // ボギー: 黒/グレーの四角囲み
+      return <span className={`${box} text-sm border-2 border-gray-800 text-gray-800`}>{score}</span>;
+    }
+    // ダブルボギー以上: 装飾なし、太い黒文字
+    return <span className={`${box} text-base text-gray-800`}>{score}</span>;
   }
 
   function EditableCell({
@@ -2762,6 +2761,7 @@ function RoundComplete({
         ) : (
           <ScoreColumn label="OUT" slice={holes} pSum={outPar} sSum={out} ptSum={outPutts} shSum={outShots} />
         )}
+        <p className="text-xs text-gray-600 text-center mt-2">○＝パー、□＝ボギー</p>
       </div>
     </div>
   );
