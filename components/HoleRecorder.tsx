@@ -841,6 +841,18 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
     }
   }
 
+  // 過去ラウンド閲覧時のスコア修正（pastView && mode==="score" のみ有効）
+  async function handleUpdateHole(holeId: string, update: Partial<Hole>) {
+    const supabase = createClient();
+    await supabase.from("holes").update(update).eq("id", holeId);
+    const updated = holes.map((h) => (h.id === holeId ? { ...h, ...update } : h));
+    setHoles(updated);
+    if ("score" in update) {
+      const total = updated.reduce((s, h) => s + (h.score ?? 0), 0);
+      await supabase.from("rounds").update({ total_score: total }).eq("id", roundId);
+    }
+  }
+
   if ((isRoundDone || endedEarly) && !roundEndConfirmed) {
     return <RoundEndScreen onConfirm={handleRoundEndConfirm} confirming={confirmLoading} />;
   }
@@ -855,6 +867,8 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
           handicapDiff={handicapDiff}
           paymentPending={!betaMode && paymentStatus === "pending"}
           onPayNow={() => setShowPaymentModal(true)}
+          pastView={pastView}
+          onUpdateHole={handleUpdateHole}
         />
         {!betaMode && showPaymentModal && (
           <PaymentRequiredModal
@@ -2476,6 +2490,7 @@ function PaymentRequiredModal({
 
 function RoundComplete({
   holes, totalScore, totalPar, mode, handicapDiff, paymentPending, onPayNow,
+  pastView = false, onUpdateHole,
 }: {
   holes: Hole[];
   totalScore: number;
@@ -2484,6 +2499,8 @@ function RoundComplete({
   handicapDiff?: number | null;
   paymentPending?: boolean;
   onPayNow?: () => void;
+  pastView?: boolean;
+  onUpdateHole?: (holeId: string, update: Partial<Hole>) => Promise<void>;
 }) {
   const diff       = totalScore - totalPar;
   const totalPutts = holes.reduce((s, h) => s + (h.putts ?? 0), 0);
@@ -2502,12 +2519,104 @@ function RoundComplete({
   const outShots = holes.slice(0, 9).reduce((s, h) => s + holeShots(h), 0);
   const innShots = holes.slice(9).reduce((s, h)  => s + holeShots(h), 0);
 
-  function scoreColor(score: number | null, par: number) {
-    const d = (score ?? 0) - par;
-    return d <= -2 ? "text-yellow-600" :
-           d === -1 ? "text-red-500" :
-           d === 0  ? "text-green-600" :
-           d === 1  ? "text-blue-500" : "text-gray-500";
+  const isEditable = pastView && mode === "score" && !!onUpdateHole;
+
+  // ── Inline edit state（セルタップ → input → blur で保存） ─────────────
+  type EditField = "par" | "shots" | "putts";
+  const [editing, setEditing] = useState<{ holeId: string; field: EditField } | null>(null);
+  const [editValue, setEditValue] = useState("");
+
+  function startEdit(hole: Hole, field: EditField) {
+    let current: number | null;
+    if (field === "par") current = hole.par;
+    else if (field === "putts") current = hole.putts;
+    else current = hole.score != null ? (hole.score - (hole.putts ?? 0)) : null;
+    setEditValue(current != null ? String(current) : "");
+    setEditing({ holeId: hole.id, field });
+  }
+
+  async function commitEdit() {
+    const e = editing;
+    setEditing(null);
+    if (!e || !onUpdateHole) return;
+    const hole = holes.find((h) => h.id === e.holeId);
+    if (!hole) return;
+    const trimmed = editValue.trim();
+    if (trimmed === "") return;
+    const num = parseInt(trimmed, 10);
+    if (isNaN(num) || num < 0 || num > 20) return;
+
+    let update: Partial<Hole>;
+    if (e.field === "par") {
+      if (num === hole.par) return;
+      update = { par: num };
+    } else if (e.field === "putts") {
+      const curPutts = hole.putts;
+      if (num === curPutts) return;
+      const curShots = hole.score != null ? hole.score - (curPutts ?? 0) : 0;
+      update = { putts: num, score: curShots + num };
+    } else {
+      const curShots = hole.score != null ? hole.score - (hole.putts ?? 0) : null;
+      if (num === curShots) return;
+      update = { score: num + (hole.putts ?? 0) };
+    }
+    await onUpdateHole(hole.id, update);
+  }
+
+  function ScoreBadge({ score, par }: { score: number | null; par: number }) {
+    if (score == null) return <span className="text-gray-400">—</span>;
+    const d = score - par;
+    let cls = "inline-flex items-center justify-center w-5 h-5 font-bold tabular-nums text-[11px] ";
+    if (d <= -2)      cls += "text-red-700";
+    else if (d === -1) cls += "text-red-500";
+    else if (d === 0)  cls += "rounded-full border border-gray-700 text-gray-700";
+    else if (d === 1)  cls += "border border-blue-500 text-blue-500";
+    else               cls += "text-blue-700";
+    return <span className={cls}>{score}</span>;
+  }
+
+  function EditableCell({
+    hole, field, displayValue, baseClass,
+  }: {
+    hole: Hole;
+    field: EditField;
+    displayValue: React.ReactNode;
+    baseClass: string;
+  }) {
+    const isThisEditing = editing?.holeId === hole.id && editing?.field === field;
+    if (isThisEditing) {
+      return (
+        <td className="py-0.5 text-center">
+          <input
+            type="number"
+            inputMode="numeric"
+            autoFocus
+            value={editValue}
+            onChange={(ev) => setEditValue(ev.target.value)}
+            onBlur={commitEdit}
+            onKeyDown={(ev) => {
+              if (ev.key === "Enter") (ev.currentTarget as HTMLInputElement).blur();
+              if (ev.key === "Escape") setEditing(null);
+            }}
+            className="w-10 text-center text-[11px] tabular-nums border border-green-400 rounded outline-none px-0.5 py-0.5"
+          />
+        </td>
+      );
+    }
+    if (!isEditable) {
+      return <td className={baseClass}>{displayValue}</td>;
+    }
+    return (
+      <td className={baseClass}>
+        <button
+          type="button"
+          onClick={() => startEdit(hole, field)}
+          className="w-full rounded hover:bg-green-50 active:bg-green-100"
+        >
+          {displayValue}
+        </button>
+      </td>
+    );
   }
 
   function ScoreColumn({
@@ -2530,7 +2639,7 @@ function RoundComplete({
               <th className="text-center py-0.5">Par</th>
               <th className="text-center py-0.5 text-[9px]">ショット</th>
               <th className="text-center py-0.5">P</th>
-              <th className="text-right py-0.5">計</th>
+              <th className="text-center py-0.5">計</th>
             </tr>
           </thead>
           <tbody>
@@ -2539,11 +2648,23 @@ function RoundComplete({
               return (
                 <tr key={hole.id} className="border-b border-green-50">
                   <td className="py-1 text-green-700 font-medium">{hole.hole_number}</td>
-                  <td className="py-1 text-center text-green-500">{hole.par}</td>
-                  <td className="py-1 text-center text-green-700">{shots}</td>
-                  <td className="py-1 text-center text-green-500">{hole.putts ?? "—"}</td>
-                  <td className={`py-1 text-right font-bold ${scoreColor(hole.score, hole.par)}`}>
-                    {hole.score ?? "—"}
+                  <EditableCell
+                    hole={hole} field="par"
+                    displayValue={hole.par}
+                    baseClass="py-1 text-center text-green-500"
+                  />
+                  <EditableCell
+                    hole={hole} field="shots"
+                    displayValue={hole.score != null ? shots : "—"}
+                    baseClass="py-1 text-center text-green-700"
+                  />
+                  <EditableCell
+                    hole={hole} field="putts"
+                    displayValue={hole.putts ?? "—"}
+                    baseClass="py-1 text-center text-green-500"
+                  />
+                  <td className="py-1 text-center">
+                    <ScoreBadge score={hole.score} par={hole.par} />
                   </td>
                 </tr>
               );
@@ -2553,7 +2674,7 @@ function RoundComplete({
               <td className="py-1 text-center">{pSum || "—"}</td>
               <td className="py-1 text-center">{shSum || "—"}</td>
               <td className="py-1 text-center">{ptSum || "—"}</td>
-              <td className="py-1 text-right">{sSum || "—"}</td>
+              <td className="py-1 text-center">{sSum || "—"}</td>
             </tr>
           </tbody>
         </table>
@@ -2610,6 +2731,11 @@ function RoundComplete({
 
       {/* Scorecard — OUT/IN side-by-side (golf standard format) */}
       <div className="card">
+        {isEditable && (
+          <p className="text-[10px] text-green-500 text-center mb-2">
+            📝 セルをタップで編集できます（ショット + P = 計）
+          </p>
+        )}
         {holes.length > 9 ? (
           <div className="grid grid-cols-2">
             <div className="pr-2">
