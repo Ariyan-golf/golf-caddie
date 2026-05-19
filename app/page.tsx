@@ -239,21 +239,25 @@ export default async function HomePage() {
         )}
 
         {/* 平均スコア / GCAハンディ */}
-        <div className="card space-y-3">
+        <div className="card space-y-3 text-center">
           {avgScore !== null ? (
             <div>
-              <p className="text-xs text-green-500 font-medium mb-1">
-                平均スコア
-                <span className="text-green-400 font-normal text-[10px] ml-0.5">(直近10R)</span>
-                <span className="mx-2 text-green-300">/</span>
-                GCAハンディ
-                <span className="text-green-400 font-normal text-[10px] ml-0.5">(JGA方式)</span>
-              </p>
-              <p className="text-3xl font-bold text-green-800 tabular-nums">
-                {avgScore}
-                <span className="text-green-300 font-normal mx-2">/</span>
-                {gcaHandicap ?? "—"}
-              </p>
+              <div className="text-xs text-green-500 font-medium mb-1 flex justify-center items-baseline gap-2">
+                <span className="flex-1 text-right">
+                  平均スコア
+                  <span className="text-green-400 font-normal text-[10px] ml-0.5">(直近10R)</span>
+                </span>
+                <span className="text-green-300">/</span>
+                <span className="flex-1 text-left">
+                  GCAハンディ
+                  <span className="text-green-400 font-normal text-[10px] ml-0.5">(JGA方式)</span>
+                </span>
+              </div>
+              <div className="text-3xl font-bold text-green-800 tabular-nums flex justify-center items-baseline gap-3">
+                <span className="flex-1 text-right">{avgScore}</span>
+                <span className="text-green-300 font-normal">/</span>
+                <span className="flex-1 text-left">{gcaHandicap ?? "—"}</span>
+              </div>
             </div>
           ) : (
             <div>

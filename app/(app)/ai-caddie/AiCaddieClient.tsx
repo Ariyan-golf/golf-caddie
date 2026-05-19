@@ -29,7 +29,7 @@ interface CharDef {
 
 const CHARS: CharDef[] = [
   {
-    id: "mika", name: "AIちゃん", imgSrc: "/characters/mika.png", emoji: "👧",
+    id: "mika", name: "AIちゃん", imgSrc: "/characters/ai.png", emoji: "👧",
     tagline: "元気・初心者向け",
     desc: "AIが状況に合わせてアドバイスしてくれる！",
     card: "bg-pink-50 border-pink-200 hover:border-pink-400",
