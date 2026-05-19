@@ -2489,8 +2489,70 @@ function RoundComplete({
   const totalPutts = holes.reduce((s, h) => s + (h.putts ?? 0), 0);
   const out        = holes.slice(0, 9).reduce((s, h) => s + (h.score ?? 0), 0);
   const outPutts   = holes.slice(0, 9).reduce((s, h) => s + (h.putts ?? 0), 0);
+  const outPar     = holes.slice(0, 9).reduce((s, h) => s + h.par, 0);
   const inn        = holes.slice(9).reduce((s, h)  => s + (h.score ?? 0), 0);
   const innPutts   = holes.slice(9).reduce((s, h)  => s + (h.putts ?? 0), 0);
+  const innPar     = holes.slice(9).reduce((s, h)  => s + h.par, 0);
+
+  function scoreColor(score: number | null, par: number) {
+    const d = (score ?? 0) - par;
+    return d <= -2 ? "text-yellow-600" :
+           d === -1 ? "text-red-500" :
+           d === 0  ? "text-green-600" :
+           d === 1  ? "text-blue-500" : "text-gray-500";
+  }
+
+  function ScoreColumn({
+    label, slice, pSum, sSum, ptSum,
+  }: {
+    label: string;
+    slice: Hole[];
+    pSum: number;
+    sSum: number;
+    ptSum: number;
+  }) {
+    return (
+      <div>
+        <p className="text-center text-[11px] font-bold text-green-700 mb-1">{label}</p>
+        <table className="w-full text-[11px] tabular-nums">
+          <thead>
+            <tr className="text-green-500 text-[10px] border-b border-green-100">
+              <th className="text-left py-0.5">H</th>
+              <th className="text-center py-0.5">Par</th>
+              <th className="text-center py-0.5">打</th>
+              <th className="text-center py-0.5">P</th>
+              <th className="text-right py-0.5">計</th>
+            </tr>
+          </thead>
+          <tbody>
+            {slice.map((hole) => {
+              const shots = mode === "score"
+                ? (hole.score ?? 0) - (hole.putts ?? 0)
+                : hole.shots.length + (hole.penalties ?? 0);
+              return (
+                <tr key={hole.id} className="border-b border-green-50">
+                  <td className="py-1 text-green-700 font-medium">{hole.hole_number}</td>
+                  <td className="py-1 text-center text-green-500">{hole.par}</td>
+                  <td className="py-1 text-center text-green-700">{shots}</td>
+                  <td className="py-1 text-center text-green-500">{hole.putts ?? "—"}</td>
+                  <td className={`py-1 text-right font-bold ${scoreColor(hole.score, hole.par)}`}>
+                    {hole.score ?? "—"}
+                  </td>
+                </tr>
+              );
+            })}
+            <tr className="border-t-2 border-green-200 bg-green-50 font-bold text-green-700">
+              <td className="py-1 text-left">{label}</td>
+              <td className="py-1 text-center">{pSum || "—"}</td>
+              <td className="py-1 text-center">—</td>
+              <td className="py-1 text-center">{ptSum || "—"}</td>
+              <td className="py-1 text-right">{sSum || "—"}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">
@@ -2539,41 +2601,20 @@ function RoundComplete({
         </div>
       )}
 
-      <div className="card overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="text-green-500 text-xs border-b border-green-100">
-              <th className="text-left py-1">H</th>
-              <th className="text-center py-1">Par</th>
-              <th className="text-center py-1">打</th>
-              <th className="text-center py-1">P</th>
-              <th className="text-right py-1">計</th>
-            </tr>
-          </thead>
-          <tbody>
-            {holes.map((hole) => {
-              const d = (hole.score ?? 0) - hole.par;
-              const color =
-                d <= -2 ? "text-yellow-600" :
-                d === -1 ? "text-red-500" :
-                d === 0  ? "text-green-600" :
-                d === 1  ? "text-blue-500" : "text-gray-500";
-              return (
-                <tr key={hole.id} className="border-b border-green-50">
-                  <td className="py-1 text-green-700 font-medium">{hole.hole_number}</td>
-                  <td className="py-1 text-center text-green-500">{hole.par}</td>
-                  <td className="py-1 text-center text-green-700">
-                    {mode === "score"
-                      ? (hole.score ?? 0) - (hole.putts ?? 0)
-                      : hole.shots.length + (hole.penalties ?? 0)}
-                  </td>
-                  <td className="py-1 text-center text-green-500">{hole.putts ?? "—"}</td>
-                  <td className={`py-1 text-right font-bold ${color}`}>{hole.score}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+      {/* Scorecard — OUT/IN side-by-side (golf standard format) */}
+      <div className="card">
+        {holes.length > 9 ? (
+          <div className="grid grid-cols-2">
+            <div className="pr-2">
+              <ScoreColumn label="OUT" slice={holes.slice(0, 9)} pSum={outPar} sSum={out} ptSum={outPutts} />
+            </div>
+            <div className="pl-2 border-l border-green-100">
+              <ScoreColumn label="IN" slice={holes.slice(9)} pSum={innPar} sSum={inn} ptSum={innPutts} />
+            </div>
+          </div>
+        ) : (
+          <ScoreColumn label="OUT" slice={holes} pSum={outPar} sSum={out} ptSum={outPutts} />
+        )}
       </div>
     </div>
   );
