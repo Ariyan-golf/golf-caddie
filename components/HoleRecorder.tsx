@@ -7,7 +7,7 @@ import { ShotRecorder } from "./ShotRecorder";
 import type { Club } from "@/types";
 import { CLUB_LABELS } from "@/types";
 import { calculateDistance, metersToYards } from "@/lib/distance";
-import { stopGpsTracking, getBestShotPosition } from "@/lib/gps";
+import { stopGpsTracking, getBestShotPosition, startShotWatch, stopShotWatch } from "@/lib/gps";
 import { releaseWakeLock } from "@/lib/wakeLock";
 import { isBetaMode } from "@/lib/betaMode";
 import Link from "next/link";
@@ -211,6 +211,9 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
   const [greenDialogError, setGreenDialogError] = useState<string | null>(null);
   const [greenToast, setGreenToast] = useState<{ holeNumber: number } | null>(null);
 
+  // 15分タイムアウト発火時に表示するトースト。3秒で自動消滅。
+  const [shotTimeoutToast, setShotTimeoutToast] = useState<string | null>(null);
+
   // Wind compass visibility — persisted to localStorage
   const [windVisible, setWindVisible] = useState(true);
   useEffect(() => {
@@ -245,9 +248,25 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
     localStorage.removeItem(COMPASS_STORAGE_KEY);
   }, [isRoundDone]);
 
-  // Live distance polling was removed when watchPosition was dropped for
-  // battery reasons (see lib/gps.ts). Distance is now seeded at 0 by
-  // handleShotStart and replaced with the real value when 止まった場所 fires.
+  // 「打つ前」を押した位置から現在位置までの直線距離（Haversine公式）。
+  // カート経路に依存しない純粋な飛距離測定 — ゴルファーの興奮ポイント
+  // （飛距離確認）に直結。watchPosition は handleShotStart で開き、
+  // handleShotEnd / handleCancelShot / handleConfirmShot / 15分タイムアウト
+  // で閉じる pair-scoped 設計（lib/gps.ts: startShotWatch を参照）。
+  // ライブ更新は startShotWatch の onUpdate コールバックから setDmDistance
+  // を直接呼ぶので、ここでは setInterval ベースの useEffect は持たない。
+
+  // Component unmount 時に watch が漏れないよう保険を掛ける。
+  useEffect(() => {
+    return () => stopShotWatch();
+  }, []);
+
+  // 15分タイムアウトのトーストを3秒で自動消去。
+  useEffect(() => {
+    if (!shotTimeoutToast) return;
+    const t = setTimeout(() => setShotTimeoutToast(null), 3000);
+    return () => clearTimeout(t);
+  }, [shotTimeoutToast]);
 
   // ── Actions ─────────────────────────────────────────────────────────
 
@@ -507,6 +526,8 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
 
   function selectHole(n: number) {
     // Drop uncommitted shot state + collapse the recording panel
+    // ホール切替時に watch が走っていれば停止（測定中の切替を許す）。
+    stopShotWatch();
     setDmStart(null);
     setDmEnd(null);
     setDmDistance(null);
@@ -526,6 +547,8 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
   }
 
   function handleCancelShot() {
+    // ペア未完了でキャンセルされたケースに備え watch を必ず停止。
+    stopShotWatch();
     setDmStart(null);
     setDmEnd(null);
     setDmDistance(null);
@@ -538,12 +561,37 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
     try {
       const best = await getBestShotPosition();
       if (!best) return;
-      setDmStart({ lat: best.lat, lng: best.lng });
+      const startPoint = { lat: best.lat, lng: best.lng };
+      setDmStart(startPoint);
       setDmEnd(null);
-      // Seed at zero so "飛距離 0ヤード（0m）" is visible before the first
-      // live tick lands. The polling effect overwrites this on next GPS update.
+      // Seed at zero so "📍 0Y / 0m" is visible before the first
+      // live tick lands. startShotWatch の onUpdate が以降を上書きする。
       setDmDistance({ yards: 0, meters: 0 });
       setShotNextAction("after");
+
+      // pair-scoped watchPosition を起動。OS から fresh fix が届くたびに
+      // start からの直線距離を再計算して表示を更新する。
+      startShotWatch({
+        onUpdate: (p) => {
+          const distM = calculateDistance(
+            { latitude: startPoint.lat, longitude: startPoint.lng },
+            { latitude: p.lat, longitude: p.lng },
+          );
+          setDmDistance({
+            yards: metersToYards(distM),
+            meters: Math.round(distM * 10) / 10,
+          });
+        },
+        onTimeout: () => {
+          // 15分経過 → 押し忘れと判定して計測を破棄。
+          setDmStart(null);
+          setDmEnd(null);
+          setDmDistance(null);
+          setShotNextAction("before");
+          setShotMode("idle");
+          setShotTimeoutToast("15分経過したので計測をリセットしました");
+        },
+      });
     } finally {
       setDmLoading("idle");
     }
@@ -553,6 +601,8 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
     if (!dmStart) return;
     setDmLoading("end");
     try {
+      // ライブ計測終了 → watch を停止して電池を節約。
+      stopShotWatch();
       const best = await getBestShotPosition();
       if (!best) return;
       setDmEnd({ lat: best.lat, lng: best.lng });
@@ -623,6 +673,8 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
         setShotError(insertErrMsg ?? "保存に失敗しました");
       }
       // ALWAYS unwind to idle so the user is never stuck on the panel.
+      // 念のため watch を再度停止（handleShotEnd で既に止めているはず）。
+      stopShotWatch();
       setDmStart(null);
       setDmEnd(null);
       setDmDistance(null);
@@ -876,6 +928,16 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
                      bg-emerald-600 text-white text-sm font-semibold shadow-lg"
         >
           ✅ ホール{greenToast.holeNumber}のグリーンセンターを登録しました
+        </div>
+      )}
+
+      {shotTimeoutToast && (
+        <div
+          role="status"
+          className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 px-4 py-3 rounded-xl
+                     bg-amber-600 text-white text-sm font-semibold shadow-lg"
+        >
+          ⏱ {shotTimeoutToast}
         </div>
       )}
 
@@ -2677,18 +2739,19 @@ function ActiveShotPanel({
             : "📍 止まった場所で押してね"}
       </button>
 
-      {/* Distance readout — ticks live from dmStart until dmEnd is captured */}
-      {dmDistance && (
-        <div className="text-center py-1">
-          <span className="text-sm text-green-600">飛距離 </span>
-          <span className="text-xl font-bold text-green-900 tabular-nums">
-            {Math.round(dmDistance.yards)}ヤード
-          </span>
-          <span className="text-sm text-green-500 tabular-nums ml-1">
-            （{Math.round(dmDistance.meters)}m）
-          </span>
-        </div>
-      )}
+      {/* 距離メーター（飛距離表示）— 常時表示。
+          dmStart 未設定 / 計測前: 「📍 0Y / 0m」を初期表示
+          dmStart → dmEnd 中: pair-scoped watchPosition のライブ値で更新
+          dmEnd 確定後: 最終直線距離を表示（confirm／cancel で 0/0 に戻る） */}
+      <div className="text-center py-1">
+        <span className="text-xl font-bold text-green-900 tabular-nums">
+          📍 {Math.round(dmDistance?.yards ?? 0)}Y
+        </span>
+        <span className="text-sm text-green-600 tabular-nums ml-2">
+          / {Math.round(dmDistance?.meters ?? 0)}m
+        </span>
+      </div>
+
 
       {/* Confirm — INSERT into shots. While confirming, the early-return above swaps
           this for a feedback panel — this branch only renders the active button. */}
