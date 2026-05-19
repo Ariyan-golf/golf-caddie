@@ -242,7 +242,13 @@ export default async function HomePage() {
         <div className="card space-y-3">
           {avgScore !== null ? (
             <div>
-              <p className="text-xs text-green-500 font-medium mb-1">平均スコア / GCAハンディ</p>
+              <p className="text-xs text-green-500 font-medium mb-1">
+                平均スコア
+                <span className="text-green-400 font-normal text-[10px] ml-0.5">(直近10R)</span>
+                <span className="mx-2 text-green-300">/</span>
+                GCAハンディ
+                <span className="text-green-400 font-normal text-[10px] ml-0.5">(JGA方式)</span>
+              </p>
               <p className="text-3xl font-bold text-green-800 tabular-nums">
                 {avgScore}
                 <span className="text-green-300 font-normal mx-2">/</span>
