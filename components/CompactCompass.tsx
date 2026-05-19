@@ -146,7 +146,7 @@ export function CompactCompass({
         <div className="flex items-center gap-3">
           {sensorBlocked ? (
             <div
-              className="flex-shrink-0 flex items-center justify-center text-sm text-sky-700 text-center leading-tight px-2 bg-white rounded-full border border-sky-100"
+              className="flex-shrink-0 flex items-center justify-center text-base text-sky-700 text-center leading-tight px-2 bg-white rounded-full border border-sky-100"
               style={{ width: SIZE, height: SIZE }}
             >
               方位センサー<br />未対応
@@ -229,13 +229,13 @@ export function CompactCompass({
           {/* Right column: wind text + green-direction control */}
           <div className="flex-1 min-w-0 flex flex-col gap-1.5 py-1">
             <div className="leading-tight">
-              <p className="text-base font-bold text-sky-700">
+              <p className="text-lg font-bold text-sky-700">
                 風 {windDirection ? (WIND_TO_ARROW[windDirection] ?? "—") : "—"}
               </p>
-              <p className="text-sm text-sky-500">{windSpeed ?? "—"}</p>
+              <p className="text-base text-sky-500">{windSpeed ?? "—"}</p>
             </div>
             {sensorBlocked ? (
-              <p className="text-sm text-gray-500 leading-tight">
+              <p className="text-base text-gray-500 leading-tight">
                 グリーン方向は<br />未対応端末では使えません
               </p>
             ) : greenDirection === null ? (
@@ -251,11 +251,11 @@ export function CompactCompass({
               </button>
             ) : (
               <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-sm font-semibold text-green-700">🚩 設定済み</span>
+                <span className="text-base font-semibold text-green-700">🚩 設定済み</span>
                 <button
                   onClick={handleSetGreen}
                   disabled={pendingSet}
-                  className="text-sm text-sky-700 underline disabled:opacity-50"
+                  className="text-base text-sky-700 underline disabled:opacity-50"
                 >
                   {pendingSet ? "取得中…" : "再設定"}
                 </button>
@@ -276,7 +276,7 @@ export function CompactCompass({
               {remainingLoading ? "📡 取得中…" : "📍 残り距離を見る"}
             </button>
             {remaining && (
-              <p className="text-lg text-emerald-800 font-bold tabular-nums leading-tight">
+              <p className="text-xl text-emerald-800 font-bold tabular-nums leading-tight">
                 {remaining.kind === "distance"
                   ? `残り ${remaining.yards}ヤード（${remaining.meters}m）`
                   : remaining.text}
@@ -285,7 +285,7 @@ export function CompactCompass({
           </div>
         </div>
       ) : (
-        <div className="text-sm text-sky-500">🧭 コンパスOFF</div>
+        <div className="text-base text-sky-500">🧭 コンパスOFF</div>
       )}
 
       <button

@@ -37,7 +37,7 @@ export function GpsIndicator() {
 
   const { icon, text, cls } = LABEL[state.level];
   return (
-    <div className={`flex items-center gap-1.5 text-sm font-medium ${cls} px-1`}>
+    <div className={`flex items-center gap-1.5 text-base font-medium ${cls} px-1`}>
       <span aria-hidden="true">{icon}</span>
       <span>{text}</span>
       {state.accuracy != null && (
