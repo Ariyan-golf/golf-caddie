@@ -112,7 +112,7 @@ export function RoundListClient({ rounds: initialRounds }: { rounds: Round[] }) 
             key={round.id}
             className="card flex items-center hover:border-green-300 transition-colors"
           >
-            <Link href={`/round/${round.id}`} className="flex-1 flex items-center justify-between">
+            <Link href={`/round/${round.id}?view=past`} className="flex-1 flex items-center justify-between">
               <div>
                 <p className="font-semibold text-green-800">{round.course_name}</p>
                 <p className="text-sm text-green-500">

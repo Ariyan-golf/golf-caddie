@@ -4,6 +4,7 @@ import { HoleRecorder } from "@/components/HoleRecorder";
 
 interface Props {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ view?: string }>;
 }
 
 interface CourseHole {
@@ -11,8 +12,10 @@ interface CourseHole {
   par: number;
 }
 
-export default async function RoundDetailPage({ params }: Props) {
+export default async function RoundDetailPage({ params, searchParams }: Props) {
   const { id } = await params;
+  const { view } = await searchParams;
+  const pastView = view === "past";
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
@@ -142,6 +145,7 @@ export default async function RoundDetailPage({ params }: Props) {
         golfCourseId={round.golf_course_id ?? null}
         greenType={greenType}
         initialGreenCenters={initialGreenCenters}
+        pastView={pastView}
       />
     </div>
   );

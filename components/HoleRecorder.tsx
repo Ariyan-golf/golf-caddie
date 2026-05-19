@@ -59,6 +59,7 @@ interface HoleRecorderProps {
   golfCourseId?: string | null;
   greenType?: "main" | "sub";
   initialGreenCenters?: Record<number, { lat: number; lng: number }>;
+  pastView?: boolean;
 }
 
 interface RoundShotEntry {
@@ -149,7 +150,7 @@ function scoreLabel(score: number, par: number) {
 
 // ── Main component ──────────────────────────────────────────────────
 
-export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "shot", windDirection, windSpeed, courseRating, slopeRating, courseHoles, paymentStatus = "paid", golfCourseName = "", inputMode = "post_round", golfCourseId = null, greenType = "main", initialGreenCenters = {} }: HoleRecorderProps) {
+export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "shot", windDirection, windSpeed, courseRating, slopeRating, courseHoles, paymentStatus = "paid", golfCourseName = "", inputMode = "post_round", golfCourseId = null, greenType = "main", initialGreenCenters = {}, pastView = false }: HoleRecorderProps) {
   const betaMode = isBetaMode();
   const router = useRouter();
   const lastHole = initialHoles.at(-1);
@@ -169,7 +170,9 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
   const [goingBack, setGoingBack]   = useState(false);
   const [penalties, setPenalties]   = useState(0);
   const [roundShotHistory, setRoundShotHistory] = useState<RoundShotEntry[]>([]);
-  const [roundEndConfirmed, setRoundEndConfirmed] = useState(false);
+  // 過去ラウンド閲覧 (?view=past) では「お疲れ様」画面をスキップして
+  // 直接スコアカード (RoundComplete) を表示する。
+  const [roundEndConfirmed, setRoundEndConfirmed] = useState(pastView);
   const [handicapDiff, setHandicapDiff] = useState<number | null>(null);
   const [confirmLoading, setConfirmLoading] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);

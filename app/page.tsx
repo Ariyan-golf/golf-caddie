@@ -346,7 +346,7 @@ export default async function HomePage() {
               {recentRounds.map((round) => (
                 <Link
                   key={round.id}
-                  href={`/round/${round.id}`}
+                  href={`/round/${round.id}?view=past`}
                   className="flex items-center justify-between py-2 border-b border-green-50 last:border-0"
                 >
                   <div>
