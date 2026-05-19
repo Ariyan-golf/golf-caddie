@@ -2566,12 +2566,26 @@ function RoundComplete({
   function ScoreBadge({ score, par }: { score: number | null; par: number }) {
     if (score == null) return <span className="text-gray-400">—</span>;
     const d = score - par;
-    let cls = "inline-flex items-center justify-center w-5 h-5 font-bold tabular-nums text-[11px] ";
-    if (d <= -2)      cls += "text-red-700";
+    const base = "inline-flex items-center justify-center w-6 h-6 font-bold tabular-nums text-[11px]";
+
+    // ボギー (+1) は SVG 三角
+    if (d === 1) {
+      return (
+        <span className={`${base} text-blue-500 relative`}>
+          <svg className="absolute inset-0 w-full h-full" viewBox="0 0 24 24" aria-hidden="true">
+            <polygon points="12,3 22,21 2,21" fill="none" stroke="currentColor" strokeWidth="2" />
+          </svg>
+          <span className="relative z-10">{score}</span>
+        </span>
+      );
+    }
+
+    let cls = base + " ";
+    if (d <= -2)       cls += "text-red-700";
     else if (d === -1) cls += "text-red-500";
-    else if (d === 0)  cls += "rounded-full border border-gray-700 text-gray-700";
-    else if (d === 1)  cls += "border border-blue-500 text-blue-500";
-    else               cls += "text-blue-700";
+    else if (d === 0)  cls += "rounded-full border-2 border-gray-700 text-gray-700";
+    else if (d === 2)  cls += "border-2 border-blue-700 text-blue-700";
+    else               cls += "text-blue-900"; // d >= +3
     return <span className={cls}>{score}</span>;
   }
 
