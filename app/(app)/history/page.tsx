@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
-import { CLUB_LABELS } from "@/types";
+import { CLUB_LABELS, CLUBS } from "@/types";
 import type { Club } from "@/types";
-import { ClubAveragesSection } from "@/components/ClubAveragesSection";
+import { ClubAveragesSection, UNASSIGNED_KEY } from "@/components/ClubAveragesSection";
 import { UnfilledShotsSection, type UnfilledShot } from "@/components/UnfilledShotsSection";
 
 export default async function HistoryPage() {
@@ -10,6 +10,7 @@ export default async function HistoryPage() {
 
   // ID・日付付きで全件取得（展開表示と個別削除に使用）
   // shots テーブルから直接集計。RLS が holes→rounds.user_id 経由で所有権を強制する。
+  // club が NULL のショットは「未分類」グループにまとめる（post_round 入力モードで番手後付けのケース）。
   const { data: shotRows } = await supabase
     .from("shots")
     .select(`
@@ -17,20 +18,20 @@ export default async function HistoryPage() {
       holes!inner(rounds!inner(user_id))
     `)
     .eq("holes.rounds.user_id", user!.id)
-    .not("club", "is", null)
     .not("distance_meters", "is", null)
     .order("created_at", { ascending: false });
 
-  // クラブ別に集計しつつ個別ショットも保持
+  // クラブ別に集計しつつ個別ショットも保持。club === null は UNASSIGNED_KEY にまとめる。
   const clubMap = new Map<string, {
     totalMeters: number;
     shots: { id: string; distance_yards: number; distance_meters: number; created_at: string }[];
   }>();
 
   for (const shot of shotRows ?? []) {
-    if (shot.club == null || shot.distance_meters == null) continue;
-    const prev = clubMap.get(shot.club) ?? { totalMeters: 0, shots: [] };
-    clubMap.set(shot.club, {
+    if (shot.distance_meters == null) continue;
+    const key = shot.club ?? UNASSIGNED_KEY;
+    const prev = clubMap.get(key) ?? { totalMeters: 0, shots: [] };
+    clubMap.set(key, {
       totalMeters: prev.totalMeters + Number(shot.distance_meters),
       shots: [...prev.shots, {
         id: shot.id,
@@ -41,6 +42,13 @@ export default async function HistoryPage() {
     });
   }
 
+  // 並び順: CLUBS 配列の順（1W → 3W → … → ウェッジ）、未分類は最後。
+  const clubOrder = new Map<string, number>(CLUBS.map((c, i) => [c, i]));
+  const orderIndex = (club: string) =>
+    club === UNASSIGNED_KEY
+      ? Number.MAX_SAFE_INTEGER
+      : clubOrder.get(club) ?? Number.MAX_SAFE_INTEGER - 1;
+
   const clubStats = Array.from(clubMap.entries())
     .map(([club, { totalMeters, shots }]) => ({
       club,
@@ -48,7 +56,7 @@ export default async function HistoryPage() {
       shot_count: shots.length,
       shots,
     }))
-    .sort((a, b) => b.average_distance_meters - a.average_distance_meters);
+    .sort((a, b) => orderIndex(a.club) - orderIndex(b.club));
 
   const { data: recentShots } = await supabase
     .from("shots")
