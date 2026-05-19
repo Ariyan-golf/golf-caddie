@@ -234,47 +234,65 @@ export function CompactCompass({
               </p>
               <p className="text-base text-sky-500">{windSpeed ?? "—"}</p>
             </div>
-            {sensorBlocked ? (
-              <p className="text-base text-gray-500 leading-tight">
-                グリーン方向は<br />未対応端末では使えません
-              </p>
-            ) : greenDirection === null ? (
+            {/* Action buttons — グリーン方向 / 残り距離 を横並び・同サイズで配置。
+                狭い右カラム（iPhone 14 Pro で各〜97px）ではテキストが自然に2行折り返し
+                するが、min-h-[64px] でグローブ越しのタップ性と高さ均等を維持。
+                設定済み状態のみ、ボタン直下に小さく「再設定」テキストリンクを追加
+                （items-start で右ボタン側は引き伸ばされない）。 */}
+            <div className="flex gap-2 items-start">
+              {sensorBlocked ? (
+                <div className="flex-1 min-h-[64px] flex items-center justify-center
+                                px-2 py-2 rounded-full bg-gray-50 border border-gray-200
+                                text-gray-500 text-sm text-center leading-tight">
+                  方位センサー<br />未対応
+                </div>
+              ) : (
+                <div className="flex-1 flex flex-col items-center gap-0.5">
+                  <button
+                    onClick={handleSetGreen}
+                    disabled={pendingSet}
+                    className={`w-full min-h-[64px] flex items-center justify-center
+                                text-base font-bold text-center leading-tight
+                                px-2 py-2 rounded-full transition-colors active:scale-95
+                                disabled:opacity-60 disabled:cursor-not-allowed ${
+                      greenDirection === null
+                        ? "bg-green-600 hover:bg-green-700 active:bg-green-800 text-white shadow-sm"
+                        : "bg-green-50 hover:bg-green-100 active:bg-green-200 text-green-700 border border-green-300"
+                    }`}
+                  >
+                    {pendingSet
+                      ? "🚩 方位取得中…"
+                      : greenDirection === null
+                        ? "🚩 グリーン方向を設定"
+                        : "🚩 設定済み"}
+                  </button>
+                  {greenDirection !== null && (
+                    <button
+                      onClick={handleSetGreen}
+                      disabled={pendingSet}
+                      className="text-xs text-sky-700 underline py-0.5 disabled:opacity-50"
+                    >
+                      {pendingSet ? "取得中…" : "再設定"}
+                    </button>
+                  )}
+                </div>
+              )}
+              {/* Remaining-distance — shows for ~5s after tap, then clears.
+                  Sized for glove-on tapping during a round (min 64px target). */}
               <button
-                onClick={handleSetGreen}
-                disabled={pendingSet}
-                className="self-start text-xs font-semibold px-3 py-1.5 rounded-full
-                           bg-green-600 hover:bg-green-700 active:bg-green-800 text-white
-                           shadow-sm transition-colors active:scale-95
+                onClick={handleShowRemaining}
+                disabled={remainingLoading}
+                className="flex-1 min-h-[64px] flex items-center justify-center
+                           text-base font-bold text-center leading-tight
+                           px-2 py-2 rounded-full
+                           bg-emerald-100 hover:bg-emerald-200 active:bg-emerald-300
+                           text-emerald-800 border border-emerald-200
+                           transition-colors active:scale-95
                            disabled:opacity-60 disabled:cursor-not-allowed"
               >
-                {pendingSet ? "🚩 方位取得中…" : "🚩 グリーン方向を設定"}
+                {remainingLoading ? "📡 取得中…" : "📍 残り距離を見る"}
               </button>
-            ) : (
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-base font-semibold text-green-700">🚩 設定済み</span>
-                <button
-                  onClick={handleSetGreen}
-                  disabled={pendingSet}
-                  className="text-base text-sky-700 underline disabled:opacity-50"
-                >
-                  {pendingSet ? "取得中…" : "再設定"}
-                </button>
-              </div>
-            )}
-
-            {/* Remaining-distance — shows for 3s after tap, then clears.
-                Sized for glove-on tapping during a round (min 64px target). */}
-            <button
-              onClick={handleShowRemaining}
-              disabled={remainingLoading}
-              className="w-full min-h-[64px] text-lg font-bold px-6 py-4 rounded-full
-                         bg-emerald-100 hover:bg-emerald-200 active:bg-emerald-300
-                         text-emerald-800 border border-emerald-200
-                         transition-colors active:scale-95
-                         disabled:opacity-60 disabled:cursor-not-allowed"
-            >
-              {remainingLoading ? "📡 取得中…" : "📍 残り距離を見る"}
-            </button>
+            </div>
             {remaining && (
               <p className="text-xl text-emerald-800 font-bold tabular-nums leading-tight">
                 {remaining.kind === "distance"

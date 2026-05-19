@@ -2646,7 +2646,7 @@ function IdleShotSection({
         ⛳ 飛距離を測る
       </button>
       <p className="text-center text-base text-gray-500 mt-2">
-        💡 使ったクラブは「球筋」画面から後で記録できます
+        使ったクラブは「球筋」画面で後から記録できます
       </p>
     </div>
   );
