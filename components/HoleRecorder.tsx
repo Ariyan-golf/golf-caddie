@@ -793,10 +793,10 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
       {/* Header — round name · GPS strength */}
       <div className="flex items-center justify-between gap-2 px-1 pt-1">
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-bold text-green-800 truncate">
+          <p className="text-base font-bold text-green-800 truncate">
             {golfCourseName || "ラウンド"}
             {completedHoles.length > 0 && (
-              <span className="ml-2 text-xs font-normal text-green-500 tabular-nums">
+              <span className="ml-2 text-sm font-normal text-green-500 tabular-nums">
                 {completedHoles.length}H {totalScore}
                 {totalDiff !== 0 && (
                   <span className="ml-0.5">({totalDiff > 0 ? "+" : ""}{totalDiff})</span>
@@ -879,7 +879,7 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
             setGreenDialogOpen(true);
           }}
           disabled={!golfCourseId}
-          className={`w-full py-2.5 rounded-xl text-sm font-semibold border transition-colors
+          className={`w-full py-2.5 rounded-xl text-base font-semibold border transition-colors
                       active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 ${
             greenCenters[currentHole.hole_number]
               ? "bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100"
@@ -925,7 +925,7 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
         <div
           role="status"
           className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 px-4 py-3 rounded-xl
-                     bg-emerald-600 text-white text-sm font-semibold shadow-lg"
+                     bg-emerald-600 text-white text-base font-semibold shadow-lg"
         >
           ✅ ホール{greenToast.holeNumber}のグリーンセンターを登録しました
         </div>
@@ -935,7 +935,7 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
         <div
           role="status"
           className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 px-4 py-3 rounded-xl
-                     bg-amber-600 text-white text-sm font-semibold shadow-lg"
+                     bg-amber-600 text-white text-base font-semibold shadow-lg"
         >
           ⏱ {shotTimeoutToast}
         </div>
@@ -959,17 +959,17 @@ function GreenCenterDialog({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
       <div className="w-full max-w-sm bg-white rounded-2xl shadow-xl p-5 space-y-3">
-        <h3 className="text-base font-bold text-emerald-800 text-center">
+        <h3 className="text-lg font-bold text-emerald-800 text-center">
           📍 ホール{holeNumber} グリーンセンター登録
         </h3>
-        <p className="text-sm text-gray-700 leading-relaxed text-center">
+        <p className="text-base text-gray-700 leading-relaxed text-center">
           グリーンの中央に立って<br />「登録」を押してください
         </p>
-        <p className="text-xs text-gray-500 leading-relaxed text-center">
+        <p className="text-sm text-gray-500 leading-relaxed text-center">
           ※カップの位置ではなく、グリーンの中心点を狙ってください
         </p>
         {status === "error" && errorMessage && (
-          <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg p-2 text-center">
+          <p className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg p-2 text-center">
             {errorMessage}
           </p>
         )}
@@ -977,7 +977,7 @@ function GreenCenterDialog({
           <button
             onClick={onCancel}
             disabled={status === "saving"}
-            className="flex-1 py-2.5 rounded-xl text-sm font-semibold
+            className="flex-1 py-2.5 rounded-xl text-base font-semibold
                        bg-gray-100 hover:bg-gray-200 text-gray-700
                        disabled:opacity-50 disabled:cursor-not-allowed
                        active:scale-95 transition-colors"
@@ -987,7 +987,7 @@ function GreenCenterDialog({
           <button
             onClick={onConfirm}
             disabled={status === "saving"}
-            className="flex-1 py-2.5 rounded-xl text-sm font-semibold
+            className="flex-1 py-2.5 rounded-xl text-base font-semibold
                        bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white
                        disabled:opacity-60 disabled:cursor-not-allowed shadow-sm
                        active:scale-95 transition-colors"
@@ -2170,11 +2170,11 @@ function RoundEndScreen({ onConfirm, confirming }: { onConfirm: () => void; conf
           className="w-28 h-28 object-contain drop-shadow-md"
         />
         <div className="bg-white border border-green-200 rounded-2xl p-5 shadow-sm text-center space-y-1">
-          <p className="text-green-800 text-base leading-relaxed">
+          <p className="text-green-800 text-lg leading-relaxed">
             今日はお疲れ様でした。ディボット跡やバンカーの足跡、グリーン上でのボールマークの修復、ありがとうございました！
           </p>
         </div>
-        <p className="text-green-500 text-sm text-center">
+        <p className="text-green-500 text-base text-center">
           GPS機能とゴルフ場データとの接続を終了します。
         </p>
         <button
@@ -2256,20 +2256,20 @@ function FinalConfirmModal({
       <div className="bg-white rounded-2xl max-w-md w-full max-h-[90vh] flex flex-col shadow-xl">
         <div className="p-5 pb-3 border-b border-gray-100 text-center space-y-1">
           <h2 className="text-lg font-bold text-red-700">🏁 ラウンド終了確認</h2>
-          <p className="text-xs text-gray-600 leading-relaxed">
+          <p className="text-sm text-gray-600 leading-relaxed">
             この内容で終了しますか？修正があれば戻って修正してください。
           </p>
           {missing.length > 0 && (
-            <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-1.5 mt-2 leading-relaxed">
+            <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-1.5 mt-2 leading-relaxed">
               ⚠️ 未入力ホールがあります（{missing.map((n) => `${n}H`).join("、")}）
             </p>
           )}
         </div>
 
         <div className="overflow-y-auto flex-1 px-3 pb-2">
-          <table className="w-full text-sm">
+          <table className="w-full text-base">
             <thead className="sticky top-0 bg-white z-10">
-              <tr className="text-gray-400 text-xs border-b border-gray-200">
+              <tr className="text-gray-400 text-sm border-b border-gray-200">
                 <th className="py-1.5 px-2 text-left font-medium">H</th>
                 <th className="py-1.5 px-2 text-center font-medium">P</th>
                 <th className="py-1.5 px-2 text-center font-medium">打</th>
@@ -2290,14 +2290,14 @@ function FinalConfirmModal({
           <button
             onClick={onCancel}
             className="flex-1 py-3 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700
-                       text-sm font-bold transition-colors"
+                       text-base font-bold transition-colors"
           >
             戻って修正する
           </button>
           <button
             onClick={onConfirm}
             className="flex-1 py-3 rounded-xl bg-red-600 hover:bg-red-700 active:bg-red-800
-                       text-white text-sm font-bold transition-colors"
+                       text-white text-base font-bold transition-colors"
           >
             この内容で終了する
           </button>
@@ -2543,16 +2543,16 @@ function ScoreTable({
         onClick={() => onSelectHole(n)}
         className="flex flex-col gap-0.5 active:scale-95 transition-transform"
       >
-        <div className={`w-9 h-7 rounded-t-md flex items-center justify-center text-sm tabular-nums ${cellCls(n, "H")}`}>
+        <div className={`w-10 h-8 rounded-t-md flex items-center justify-center text-base tabular-nums ${cellCls(n, "H")}`}>
           {n}
         </div>
-        <div className={`w-9 h-7 flex items-center justify-center text-sm tabular-nums ${cellCls(n, "P")}`}>
+        <div className={`w-10 h-8 flex items-center justify-center text-base tabular-nums ${cellCls(n, "P")}`}>
           {par ?? "-"}
         </div>
-        <div className={`w-9 h-7 flex items-center justify-center text-sm tabular-nums ${cellCls(n, "score")}`}>
+        <div className={`w-10 h-8 flex items-center justify-center text-base tabular-nums ${cellCls(n, "score")}`}>
           {scoreTxt}
         </div>
-        <div className={`w-9 h-7 rounded-b-md flex items-center justify-center text-sm tabular-nums ${cellCls(n, "putts")}`}>
+        <div className={`w-10 h-8 rounded-b-md flex items-center justify-center text-base tabular-nums ${cellCls(n, "putts")}`}>
           {puttsTxt}
         </div>
       </button>
@@ -2566,10 +2566,11 @@ function ScoreTable({
     }, 0);
     const scoreSum = nums.reduce((s, n) => s + (holeMap[n]?.score ?? 0), 0);
     const puttsSum = nums.reduce((s, n) => s + (holeMap[n]?.putts ?? 0), 0);
-    const cell = "w-12 h-7 flex items-center justify-center text-sm tabular-nums bg-gray-200 text-gray-700 font-bold";
+    const cell = "w-14 h-8 flex items-center justify-center text-base tabular-nums bg-gray-200 text-gray-700 font-bold";
     return (
       <div key={label} className="flex flex-col gap-0.5 ml-0.5">
-        <div className={`${cell} rounded-t-md text-[11px]`}>{label}</div>
+        {/* TOTAL ラベルが w-14 に収まるよう text-sm に抑制 */}
+        <div className={`${cell} rounded-t-md !text-sm`}>{label}</div>
         <div className={cell}>{parSum || ""}</div>
         <div className={cell}>{scoreSum || ""}</div>
         <div className={`${cell} rounded-b-md`}>{puttsSum || ""}</div>
@@ -2580,12 +2581,12 @@ function ScoreTable({
   return (
     <div className="overflow-x-auto -mx-4 px-4 sticky top-0 z-10 bg-white border-b border-green-100 py-1">
       <div className="flex items-stretch gap-0.5 min-w-max">
-        {/* Row labels (sticky left) */}
-        <div className="flex flex-col gap-0.5 pr-1 text-[10px] font-bold text-green-400 text-right">
-          <div className="h-7 leading-7">H</div>
-          <div className="h-7 leading-7">P</div>
-          <div className="h-7 leading-7">打</div>
-          <div className="h-7 leading-7">パ</div>
+        {/* Row labels (sticky left) — h-8 leading-8 でセル高さと揃える */}
+        <div className="flex flex-col gap-0.5 pr-1 text-sm font-bold text-green-400 text-right">
+          <div className="h-8 leading-8">H</div>
+          <div className="h-8 leading-8">P</div>
+          <div className="h-8 leading-8">打</div>
+          <div className="h-8 leading-8">パ</div>
         </div>
         {/* First 9 hole columns + OUT summary */}
         {playOrder.slice(0, 9).map(holeCol)}
@@ -2626,12 +2627,12 @@ function IdleShotSection({
   return (
     <div className="space-y-1.5">
       {error && (
-        <p className="text-center text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+        <p className="text-center text-base text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
           ⚠️ 保存に失敗しました：{error}
         </p>
       )}
       {lastShot && (
-        <p className="text-center text-sm text-gray-600 tabular-nums">
+        <p className="text-center text-base text-gray-600 tabular-nums">
           📊 直前のショット：第{lastShot.shotNumber}打 {lastShot.distanceYards}ヤード（{lastShot.distanceMeters}m）
         </p>
       )}
@@ -2644,7 +2645,7 @@ function IdleShotSection({
       >
         ⛳ 飛距離を測る
       </button>
-      <p className="text-center text-xs text-gray-500 mt-2">
+      <p className="text-center text-sm text-gray-500 mt-2">
         💡 使ったクラブは「球筋」画面から後で記録できます
       </p>
     </div>
@@ -2687,11 +2688,11 @@ function ActiveShotPanel({
     return (
       <div className="w-full py-5 rounded-2xl bg-gray-100 border-2 border-gray-200
                       text-center space-y-1.5 shadow-inner">
-        <p className="text-base font-bold text-gray-700">
+        <p className="text-lg font-bold text-gray-700">
           ✅ 第{shotNumber}打 記録しました
         </p>
         {yards != null && meters != null && (
-          <p className="text-sm text-gray-600 tabular-nums">
+          <p className="text-base text-gray-600 tabular-nums">
             飛距離 {yards}ヤード（{meters}m）
           </p>
         )}
@@ -2747,7 +2748,7 @@ function ActiveShotPanel({
         <span className="text-xl font-bold text-green-900 tabular-nums">
           📍 {Math.round(dmDistance?.yards ?? 0)}Y
         </span>
-        <span className="text-sm text-green-600 tabular-nums ml-2">
+        <span className="text-base text-green-600 tabular-nums ml-2">
           / {Math.round(dmDistance?.meters ?? 0)}m
         </span>
       </div>
@@ -2771,7 +2772,7 @@ function ActiveShotPanel({
       {!confirming && (
         <button
           onClick={onCancel}
-          className="block mx-auto text-xs text-blue-600 hover:text-blue-800 underline py-1"
+          className="block mx-auto text-sm text-blue-600 hover:text-blue-800 underline py-1"
         >
           キャンセル
         </button>
@@ -2851,7 +2852,7 @@ function QuickPickRow({
 
   return (
     <div className="flex items-center gap-1">
-      <span className="text-xs font-semibold text-green-700 w-10 flex-shrink-0">{label}</span>
+      <span className="text-sm font-semibold text-green-700 w-10 flex-shrink-0">{label}</span>
       <button
         onClick={dec}
         disabled={value == null || value <= min}
@@ -2890,7 +2891,7 @@ function QuickPickRow({
         ＋
       </button>
       {valueOutsideOptions && (
-        <span className="text-xs font-bold text-green-700 tabular-nums w-6 text-center flex-shrink-0">
+        <span className="text-sm font-bold text-green-700 tabular-nums w-6 text-center flex-shrink-0">
           {value}
         </span>
       )}
