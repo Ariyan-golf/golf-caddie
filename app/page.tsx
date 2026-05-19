@@ -162,6 +162,15 @@ export default async function HomePage() {
 
   const recentRounds = graphData.slice(0, 5);
 
+  // 直近10ラウンドの平均スコア（total_score が null のラウンドは除外）
+  const validScores = graphData
+    .map((r) => r.total_score)
+    .filter((s): s is number => s != null);
+  const avgScore: string | null =
+    validScores.length > 0
+      ? (validScores.reduce((a, b) => a + b, 0) / validScores.length).toFixed(1)
+      : null;
+
   // GCAハンディ計算
   const diffs = (handicapData ?? [])
     .map((r) => r.handicap_differential as number)
@@ -229,24 +238,25 @@ export default async function HomePage() {
           <EventRankingSection events={eventRankings} />
         )}
 
-        {/* GCAハンディ */}
-        <div className="card flex items-center justify-between gap-4">
-          <div>
-            <p className="text-xs text-green-500 font-medium mb-0.5">GCAハンディ</p>
-            <p className="text-xl font-bold text-green-800">
-              {gcaHandicap !== null ? (
-                gcaHandicap
-              ) : (
-                <>
-                  ラウンドデータ
-                  <br />
-                  蓄積中
-                </>
-              )}
-            </p>
-          </div>
-          <p className="text-xs text-green-400 text-right leading-relaxed shrink-0 max-w-[140px]">
-            JGA方式に<br />準じた計算です。<br />公式ハンディキャップ<br />ではありません。
+        {/* 平均スコア / GCAハンディ */}
+        <div className="card space-y-3">
+          {avgScore !== null ? (
+            <div>
+              <p className="text-xs text-green-500 font-medium mb-1">平均スコア / GCAハンディ</p>
+              <p className="text-3xl font-bold text-green-800 tabular-nums">
+                {avgScore}
+                <span className="text-green-300 font-normal mx-2">/</span>
+                {gcaHandicap ?? "—"}
+              </p>
+            </div>
+          ) : (
+            <div>
+              <p className="text-xs text-green-500 font-medium mb-1">GCAハンディ</p>
+              <p className="text-xl font-bold text-green-800">ラウンドデータ蓄積中</p>
+            </div>
+          )}
+          <p className="text-xs text-green-400 leading-relaxed">
+            JGA方式に準じた計算です。公式ハンディキャップではありません。
           </p>
         </div>
 
