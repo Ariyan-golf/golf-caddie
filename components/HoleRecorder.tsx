@@ -7,7 +7,7 @@ import { ShotRecorder } from "./ShotRecorder";
 import type { Club } from "@/types";
 import { CLUB_LABELS } from "@/types";
 import { calculateDistance, metersToYards } from "@/lib/distance";
-import { stopGpsTracking, getBestShotPosition, startShotWatch, stopShotWatch } from "@/lib/gps";
+import { stopGpsTracking, getBestShotPosition, startShotWatch, stopShotWatch, type GpsPoint } from "@/lib/gps";
 import { releaseWakeLock } from "@/lib/wakeLock";
 import { isBetaMode } from "@/lib/betaMode";
 import Link from "next/link";
@@ -195,6 +195,15 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
   const [shotMode, setShotMode] = useState<"idle" | "recording">("idle");
   const [lastShot, setLastShot] = useState<LastShotMemo | null>(null);
 
+  // 「打つ前」押下後2秒間はGPS精度安定化のために startPosition を確定させない
+  // GPS精度±14mの状態で startPosition を記録すると、その後の位置取得との
+  // 直線距離計算で 8〜14m の誤差が初期値として出てしまうため
+  // 2秒待機して GPS が安定した位置を起点とすることで、正確な飛距離を測定する
+  const shotStartGraceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const latestShotPositionRef  = useRef<GpsPoint | null>(null);
+  const startPositionRef       = useRef<{ lat: number; lng: number } | null>(null);
+  const startReadyRef          = useRef<boolean>(false);
+
   // Per-hole green direction (absolute heading 0-359°). Keyed by hole number;
   // automatically "cleared" on hole switch because the key just isn't present yet
   // for the next hole. Lives in component state only — resets on app reload by design.
@@ -256,10 +265,26 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
   // ライブ更新は startShotWatch の onUpdate コールバックから setDmDistance
   // を直接呼ぶので、ここでは setInterval ベースの useEffect は持たない。
 
-  // Component unmount 時に watch が漏れないよう保険を掛ける。
+  // Component unmount 時に watch と2秒待機タイマーが漏れないよう保険を掛ける。
   useEffect(() => {
-    return () => stopShotWatch();
+    return () => {
+      clearShotStartGraceTimer();
+      stopShotWatch();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // 2秒待機タイマーと関連 ref をまとめて掃除するヘルパー。
+  // handleCancelShot / selectHole / unmount / 15分タイムアウト等から呼ぶ。
+  function clearShotStartGraceTimer() {
+    if (shotStartGraceTimerRef.current) {
+      clearTimeout(shotStartGraceTimerRef.current);
+      shotStartGraceTimerRef.current = null;
+    }
+    latestShotPositionRef.current = null;
+    startPositionRef.current = null;
+    startReadyRef.current = false;
+  }
 
   // 15分タイムアウトのトーストを3秒で自動消去。
   useEffect(() => {
@@ -526,13 +551,15 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
 
   function selectHole(n: number) {
     // Drop uncommitted shot state + collapse the recording panel
-    // ホール切替時に watch が走っていれば停止（測定中の切替を許す）。
+    // ホール切替時に watch / 2秒待機タイマーが走っていれば停止（測定中の切替を許す）。
+    clearShotStartGraceTimer();
     stopShotWatch();
     setDmStart(null);
     setDmEnd(null);
     setDmDistance(null);
     setShotNextAction("before");
     setShotMode("idle");
+    setDmLoading("idle");
     setLastShot(null);
     setCurrentHoleNumber(n);
   }
@@ -547,57 +574,111 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
   }
 
   function handleCancelShot() {
-    // ペア未完了でキャンセルされたケースに備え watch を必ず停止。
+    // ペア未完了でキャンセルされたケースに備え watch / 2秒待機タイマーを必ず停止。
+    clearShotStartGraceTimer();
     stopShotWatch();
     setDmStart(null);
     setDmEnd(null);
     setDmDistance(null);
     setShotNextAction("before");
     setShotMode("idle");
+    setDmLoading("idle");
   }
 
   async function handleShotStart() {
+    // 「打つ前」押下後2秒間はGPS精度安定化のために startPosition を確定させない
+    // GPS精度±14mの状態で startPosition を記録すると、その後の位置取得との
+    // 直線距離計算で 8〜14m の誤差が初期値として出てしまうため
+    // 2秒待機して GPS が安定した位置を起点とすることで、正確な飛距離を測定する
+    clearShotStartGraceTimer();
     setDmLoading("start");
-    try {
-      const best = await getBestShotPosition();
-      if (!best) return;
-      const startPoint = { lat: best.lat, lng: best.lng };
-      setDmStart(startPoint);
-      setDmEnd(null);
-      // Seed at zero so "📍 0Y / 0m" is visible before the first
-      // live tick lands. startShotWatch の onUpdate が以降を上書きする。
-      setDmDistance({ yards: 0, meters: 0 });
-      setShotNextAction("after");
+    setDmStart(null);
+    setDmEnd(null);
+    setDmDistance({ yards: 0, meters: 0 });
+    setShotNextAction("after");
 
-      // pair-scoped watchPosition を起動。OS から fresh fix が届くたびに
-      // start からの直線距離を再計算して表示を更新する。
-      startShotWatch({
-        onUpdate: (p) => {
-          const distM = calculateDistance(
-            { latitude: startPoint.lat, longitude: startPoint.lng },
-            { latitude: p.lat, longitude: p.lng },
-          );
-          setDmDistance({
-            yards: metersToYards(distM),
-            meters: Math.round(distM * 10) / 10,
-          });
-        },
-        onTimeout: () => {
-          // 15分経過 → 押し忘れと判定して計測を破棄。
-          setDmStart(null);
-          setDmEnd(null);
-          setDmDistance(null);
-          setShotNextAction("before");
-          setShotMode("idle");
-          setShotTimeoutToast("15分経過したので計測をリセットしました");
-        },
-      });
-    } finally {
+    // pair-scoped watchPosition を即時起動。OS から fresh fix が届くたびに
+    // latestShotPositionRef を更新し、startReadyRef が立っていれば
+    // start からの直線距離を再計算して表示を更新する。
+    const watchStarted = startShotWatch({
+      onUpdate: (p) => {
+        latestShotPositionRef.current = p;
+        if (!startReadyRef.current) {
+          // 2秒待機中：内部で位置を受け取るだけで距離計算には使わない
+          return;
+        }
+        const start = startPositionRef.current;
+        if (!start) return;
+        const distM = calculateDistance(
+          { latitude: start.lat, longitude: start.lng },
+          { latitude: p.lat, longitude: p.lng },
+        );
+        setDmDistance({
+          yards: metersToYards(distM),
+          meters: Math.round(distM * 10) / 10,
+        });
+      },
+      onTimeout: () => {
+        // 15分経過 → 押し忘れと判定して計測を破棄。
+        // 15分カウントは「打つ前」押下時刻が起点（2秒待機含む）。
+        clearShotStartGraceTimer();
+        setDmStart(null);
+        setDmEnd(null);
+        setDmDistance(null);
+        setShotNextAction("before");
+        setShotMode("idle");
+        setDmLoading("idle");
+        setShotTimeoutToast("15分経過したので計測をリセットしました");
+      },
+    });
+
+    if (!watchStarted) {
+      // watch 起動失敗（geolocation 利用不可など）→ 計測中断
+      setDmDistance(null);
+      setShotNextAction("before");
+      setShotMode("idle");
       setDmLoading("idle");
+      setShotTimeoutToast("GPSの取得に失敗しました");
+      return;
     }
+
+    // 2秒後に最新の watch 位置を startPosition として確定して計測開始
+    shotStartGraceTimerRef.current = setTimeout(() => {
+      shotStartGraceTimerRef.current = null;
+      const latest = latestShotPositionRef.current;
+      if (!latest) {
+        // 2秒以内に1度も watch 更新が来なかった → GPS失敗扱い
+        stopShotWatch();
+        setDmDistance(null);
+        setShotNextAction("before");
+        setShotMode("idle");
+        setDmLoading("idle");
+        setShotTimeoutToast("GPSの取得に失敗しました");
+        return;
+      }
+      const start = { lat: latest.lat, lng: latest.lng };
+      startPositionRef.current = start;
+      startReadyRef.current = true;
+      setDmStart(start);
+      setDmLoading("idle");
+    }, 2000);
   }
 
   async function handleShotEnd() {
+    // 2秒待機中に呼ばれたケース（UI上はボタン無効化されているが念のため）：
+    // startPosition 未確定なのでペアは無効として扱う。
+    if (shotStartGraceTimerRef.current !== null) {
+      clearShotStartGraceTimer();
+      stopShotWatch();
+      setDmStart(null);
+      setDmEnd(null);
+      setDmDistance(null);
+      setShotNextAction("before");
+      setShotMode("idle");
+      setDmLoading("idle");
+      setShotTimeoutToast("計測時間が短すぎます。もう一度「打つ前」を押してください");
+      return;
+    }
     if (!dmStart) return;
     setDmLoading("end");
     try {
@@ -673,7 +754,8 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
         setShotError(insertErrMsg ?? "保存に失敗しました");
       }
       // ALWAYS unwind to idle so the user is never stuck on the panel.
-      // 念のため watch を再度停止（handleShotEnd で既に止めているはず）。
+      // 念のため watch / 2秒待機 ref を再度クリア（handleShotEnd で既に止めているはず）。
+      clearShotStartGraceTimer();
       stopShotWatch();
       setDmStart(null);
       setDmEnd(null);
