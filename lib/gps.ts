@@ -26,6 +26,22 @@ const SHARED_OPTIONS: PositionOptions = {
   maximumAge: 0,
 };
 
+// 仕様書 v1.3 章6: 残り距離・飛距離測定は accuracy ≤ 5m を確定条件とする。
+// 5m 超は「測位中…」、50m 超は「屋内・木陰など低精度」とユーザーに明示。
+export const GOOD_ACCURACY_M = 5;
+export const MEASURING_MAX_M = 50;
+export const DEFAULT_ACCURACY_TIMEOUT_MS = 10000;
+
+export type AccuracyStatus = "indoor" | "measuring" | "ok";
+
+// 数値→3段階ステータスの純粋関数。null は未取得＝indoor 扱い。
+export function classifyAccuracy(acc: number | null | undefined): AccuracyStatus {
+  if (acc == null) return "indoor";
+  if (acc <= GOOD_ACCURACY_M) return "ok";
+  if (acc <= MEASURING_MAX_M) return "measuring";
+  return "indoor";
+}
+
 // 「打つ前」押下後15分経過したら強制停止＋計測リセット。
 // ボール探し最大10分+組待ち5分を想定、これを超えたら押し忘れ判定。
 // watchPosition の暴走を防いで電池保護。
@@ -179,6 +195,99 @@ export function getBestShotPosition(): Promise<BestShotPosition | null> {
 
 export function isGpsActive(): boolean {
   return active;
+}
+
+// ── 高精度待機（残り距離・飛距離測定の入口で使う） ──────────────────────
+//
+// 仕様書 v1.3 章6: 残り距離計算には accuracy ≤ 5m が絶対条件。
+// watchPosition で fix を受け続け、しきい値を満たした最初の1点を resolve する。
+// timeoutMs までに到達しなければ null。null 受領時は呼び出し側で
+// 「もう一度試す」「手動入力に切替」のユーザー選択肢を提示する（章6 屋内警告）。
+//
+// onProgress は途中の各 fix で呼ばれる（UI の「測位中… ±15m」表示用）。
+// lastPosition は毎回更新されるので GpsIndicator も自動で鮮度維持できる。
+
+export interface AwaitHighAccuracyOptions {
+  thresholdM?: number;
+  timeoutMs?: number;
+  onProgress?: (p: GpsPoint) => void;
+}
+
+export function awaitHighAccuracyFix(
+  options: AwaitHighAccuracyOptions = {},
+): Promise<GpsPoint | null> {
+  const thresholdM = options.thresholdM ?? GOOD_ACCURACY_M;
+  const timeoutMs = options.timeoutMs ?? DEFAULT_ACCURACY_TIMEOUT_MS;
+
+  if (typeof window === "undefined" || !("geolocation" in navigator)) {
+    console.error("[gps] awaitHighAccuracyFix: geolocation unavailable");
+    return Promise.resolve(null);
+  }
+
+  console.log(
+    `[gps] awaitHighAccuracyFix start (threshold=${thresholdM}m, timeout=${timeoutMs}ms)`,
+  );
+
+  return new Promise<GpsPoint | null>((resolve) => {
+    let watchId: number | null = null;
+    let timeoutTimer: ReturnType<typeof setTimeout> | null = null;
+    let settled = false;
+
+    const cleanup = () => {
+      if (watchId !== null && "geolocation" in navigator) {
+        navigator.geolocation.clearWatch(watchId);
+        watchId = null;
+      }
+      if (timeoutTimer !== null) {
+        clearTimeout(timeoutTimer);
+        timeoutTimer = null;
+      }
+    };
+
+    const settle = (value: GpsPoint | null) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve(value);
+    };
+
+    timeoutTimer = setTimeout(() => {
+      console.warn(`[gps] awaitHighAccuracyFix timeout (${timeoutMs}ms)`);
+      settle(null);
+    }, timeoutMs);
+
+    watchId = navigator.geolocation.watchPosition(
+      (pos) => {
+        const point: GpsPoint = {
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+          accuracy: pos.coords.accuracy,
+          timestamp: pos.timestamp ?? Date.now(),
+        };
+        lastPosition = point;
+        options.onProgress?.(point);
+        if (point.accuracy <= thresholdM) {
+          console.log(
+            `[gps] awaitHighAccuracyFix OK (acc=${Math.round(point.accuracy)}m)`,
+          );
+          settle(point);
+        }
+      },
+      (err) => {
+        console.error("[gps] awaitHighAccuracyFix ERR", {
+          code: err.code,
+          codeMeaning:
+            err.code === 1 ? "PERMISSION_DENIED"
+            : err.code === 2 ? "POSITION_UNAVAILABLE"
+            : err.code === 3 ? "TIMEOUT"
+            : "UNKNOWN",
+          message: err.message,
+        });
+        settle(null);
+      },
+      SHARED_OPTIONS,
+    );
+  });
 }
 
 // ── Pair-scoped watchPosition for the live distance meter ──────────────
