@@ -1,11 +1,9 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 import Image from "next/image";
 import type { Location, ClubAverage } from "@/types";
-import { calculateDistance, metersToYards } from "@/lib/distance";
 import { fetchWeather, windArrowRotation, type WeatherData } from "@/lib/weather";
-import { awaitHighAccuracyFix } from "@/lib/gps";
 import { pickClub, getInstantAdvice, type CharacterId, type ClubInfo } from "./templates";
 
 interface Props {
@@ -94,16 +92,11 @@ export function AiCaddieClient({ clubAverages, hasAccess }: Props) {
   const [charId, setCharId]     = useState<CharacterId | null>(null);
   const [phase, setPhase]       = useState<"select" | "caddie">("select");
 
-  // GPS
-  const [pos, setPos]           = useState<Location | null>(null);
-  const [pinPos, setPinPos]     = useState<Location | null>(null);
-  const [gpsErr, setGpsErr]     = useState<string | null>(null);
-  const [accuracy, setAccuracy] = useState<number | null>(null);
-  const [accuracyHint, setAccuracyHint] = useState<number | null>(null);
-  const [needsRetry, setNeedsRetry] = useState(false);
-  const [manual, setManual]     = useState(false);
-  const [manualY, setManualY]   = useState("");
-  const [gpsLoading, setGpsLoading] = useState(false);
+  // GPS（天気取得用のみ・仕様書 v1.3 章6 風向き取得=低精度・60秒キャッシュOK）
+  const [pos, setPos] = useState<Location | null>(null);
+
+  // 残り距離は手動入力（C8b でグリーンセンター DB 連携時に GPS 化予定）
+  const [manualY, setManualY] = useState("");
 
   // Weather (Open-Meteo)
   const [weatherData, setWeatherData]       = useState<WeatherData | null>(null);
@@ -125,12 +118,7 @@ export function AiCaddieClient({ clubAverages, hasAccess }: Props) {
 
   const char = CHARS.find((c) => c.id === charId) ?? null;
 
-  const distMeters = !manual && pos && pinPos ? calculateDistance(pos, pinPos) : null;
-  const distYards  = distMeters != null ? metersToYards(distMeters) : null;
-
-  const effectiveYards = !manual
-    ? distYards
-    : (manualY ? parseInt(manualY, 10) : null);
+  const effectiveYards = manualY ? parseInt(manualY, 10) : null;
 
   // 天気の自動取得（GPS初回取得時に1回だけ実行）
   useEffect(() => {
@@ -141,45 +129,22 @@ export function AiCaddieClient({ clubAverages, hasAccess }: Props) {
     });
   }, [pos]);
 
-  // High-accuracy GPS fetch (≤5m, 10s timeout). 仕様書 v1.3 章6.
-  // null 返却時は needsRetry を立て、UI で「もう一度試す/手動入力」を提示。
-  const fetchCurrentPos = useCallback(async (): Promise<Location | null> => {
-    if (!navigator.geolocation) {
-      setGpsErr("このデバイスはGPSに対応していません");
-      setManual(true);
-      return null;
-    }
-    setGpsLoading(true);
-    setNeedsRetry(false);
-    setGpsErr(null);
-    setAccuracyHint(null);
-
-    const fix = await awaitHighAccuracyFix({
-      onProgress: (p) => setAccuracyHint(p.accuracy),
-    });
-    setGpsLoading(false);
-    setAccuracyHint(null);
-
-    if (!fix) {
-      setGpsErr("GPS精度が出ませんでした。数歩動いてからもう一度お試しください。");
-      setNeedsRetry(true);
-      return null;
-    }
-    const loc: Location = {
-      latitude: fix.lat,
-      longitude: fix.lng,
-      accuracy: fix.accuracy,
-    };
-    setPos(loc);
-    setAccuracy(fix.accuracy);
-    return loc;
-  }, []);
-
-  // Initial GPS fetch on caddie phase entry (no continuous tracking)
+  // 天気取得用の単発 GPS。仕様書 v1.3 章6: 風向き取得は ±100m で十分なので
+  // enableHighAccuracy=false / maximumAge=60000 で電池節約。失敗時は警告のみ
+  // （AIキャディの主機能は手動入力なのでブロックしない）。
   useEffect(() => {
-    if (phase !== "caddie" || manual) return;
-    void fetchCurrentPos();
-  }, [phase, manual, fetchCurrentPos]);
+    if (phase !== "caddie") return;
+    if (typeof navigator === "undefined" || !navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      (p) => setPos({
+        latitude: p.coords.latitude,
+        longitude: p.coords.longitude,
+        accuracy: p.coords.accuracy,
+      }),
+      (e) => console.warn("[ai-caddie] weather GPS failed:", e.message),
+      { enableHighAccuracy: false, maximumAge: 60000, timeout: 15000 },
+    );
+  }, [phase]);
 
   // Stage 1: instant template advice
   function handleQuickAdvice() {
@@ -194,14 +159,14 @@ export function AiCaddieClient({ clubAverages, hasAccess }: Props) {
   }
 
   // Stage 2: API advice
-  const handleDetailAdvice = useCallback(async () => {
+  async function handleDetailAdvice() {
     const yards = effectiveYards;
     if (!yards || !charId) return;
     setDL(true);
     setDetailErr(null);
     setDetailText(null);
     try {
-      const dm = !manual ? distMeters : Math.round(yards / 1.09361);
+      const dm = Math.round(yards / 1.09361);
       const res = await fetch("/api/ai-caddie/gps-advice", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -220,14 +185,13 @@ export function AiCaddieClient({ clubAverages, hasAccess }: Props) {
     } finally {
       setDL(false);
     }
-  }, [charId, effectiveYards, distMeters, manual, wind, windDir, lie, slope]);
+  }
 
   function pickChar(id: CharacterId) {
     setCharId(id); setPhase("caddie");
     setQuickText(null); setClubInfo(null);
     setShowDetail(false); setDetailText(null); setDetailErr(null);
-    setPinPos(null); setPos(null); setGpsErr(null);
-    setManual(false); setManualY("");
+    setPos(null); setManualY("");
     setWeatherData(null);
     weatherFetchedRef.current = false;
   }
@@ -306,107 +270,28 @@ export function AiCaddieClient({ clubAverages, hasAccess }: Props) {
         </div>
       )}
 
-      {/* Distance card */}
+      {/* Distance card — 残り距離は手動入力 (C8b でグリーンセンター DB 連携時に GPS 化) */}
       <div className="card space-y-3">
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-green-700">残り距離</h3>
-          <div className="flex rounded-lg overflow-hidden border border-green-200 text-xs font-medium">
-            {[{ v: false, l: "📍 GPS" }, { v: true, l: "✏️ 手動" }].map(({ v, l }) => (
-              <button key={l} onClick={() => setManual(v)}
-                className={`px-3 py-1.5 transition-colors ${
-                  manual === v ? "bg-green-600 text-white" : "bg-white text-green-600 hover:bg-green-50"
-                }`}>
-                {l}
-              </button>
-            ))}
+        <h3 className="text-sm font-semibold text-green-700">残り距離</h3>
+        <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-xl p-2.5 leading-relaxed">
+          🗺 このコースのグリーンセンター情報はまだ未登録です。残り距離を手動で入力してください。
+        </p>
+        <div className="space-y-2">
+          <label className="text-xs text-green-600 block">グリーンセンターまでの距離（ヤード）</label>
+          <div className="flex items-end gap-2">
+            <input
+              type="number"
+              inputMode="numeric"
+              className="input text-center text-3xl font-bold py-4 flex-1"
+              placeholder="150"
+              value={manualY}
+              onChange={(e) => setManualY(e.target.value)}
+              min={1}
+              max={600}
+            />
+            <span className="text-green-600 font-bold text-xl pb-4">y</span>
           </div>
         </div>
-
-        {!manual ? (
-          <div className="space-y-3">
-            {gpsErr && (
-              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-xl p-3">{gpsErr}</p>
-            )}
-            <div className="flex items-center gap-2 text-xs text-green-500">
-              <span className={`w-2 h-2 rounded-full shrink-0 ${
-                gpsLoading ? "bg-amber-400 animate-pulse"
-                : pos ? "bg-green-400"
-                : "bg-gray-300"
-              }`} />
-              {gpsLoading
-                ? accuracyHint != null
-                  ? `📡 測位中… ±${Math.round(accuracyHint)}m`
-                  : "📡 測位中…"
-                : pos
-                  ? `✅ GPS精度 ±${Math.round(accuracy ?? 0)}m`
-                  : "未取得"}
-            </div>
-            {needsRetry && !gpsLoading && (
-              <div className="flex flex-col gap-2 bg-amber-50 border border-amber-200 rounded-xl p-3">
-                <p className="text-xs text-amber-700">
-                  数歩動いてからもう一度お試しください。
-                </p>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => { setNeedsRetry(false); void fetchCurrentPos(); }}
-                    className="flex-1 py-2 text-xs font-semibold rounded-lg bg-amber-500 hover:bg-amber-600 text-white"
-                  >
-                    📍 もう一度試す
-                  </button>
-                  <button
-                    onClick={() => { setNeedsRetry(false); setGpsErr(null); setManual(true); }}
-                    className="flex-1 py-2 text-xs font-semibold rounded-lg bg-white border border-amber-300 text-amber-700 hover:bg-amber-50"
-                  >
-                    ✏️ 手動で入力
-                  </button>
-                </div>
-              </div>
-            )}
-            {distMeters != null ? (
-              <div className="text-center py-2">
-                <p className="text-6xl font-bold text-green-700 tabular-nums leading-none">{distYards}</p>
-                <p className="text-green-500 text-sm mt-2">ヤード（{Math.round(distMeters)}m）</p>
-              </div>
-            ) : (
-              <div className="text-center py-4 text-green-400 text-sm">
-                {pinPos ? "ボール位置で「残り距離を見る」を押してください" : "ピン位置をセットしてください"}
-              </div>
-            )}
-            <button
-              onClick={async () => {
-                const loc = await fetchCurrentPos();
-                if (loc) setPinPos(loc);
-              }}
-              disabled={gpsLoading}
-              className="btn-secondary py-3 text-sm disabled:opacity-40"
-            >
-              📍 {pinPos ? "ピン位置を更新（現在地）" : "ピン位置をセット（現在地）"}
-            </button>
-            {pinPos && (
-              <button
-                onClick={() => { void fetchCurrentPos(); }}
-                disabled={gpsLoading}
-                className="btn-secondary py-3 text-sm disabled:opacity-40"
-              >
-                📏 残り距離を見る（現在地）
-              </button>
-            )}
-            {!pinPos && (
-              <p className="text-xs text-green-400 text-center leading-relaxed">
-                ピン（旗）の近くでボタンを押して記録。<br />ボール位置に戻り「残り距離を見る」を押すと距離が表示されます。
-              </p>
-            )}
-          </div>
-        ) : (
-          <div className="space-y-2">
-            <label className="text-xs text-green-600 block">ピンまでの距離（ヤード）</label>
-            <div className="flex items-end gap-2">
-              <input type="number" inputMode="numeric" className="input text-center text-3xl font-bold py-4 flex-1"
-                placeholder="150" value={manualY} onChange={(e) => setManualY(e.target.value)} min={1} max={600} />
-              <span className="text-green-600 font-bold text-xl pb-4">y</span>
-            </div>
-          </div>
-        )}
 
         {/* ① アドバイスを聞く */}
         <button
