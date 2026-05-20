@@ -5,6 +5,7 @@ import Image from "next/image";
 import type { Location, ClubAverage } from "@/types";
 import { calculateDistance, metersToYards } from "@/lib/distance";
 import { fetchWeather, windArrowRotation, type WeatherData } from "@/lib/weather";
+import { awaitHighAccuracyFix } from "@/lib/gps";
 import { pickClub, getInstantAdvice, type CharacterId, type ClubInfo } from "./templates";
 
 interface Props {
@@ -98,6 +99,8 @@ export function AiCaddieClient({ clubAverages, hasAccess }: Props) {
   const [pinPos, setPinPos]     = useState<Location | null>(null);
   const [gpsErr, setGpsErr]     = useState<string | null>(null);
   const [accuracy, setAccuracy] = useState<number | null>(null);
+  const [accuracyHint, setAccuracyHint] = useState<number | null>(null);
+  const [needsRetry, setNeedsRetry] = useState(false);
   const [manual, setManual]     = useState(false);
   const [manualY, setManualY]   = useState("");
   const [gpsLoading, setGpsLoading] = useState(false);
@@ -138,55 +141,38 @@ export function AiCaddieClient({ clubAverages, hasAccess }: Props) {
     });
   }, [pos]);
 
-  // Single-shot GPS fetch (replaces continuous watchPosition for battery).
-  // Called on caddie phase entry and via the user-facing "残り距離を見る" /
-  // "ピン位置をセット" buttons.
+  // High-accuracy GPS fetch (≤5m, 10s timeout). 仕様書 v1.3 章6.
+  // null 返却時は needsRetry を立て、UI で「もう一度試す/手動入力」を提示。
   const fetchCurrentPos = useCallback(async (): Promise<Location | null> => {
     if (!navigator.geolocation) {
       setGpsErr("このデバイスはGPSに対応していません");
       setManual(true);
       return null;
     }
-    const options: PositionOptions = { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 };
-    console.log("[ai-caddie] getCurrentPosition", options);
     setGpsLoading(true);
-    return new Promise<Location | null>((resolve) => {
-      navigator.geolocation.getCurrentPosition(
-        (p) => {
-          const loc: Location = {
-            latitude: p.coords.latitude,
-            longitude: p.coords.longitude,
-            accuracy: p.coords.accuracy,
-          };
-          console.log("[ai-caddie] getCurrentPosition OK", loc);
-          setPos(loc);
-          setAccuracy(loc.accuracy ?? null);
-          setGpsErr(null);
-          setGpsLoading(false);
-          resolve(loc);
-        },
-        (e) => {
-          console.error("[ai-caddie] getCurrentPosition ERR", {
-            code: e.code,
-            codeMeaning:
-              e.code === 1 ? "PERMISSION_DENIED"
-              : e.code === 2 ? "POSITION_UNAVAILABLE"
-              : e.code === 3 ? "TIMEOUT"
-              : "UNKNOWN",
-            message: e.message,
-          });
-          if (e.code === 1) {
-            setGpsErr("位置情報の許可が必要です。手動入力をお使いください。");
-            setManual(true);
-          } else {
-            setGpsErr("GPS取得に失敗しました。もう一度お試しください。");
-          }
-          setGpsLoading(false);
-          resolve(null);
-        },
-        options,
-      );
+    setNeedsRetry(false);
+    setGpsErr(null);
+    setAccuracyHint(null);
+
+    const fix = await awaitHighAccuracyFix({
+      onProgress: (p) => setAccuracyHint(p.accuracy),
     });
+    setGpsLoading(false);
+    setAccuracyHint(null);
+
+    if (!fix) {
+      setGpsErr("GPS精度が出ませんでした。数歩動いてからもう一度お試しください。");
+      setNeedsRetry(true);
+      return null;
+    }
+    const loc: Location = {
+      latitude: fix.lat,
+      longitude: fix.lng,
+      accuracy: fix.accuracy,
+    };
+    setPos(loc);
+    setAccuracy(fix.accuracy);
+    return loc;
   }, []);
 
   // Initial GPS fetch on caddie phase entry (no continuous tracking)
@@ -348,11 +334,34 @@ export function AiCaddieClient({ clubAverages, hasAccess }: Props) {
                 : "bg-gray-300"
               }`} />
               {gpsLoading
-                ? "GPS取得中…"
+                ? accuracyHint != null
+                  ? `📡 測位中… ±${Math.round(accuracyHint)}m`
+                  : "📡 測位中…"
                 : pos
-                  ? `GPS取得済み（精度 ±${Math.round(accuracy ?? 0)}m）`
+                  ? `✅ GPS精度 ±${Math.round(accuracy ?? 0)}m`
                   : "未取得"}
             </div>
+            {needsRetry && !gpsLoading && (
+              <div className="flex flex-col gap-2 bg-amber-50 border border-amber-200 rounded-xl p-3">
+                <p className="text-xs text-amber-700">
+                  数歩動いてからもう一度お試しください。
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => { setNeedsRetry(false); void fetchCurrentPos(); }}
+                    className="flex-1 py-2 text-xs font-semibold rounded-lg bg-amber-500 hover:bg-amber-600 text-white"
+                  >
+                    📍 もう一度試す
+                  </button>
+                  <button
+                    onClick={() => { setNeedsRetry(false); setGpsErr(null); setManual(true); }}
+                    className="flex-1 py-2 text-xs font-semibold rounded-lg bg-white border border-amber-300 text-amber-700 hover:bg-amber-50"
+                  >
+                    ✏️ 手動で入力
+                  </button>
+                </div>
+              </div>
+            )}
             {distMeters != null ? (
               <div className="text-center py-2">
                 <p className="text-6xl font-bold text-green-700 tabular-nums leading-none">{distYards}</p>

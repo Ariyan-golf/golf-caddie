@@ -7,7 +7,7 @@ import { ShotRecorder } from "./ShotRecorder";
 import type { Club } from "@/types";
 import { CLUB_LABELS } from "@/types";
 import { calculateDistance, metersToYards } from "@/lib/distance";
-import { stopGpsTracking, getBestShotPosition, startShotWatch, stopShotWatch, type GpsPoint } from "@/lib/gps";
+import { stopGpsTracking, getBestShotPosition, startShotWatch, stopShotWatch, awaitHighAccuracyFix, type GpsPoint } from "@/lib/gps";
 import { releaseWakeLock } from "@/lib/wakeLock";
 import { isBetaMode } from "@/lib/betaMode";
 import Link from "next/link";
@@ -303,41 +303,16 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
     setGreenDialogStatus("saving");
     setGreenDialogError(null);
     try {
-      const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
-        if (typeof navigator === "undefined" || !navigator.geolocation) {
-          console.error("[green-center] navigator.geolocation unavailable");
-          reject(new Error("位置情報を取得できませんでした"));
-          return;
-        }
-        const options: PositionOptions = { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 };
-        console.log("[green-center] calling getCurrentPosition", options);
-        navigator.geolocation.getCurrentPosition(
-          (p) => {
-            console.log("[green-center] getCurrentPosition OK", {
-              lat: p.coords.latitude,
-              lng: p.coords.longitude,
-              accuracy: p.coords.accuracy,
-            });
-            resolve(p);
-          },
-          (err) => {
-            console.error("[green-center] getCurrentPosition ERR", {
-              code: err.code,
-              codeMeaning:
-                err.code === 1 ? "PERMISSION_DENIED"
-                : err.code === 2 ? "POSITION_UNAVAILABLE"
-                : err.code === 3 ? "TIMEOUT"
-                : "UNKNOWN",
-              message: err.message,
-              options,
-            });
-            reject(err);
-          },
-          options,
-        );
-      });
-      const lat = pos.coords.latitude;
-      const lng = pos.coords.longitude;
+      // 仕様書 v1.3 章6: グリーンセンター登録は残り距離計算の基準点になるため
+      // accuracy ≤ 5m を必須とする（10秒タイムアウト）。
+      const fix = await awaitHighAccuracyFix();
+      if (!fix) {
+        setGreenDialogError("GPS精度が出ませんでした。場所を変えてもう一度お試しください。");
+        setGreenDialogStatus("error");
+        return;
+      }
+      const lat = fix.lat;
+      const lng = fix.lng;
       const supabase = createClient();
       const { data: { user } } = await supabase.auth.getUser();
       const { error } = await supabase
@@ -687,12 +662,22 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
     try {
       // ライブ計測終了 → watch を停止して電池を節約。
       stopShotWatch();
-      const best = await getBestShotPosition();
-      if (!best) return;
-      setDmEnd({ lat: best.lat, lng: best.lng });
+      // 仕様書 v1.3 章6: 飛距離測定の終点は accuracy ≤ 5m を確定条件にする。
+      // 10秒待っても達しなければショットペアを破棄して再計測を促す。
+      const fix = await awaitHighAccuracyFix();
+      if (!fix) {
+        setDmStart(null);
+        setDmEnd(null);
+        setDmDistance(null);
+        setShotNextAction("before");
+        setShotMode("idle");
+        setShotTimeoutToast("GPS精度が出ませんでした。数歩動いてからもう一度『打つ前』を押してください");
+        return;
+      }
+      setDmEnd({ lat: fix.lat, lng: fix.lng });
       const distM = calculateDistance(
         { latitude: dmStart.lat, longitude: dmStart.lng },
-        { latitude: best.lat, longitude: best.lng },
+        { latitude: fix.lat, longitude: fix.lng },
       );
       setDmDistance({ yards: metersToYards(distM), meters: Math.round(distM * 10) / 10 });
       // After end is captured, "before" is what comes next (for the *next* shot)

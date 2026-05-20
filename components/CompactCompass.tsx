@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useDeviceOrientation } from "@/hooks/useDeviceOrientation";
 import { calculateDistance, metersToYards } from "@/lib/distance";
+import { awaitHighAccuracyFix } from "@/lib/gps";
 
 const WIND_DIR_DEG: Record<string, number> = {
   "北": 0, "北東": 45, "東": 90, "南東": 135,
@@ -49,14 +50,18 @@ export function CompactCompass({
   const { heading, requestPermission, sensorState } = useDeviceOrientation();
   const [pendingSet, setPendingSet] = useState(false);
 
-  // Remaining-distance readout: ephemeral, auto-clears after 3s. Whatever
-  // is shown here (distance / error / null) lives entirely in this state.
+  // Remaining-distance readout: ephemeral, auto-clears after 5s. Whatever
+  // is shown here (distance / error / retry / null) lives entirely in this state.
   const [remaining, setRemaining] = useState<
     { kind: "distance"; yards: number; meters: number }
     | { kind: "message"; text: string }
+    | { kind: "needs_retry" }
     | null
   >(null);
   const [remainingLoading, setRemainingLoading] = useState(false);
+  const [accuracyHint, setAccuracyHint] = useState<number | null>(null);
+  const [manualMode, setManualMode] = useState(false);
+  const [manualInput, setManualInput] = useState("");
 
   // After tapping "Set" on iOS, permission resolves first; the first heading
   // event arrives a moment later. Once heading turns non-null, commit it.
@@ -93,26 +98,48 @@ export function CompactCompass({
       setRemaining({ kind: "message", text: "位置情報を取得できませんでした" });
       return;
     }
+    setManualMode(false);
     setRemainingLoading(true);
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const distM = calculateDistance(
-          { latitude: pos.coords.latitude, longitude: pos.coords.longitude },
-          { latitude: greenCenter.lat, longitude: greenCenter.lng },
-        );
-        setRemaining({
-          kind: "distance",
-          yards: metersToYards(distM),
-          meters: Math.round(distM * 10) / 10,
-        });
-        setRemainingLoading(false);
-      },
-      () => {
-        setRemaining({ kind: "message", text: "位置情報を取得できませんでした" });
-        setRemainingLoading(false);
-      },
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
+    setAccuracyHint(null);
+    setRemaining(null);
+
+    const fix = await awaitHighAccuracyFix({
+      onProgress: (p) => setAccuracyHint(p.accuracy),
+    });
+    setRemainingLoading(false);
+    setAccuracyHint(null);
+
+    if (!fix) {
+      setRemaining({ kind: "needs_retry" });
+      return;
+    }
+    const distM = calculateDistance(
+      { latitude: fix.lat, longitude: fix.lng },
+      { latitude: greenCenter.lat, longitude: greenCenter.lng },
     );
+    setRemaining({
+      kind: "distance",
+      yards: metersToYards(distM),
+      meters: Math.round(distM * 10) / 10,
+    });
+  }
+
+  function startManualInput() {
+    setRemaining(null);
+    setManualMode(true);
+    setManualInput("");
+  }
+
+  function submitManualInput() {
+    const yards = parseInt(manualInput, 10);
+    if (!Number.isFinite(yards) || yards <= 0) return;
+    setRemaining({
+      kind: "distance",
+      yards,
+      meters: Math.round((yards / 1.09361) * 10) / 10,
+    });
+    setManualMode(false);
+    setManualInput("");
   }
 
   async function handleSetGreen() {
@@ -284,12 +311,67 @@ export function CompactCompass({
                 {pendingSet ? "取得中…" : "再設定"}
               </button>
             )}
-            {remaining && (
-              <p className="text-xl text-emerald-800 font-bold tabular-nums leading-tight">
-                {remaining.kind === "distance"
-                  ? `残り ${remaining.yards}ヤード（${remaining.meters}m）`
-                  : remaining.text}
+            {remainingLoading && (
+              <p className="text-sm text-emerald-700 tabular-nums leading-tight">
+                {accuracyHint != null
+                  ? `📡 測位中… ±${Math.round(accuracyHint)}m`
+                  : "📡 測位中…"}
               </p>
+            )}
+            {!remainingLoading && remaining?.kind === "distance" && (
+              <p className="text-xl text-emerald-800 font-bold tabular-nums leading-tight">
+                残り {remaining.yards}ヤード（{remaining.meters}m）
+              </p>
+            )}
+            {!remainingLoading && remaining?.kind === "message" && (
+              <p className="text-xl text-emerald-800 font-bold tabular-nums leading-tight">
+                {remaining.text}
+              </p>
+            )}
+            {!remainingLoading && remaining?.kind === "needs_retry" && (
+              <div className="flex flex-col gap-1.5 bg-amber-50 border border-amber-200 rounded-lg p-2">
+                <p className="text-xs text-amber-700 leading-tight">
+                  数歩動いてからもう一度お試しください
+                </p>
+                <div className="flex gap-1.5">
+                  <button
+                    onClick={handleShowRemaining}
+                    className="flex-1 py-1.5 text-xs font-semibold rounded-md bg-amber-500 hover:bg-amber-600 text-white"
+                  >
+                    📍 もう一度試す
+                  </button>
+                  <button
+                    onClick={startManualInput}
+                    className="flex-1 py-1.5 text-xs font-semibold rounded-md bg-white border border-amber-300 text-amber-700 hover:bg-amber-50"
+                  >
+                    ✏️ 手動入力
+                  </button>
+                </div>
+              </div>
+            )}
+            {!remainingLoading && manualMode && (
+              <div className="flex items-center gap-1.5">
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  value={manualInput}
+                  onChange={(e) => setManualInput(e.target.value)}
+                  placeholder="ヤード"
+                  className="w-20 text-sm px-2 py-1.5 rounded-md border border-emerald-300 bg-white text-emerald-800 tabular-nums"
+                />
+                <button
+                  onClick={submitManualInput}
+                  className="px-3 py-1.5 text-xs font-semibold rounded-md bg-emerald-600 hover:bg-emerald-700 text-white"
+                >
+                  決定
+                </button>
+                <button
+                  onClick={() => { setManualMode(false); setManualInput(""); }}
+                  className="px-2 py-1.5 text-xs text-emerald-600 hover:text-emerald-800"
+                >
+                  キャンセル
+                </button>
+              </div>
             )}
           </div>
         </div>
