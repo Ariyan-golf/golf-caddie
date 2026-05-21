@@ -16,7 +16,10 @@ export default async function RoundStartPage({ searchParams }: Props) {
   }
 
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  // openPath（未ログインでも閲覧可）だが、middleware で必要に応じて refresh 済。
+  // ここでは Cookie 読みのみの getSession() で十分。
+  const { data: { session } } = await supabase.auth.getSession();
+  const user = session?.user ?? null;
 
   // 未ログイン: course_id を保持したままLINEログインへ誘導し、ログイン後に同じURLへ戻す
   if (!user) {

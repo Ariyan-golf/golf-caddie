@@ -11,7 +11,10 @@ export default async function PayPage({
   const { course_id = "" } = await searchParams;
 
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  // openPath（未ログインでも閲覧可）だが、middleware で必要に応じて refresh 済。
+  // ここでは Cookie 読みのみの getSession() で十分。
+  const { data: { session } } = await supabase.auth.getSession();
+  const user = session?.user ?? null;
 
   // 未ログイン: LINEログインへ誘導（ログイン後に同じURLへ戻す）
   if (!user) {

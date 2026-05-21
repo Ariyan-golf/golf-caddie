@@ -6,7 +6,9 @@ import { UnfilledShotsSection, type UnfilledShot } from "@/components/UnfilledSh
 
 export default async function HistoryPage() {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  // middleware が認証検証済 → Cookie 読みのみの getSession() で高速化。
+  const { data: { session } } = await supabase.auth.getSession();
+  const user = session?.user ?? null;
 
   // ID・日付付きで全件取得（展開表示と個別削除に使用）
   // shots テーブルから直接集計。RLS が holes→rounds.user_id 経由で所有権を強制する。

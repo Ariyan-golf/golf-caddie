@@ -17,7 +17,9 @@ export default async function RoundDetailPage({ params, searchParams }: Props) {
   const { view } = await searchParams;
   const pastView = view === "past";
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  // middleware が認証検証済 → Cookie 読みのみの getSession() で高速化。
+  const { data: { session } } = await supabase.auth.getSession();
+  const user = session?.user ?? null;
 
   const [{ data: round }, { data: profile }] = await Promise.all([
     supabase

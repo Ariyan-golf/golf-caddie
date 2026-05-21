@@ -58,7 +58,9 @@ export default async function PlanPage({ searchParams }: Props) {
   const params = await searchParams;
 
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  // middleware が認証検証済 → Cookie 読みのみの getSession() で高速化。
+  const { data: { session } } = await supabase.auth.getSession();
+  const user = session?.user ?? null;
 
   // プラン取得はサービスロールで（RLSバイパス）
   const admin = createAdminClient(

@@ -11,7 +11,9 @@ export default async function PaySuccessPage({
   const { course_id = "" } = await searchParams;
 
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  // middleware が認証検証済 → Cookie 読みのみの getSession() で高速化。
+  const { data: { session } } = await supabase.auth.getSession();
+  const user = session?.user ?? null;
   if (!user) redirect("/login");
 
   // day_pass_dateを確認（Webhookで既に更新済み）

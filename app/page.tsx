@@ -15,9 +15,13 @@ export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
   const supabase = await createClient();
+  // middleware.ts が getUser() で認証トークンを Supabase Auth で検証＋
+  // 必要なら refresh して Cookie を更新済み。ここではローカル Cookie を読む
+  // getSession() で十分（ネットワーク呼び出しなし）。3〜4G の遅延短縮目的。
   const {
-    data: { user },
-  } = await supabase.auth.getUser();
+    data: { session },
+  } = await supabase.auth.getSession();
+  const user = session?.user ?? null;
 
   if (!user) redirect("/login");
 

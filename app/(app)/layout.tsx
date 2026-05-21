@@ -4,9 +4,13 @@ import { redirect } from "next/navigation";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient();
+  // middleware.ts で getUser() による検証＋トークン refresh が済んでいるので、
+  // ここでは Cookie をローカル読みする getSession() に置換（ネットワーク呼び出しなし）。
+  // 防衛的に session が無ければ /login に飛ばす。
   const {
-    data: { user },
-  } = await supabase.auth.getUser();
+    data: { session },
+  } = await supabase.auth.getSession();
+  const user = session?.user ?? null;
 
   if (!user) redirect("/login");
 
