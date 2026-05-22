@@ -217,6 +217,17 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
   // dialog merge into this map.
   const [greenCenters, setGreenCenters] = useState<Record<number, { lat: number; lng: number }>>(initialGreenCenters);
 
+  // 残り距離測定（C8b Min版）。green_centers と現在GPS位置の Haversine 距離。
+  // 「打つ前/止まった場所」ペアとは独立した単発GPS取得（手動オンデマンド・電池影響ゼロ）。
+  // ホール切替時に破棄して新ホール用に再計測を促す（selectHole 参照）。
+  const [remainingDistance, setRemainingDistance] = useState<{
+    holeNumber: number;
+    yards: number;
+    meters: number;
+  } | null>(null);
+  const [remainingDistanceLoading, setRemainingDistanceLoading] = useState(false);
+  const [remainingDistanceError, setRemainingDistanceError] = useState<string | null>(null);
+
   // Green-center registration dialog + toast
   const [greenDialogOpen, setGreenDialogOpen] = useState(false);
   const [greenDialogStatus, setGreenDialogStatus] = useState<"idle" | "saving" | "error">("idle");
@@ -341,6 +352,39 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
       const msg = err instanceof Error ? err.message : "位置情報を取得できませんでした";
       setGreenDialogError(msg);
       setGreenDialogStatus("error");
+    }
+  }
+
+  // C8b: 「📍 残り距離を計測」ボタンの押下ハンドラ。
+  // green_centers に登録済みなら、現在GPS（高精度 ≤5m fix）を取得して
+  // Haversine 距離を yards/meters で返す。10秒以内に ≤5m が出なければ
+  // null を返して再計測を促す（緑センター登録と同じ精度要件）。
+  async function handleMeasureRemainingDistance() {
+    if (!currentHole) return;
+    const greenCenter = greenCenters[currentHole.hole_number];
+    if (!greenCenter) {
+      setRemainingDistanceError("このホールはグリーン未登録です");
+      return;
+    }
+    setRemainingDistanceLoading(true);
+    setRemainingDistanceError(null);
+    try {
+      const fix = await awaitHighAccuracyFix();
+      if (!fix) {
+        setRemainingDistanceError("GPS精度が出ませんでした。場所を変えてもう一度お試しください。");
+        return;
+      }
+      const distM = calculateDistance(
+        { latitude: fix.lat, longitude: fix.lng },
+        { latitude: greenCenter.lat, longitude: greenCenter.lng },
+      );
+      setRemainingDistance({
+        holeNumber: currentHole.hole_number,
+        yards: metersToYards(distM),
+        meters: Math.round(distM * 10) / 10,
+      });
+    } finally {
+      setRemainingDistanceLoading(false);
     }
   }
 
@@ -539,6 +583,10 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
     setShotMode("idle");
     setDmLoading("idle");
     setLastShot(null);
+    // 残り距離はホール固有なので切替で破棄（新ホール用に再計測を促す）。
+    setRemainingDistance(null);
+    setRemainingDistanceError(null);
+    setRemainingDistanceLoading(false);
     setCurrentHoleNumber(n);
   }
 
@@ -954,6 +1002,18 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
         onPuttsChange={updateHolePutts}
       />
 
+      {/* C8b: 残り距離カード（グリーンセンター登録済みホールで表示） */}
+      {currentHole && (
+        <RemainingDistanceCard
+          holeNumber={currentHole.hole_number}
+          greenCenter={greenCenters[currentHole.hole_number] ?? null}
+          remaining={remainingDistance}
+          loading={remainingDistanceLoading}
+          error={remainingDistanceError}
+          onMeasure={handleMeasureRemainingDistance}
+        />
+      )}
+
       {/* Green-center registration — disabled when no course is linked to the round */}
       {currentHole && (
         <button
@@ -1025,6 +1085,75 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
         </div>
       )}
 
+    </div>
+  );
+}
+
+// ── RemainingDistanceCard（C8b Min版） ─────────────────────────────────
+//
+// グリーンまでの残り距離を表示するカード。
+// - 未登録ホール: 「グリーン未登録」のグレー表示
+// - 登録済み + 未計測: 「📍 残り距離を計測」緑ボタン
+// - 計測済み (本ホールの fresh な fix): yards 大文字＋「📍 再計測」ボタン
+// 機能は手動オンデマンド (押下時のみ awaitHighAccuracyFix を1回呼ぶ)。
+
+function RemainingDistanceCard({
+  holeNumber,
+  greenCenter,
+  remaining,
+  loading,
+  error,
+  onMeasure,
+}: {
+  holeNumber: number;
+  greenCenter: { lat: number; lng: number } | null;
+  remaining: { holeNumber: number; yards: number; meters: number } | null;
+  loading: boolean;
+  error: string | null;
+  onMeasure: () => void;
+}) {
+  if (!greenCenter) {
+    return (
+      <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-center">
+        <p className="text-sm text-gray-500">
+          📍 このホールはグリーン未登録のため残り距離は計測できません
+        </p>
+      </div>
+    );
+  }
+  const isFresh = remaining?.holeNumber === holeNumber;
+  return (
+    <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 space-y-2">
+      {isFresh && remaining && (
+        <div className="text-center">
+          <p className="text-xs text-emerald-600 font-medium">グリーンまで</p>
+          <p className="text-5xl font-bold text-emerald-700 tabular-nums leading-tight">
+            {remaining.yards}
+            <span className="text-2xl ml-0.5">y</span>
+          </p>
+          <p className="text-xs text-emerald-500">({remaining.meters}m)</p>
+        </div>
+      )}
+      <button
+        onClick={onMeasure}
+        disabled={loading}
+        className="w-full py-2.5 rounded-lg text-base font-semibold
+                   bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white
+                   disabled:opacity-60 disabled:cursor-not-allowed
+                   active:scale-95 transition-colors"
+      >
+        {loading ? (
+          <span className="flex items-center justify-center gap-2">
+            <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+            📡 測位中…
+          </span>
+        ) : isFresh ? "📍 再計測" : "📍 残り距離を計測"}
+      </button>
+      {error && (
+        <p className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg p-2 text-center">
+          {error}
+        </p>
+      )}
     </div>
   );
 }
