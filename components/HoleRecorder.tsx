@@ -388,6 +388,21 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
     }
   }
 
+  // C8b: 「🏌️ AIキャディに聞く」ボタンの押下ハンドラ。
+  // ラウンド/ホール文脈を query param で AIキャディ画面に渡し、
+  // 残り距離が計測済なら distance も自動連携する。未計測ならパラメータ省略
+  // → AIキャディ側で手動入力 UI にフォールバック。
+  function handleOpenAiCaddie() {
+    if (!currentHole) return;
+    const params = new URLSearchParams();
+    params.set("round", roundId);
+    params.set("hole", String(currentHole.hole_number));
+    if (remainingDistance?.holeNumber === currentHole.hole_number) {
+      params.set("distance", String(remainingDistance.yards));
+    }
+    router.push(`/ai-caddie?${params.toString()}`);
+  }
+
   // Auto-dismiss the green-center success toast after 3 seconds.
   useEffect(() => {
     if (!greenToast) return;
@@ -1011,6 +1026,7 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
           loading={remainingDistanceLoading}
           error={remainingDistanceError}
           onMeasure={handleMeasureRemainingDistance}
+          onOpenAiCaddie={handleOpenAiCaddie}
         />
       )}
 
@@ -1089,13 +1105,14 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
   );
 }
 
-// ── RemainingDistanceCard（C8b Min版） ─────────────────────────────────
+// ── RemainingDistanceCard（C8b Min版・①+②統合） ────────────────────────
 //
-// グリーンまでの残り距離を表示するカード。
-// - 未登録ホール: 「グリーン未登録」のグレー表示
-// - 登録済み + 未計測: 「📍 残り距離を計測」緑ボタン
-// - 計測済み (本ホールの fresh な fix): yards 大文字＋「📍 再計測」ボタン
-// 機能は手動オンデマンド (押下時のみ awaitHighAccuracyFix を1回呼ぶ)。
+// グリーンまでの残り距離表示＋AIキャディ遷移を1カードに統合。
+// - 未登録ホール: 「グリーン未登録」グレー＋小さく「🏌️ AIキャディに聞く（手動入力）」
+// - 登録済み + 未計測: 緑枠＋2カラムボタン（残り距離を計測 / AIキャディに聞く）
+// - 計測済み: yards 大文字＋2カラムボタン（再計測 / AIキャディに聞く）
+// 残り距離計測は手動オンデマンド (awaitHighAccuracyFix 1回呼出・電池影響ゼロ)。
+// AIキャディ遷移は計測済なら distance を URL に乗せて自動連携。
 
 function RemainingDistanceCard({
   holeNumber,
@@ -1104,6 +1121,7 @@ function RemainingDistanceCard({
   loading,
   error,
   onMeasure,
+  onOpenAiCaddie,
 }: {
   holeNumber: number;
   greenCenter: { lat: number; lng: number } | null;
@@ -1111,13 +1129,22 @@ function RemainingDistanceCard({
   loading: boolean;
   error: string | null;
   onMeasure: () => void;
+  onOpenAiCaddie: () => void;
 }) {
   if (!greenCenter) {
     return (
-      <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-center">
-        <p className="text-sm text-gray-500">
+      <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 space-y-2">
+        <p className="text-sm text-gray-500 text-center">
           📍 このホールはグリーン未登録のため残り距離は計測できません
         </p>
+        <button
+          onClick={onOpenAiCaddie}
+          className="w-full py-2 rounded-lg text-sm font-semibold
+                     bg-pink-500 hover:bg-pink-600 active:bg-pink-700 text-white
+                     transition-colors active:scale-95"
+        >
+          🏌️ AIキャディに聞く（距離は手動入力）
+        </button>
       </div>
     );
   }
@@ -1134,21 +1161,31 @@ function RemainingDistanceCard({
           <p className="text-xs text-emerald-500">({remaining.meters}m)</p>
         </div>
       )}
-      <button
-        onClick={onMeasure}
-        disabled={loading}
-        className="w-full py-2.5 rounded-lg text-base font-semibold
-                   bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white
-                   disabled:opacity-60 disabled:cursor-not-allowed
-                   active:scale-95 transition-colors"
-      >
-        {loading ? (
-          <span className="flex items-center justify-center gap-2">
-            <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
-            📡 測位中…
-          </span>
-        ) : isFresh ? "📍 再計測" : "📍 残り距離を計測"}
-      </button>
+      <div className="grid grid-cols-2 gap-2">
+        <button
+          onClick={onMeasure}
+          disabled={loading}
+          className="py-3 rounded-lg text-sm font-semibold
+                     bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white
+                     disabled:opacity-60 disabled:cursor-not-allowed
+                     active:scale-95 transition-colors"
+        >
+          {loading ? (
+            <span className="flex items-center justify-center gap-1.5">
+              <span className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+              <span>測位中…</span>
+            </span>
+          ) : isFresh ? "📍 再計測" : "📍 残り距離を計測"}
+        </button>
+        <button
+          onClick={onOpenAiCaddie}
+          className="py-3 rounded-lg text-sm font-semibold
+                     bg-pink-500 hover:bg-pink-600 active:bg-pink-700 text-white
+                     transition-colors active:scale-95"
+        >
+          🏌️ AIキャディに聞く
+        </button>
+      </div>
       {error && (
         <p className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg p-2 text-center">
           {error}
