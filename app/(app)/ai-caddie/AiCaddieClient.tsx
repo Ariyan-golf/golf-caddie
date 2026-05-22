@@ -6,9 +6,21 @@ import type { Location, ClubAverage } from "@/types";
 import { fetchWeather, windArrowRotation, type WeatherData } from "@/lib/weather";
 import { pickClub, getInstantAdvice, type CharacterId, type ClubInfo } from "./templates";
 
+// C8b ③: HoleRecorder から「🏌️ AIキャディに聞く」で渡されるラウンド文脈。
+// null の場合は AIキャディタブからの直接アクセスとみなし、従来通り手動入力。
+export interface InitialContext {
+  roundId: string;
+  holeNumber: number;
+  courseName: string;
+  par: number | null;
+  distance: number | null;       // URL から渡された残り距離（GPS計測値）
+  greenRegistered: boolean;      // この (course, hole, greenType) の green_centers 有無
+}
+
 interface Props {
   clubAverages: ClubAverage[];
   hasAccess: boolean;
+  initialContext?: InitialContext | null;
 }
 
 interface CharDef {
@@ -88,15 +100,18 @@ const SLOPE_OPTS:    { v: Slope;   l: string }[] = [
   { v:"downhill", l:"下り" },
 ];
 
-export function AiCaddieClient({ clubAverages, hasAccess }: Props) {
+export function AiCaddieClient({ clubAverages, hasAccess, initialContext = null }: Props) {
   const [charId, setCharId]     = useState<CharacterId | null>(null);
   const [phase, setPhase]       = useState<"select" | "caddie">("select");
 
   // GPS（天気取得用のみ・仕様書 v1.3 章6 風向き取得=低精度・60秒キャッシュOK）
   const [pos, setPos] = useState<Location | null>(null);
 
-  // 残り距離は手動入力（C8b でグリーンセンター DB 連携時に GPS 化予定）
-  const [manualY, setManualY] = useState("");
+  // C8b ③: 残り距離。HoleRecorder 経由で来た場合は GPS計測値で初期化。
+  // ユーザーが書き換えれば普通の手動入力扱い（initialContext は変更しない）。
+  const [manualY, setManualY] = useState(
+    initialContext?.distance != null ? String(initialContext.distance) : "",
+  );
 
   // Weather (Open-Meteo)
   const [weatherData, setWeatherData]       = useState<WeatherData | null>(null);
@@ -191,15 +206,44 @@ export function AiCaddieClient({ clubAverages, hasAccess }: Props) {
     setCharId(id); setPhase("caddie");
     setQuickText(null); setClubInfo(null);
     setShowDetail(false); setDetailText(null); setDetailErr(null);
-    setPos(null); setManualY("");
+    setPos(null);
+    // C8b ③: キャラ切替時も initialContext の distance は保持する（連携感の維持）。
+    setManualY(initialContext?.distance != null ? String(initialContext.distance) : "");
     setWeatherData(null);
     weatherFetchedRef.current = false;
   }
+
+  // C8b ③: ラウンド文脈バナー（HoleRecorder 経由で来た場合のみ表示）。
+  // キャラ選択画面・キャディ画面の両方で同じ内容を出して連携感を維持する。
+  const contextBanner = initialContext && (
+    <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5">
+      <p className="text-sm text-emerald-700 leading-relaxed flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+        <span aria-hidden="true">📍</span>
+        <span className="font-semibold">{initialContext.courseName}</span>
+        <span className="text-emerald-400" aria-hidden="true">·</span>
+        <span>H{initialContext.holeNumber}</span>
+        {initialContext.par != null && (
+          <>
+            <span className="text-emerald-400" aria-hidden="true">·</span>
+            <span>パー {initialContext.par}</span>
+          </>
+        )}
+        {initialContext.distance != null && (
+          <>
+            <span className="text-emerald-400" aria-hidden="true">·</span>
+            <span className="font-semibold">残り {initialContext.distance}y</span>
+            <span className="text-xs text-emerald-500">（GPS自動・編集可）</span>
+          </>
+        )}
+      </p>
+    </div>
+  );
 
   // ── Character selection ─────────────────────────────────────────────
   if (phase === "select") {
     return (
       <div className="space-y-5">
+        {contextBanner}
         <p className="text-base text-green-600 text-center">
           一緒にラウンドするキャラクターを選んでください
         </p>
@@ -236,6 +280,8 @@ export function AiCaddieClient({ clubAverages, hasAccess }: Props) {
   return (
     <div className="space-y-4">
 
+      {contextBanner}
+
       {/* Header */}
       <div className={`flex items-center justify-between px-4 py-3 rounded-2xl border ${char.bubble}`}>
         <div className="flex items-center gap-3">
@@ -270,12 +316,22 @@ export function AiCaddieClient({ clubAverages, hasAccess }: Props) {
         </div>
       )}
 
-      {/* Distance card — 残り距離は手動入力 (C8b でグリーンセンター DB 連携時に GPS 化) */}
+      {/* Distance card — C8b ③ で initialContext に応じてヒント表示を分岐 */}
       <div className="card space-y-3">
         <h3 className="text-sm font-semibold text-green-700">残り距離</h3>
-        <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-xl p-2.5 leading-relaxed">
-          🗺 このコースのグリーンセンター情報はまだ未登録です。残り距離を手動で入力してください。
-        </p>
+        {initialContext?.distance != null ? (
+          <p className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-xl p-2.5 leading-relaxed">
+            📡 GPSで計測した残り距離を自動入力しています（編集可）
+          </p>
+        ) : initialContext?.greenRegistered ? (
+          <p className="text-xs text-sky-700 bg-sky-50 border border-sky-200 rounded-xl p-2.5 leading-relaxed">
+            💡 ラウンド画面の「📍 残り距離を計測」ボタンでGPSから自動取得できます
+          </p>
+        ) : (
+          <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-xl p-2.5 leading-relaxed">
+            🗺 残り距離を手動で入力してください（ラウンド画面から開けば自動連携できます）
+          </p>
+        )}
         <div className="space-y-2">
           <label className="text-xs text-green-600 block">グリーンセンターまでの距離（ヤード）</label>
           <div className="flex items-end gap-2">
