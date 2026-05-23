@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { hasFullAccess } from "@/lib/day-pass";
+import { isBetaMode } from "@/lib/betaMode";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { AiManagerClient } from "./AiManagerClient";
 
@@ -19,7 +20,7 @@ export default async function AiManagerPage() {
     .eq("id", user!.id)
     .single();
 
-  const canAccess = hasFullAccess(profile ?? {});
+  const canAccess = hasFullAccess(profile ?? {}) || isBetaMode();
 
   return (
     <div className="max-w-lg mx-auto p-4 space-y-4">
