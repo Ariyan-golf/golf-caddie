@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import type { TobashikkoRankingRow } from "@/lib/tobashikko/ranking";
+import { joinBrandModel, type TobashikkoRankingRow } from "@/lib/tobashikko/ranking";
 
 interface GolfCourse {
   id: string;
@@ -188,16 +188,29 @@ export function EventManagement({
 
     if (rankingType === "tobashikko") {
       if (sortedTobashikko.length === 0) return;
-      header = "順位,ニックネーム,飛距離(yd),飛距離(m),使用ドライバー,ゴルフ場,ラウンド日\n";
+      // メーカーと機種は別カラム（後の集計・分析しやすさのため）
+      header =
+        "順位,ニックネーム,飛距離(yd),飛距離(m)," +
+        "使用ドライバーメーカー,使用ドライバー機種," +
+        "使用シャフトメーカー,使用シャフト機種," +
+        "使用ボールメーカー,使用ボール機種," +
+        "ゴルフ場名,ホール番号,ラウンド日\n";
+      const esc = (v: string | null) => `"${(v ?? "").replace(/"/g, '""')}"`;
       body = sortedTobashikko
         .map((r) =>
           [
             r.rank,
-            `"${r.nickname}"`,
+            esc(r.nickname),
             r.distance_yards,
             r.distance_meters != null ? r.distance_meters.toFixed(1) : "",
-            `"${r.driver_text ?? ""}"`,
-            `"${r.course_name}"`,
+            esc(r.driver_brand),
+            esc(r.driver_model),
+            esc(r.shaft_brand),
+            esc(r.shaft_model),
+            esc(r.ball_brand),
+            esc(r.ball_model),
+            esc(r.course_name),
+            r.hole_number,
             new Date(r.round_date).toLocaleDateString("ja-JP"),
           ].join(",")
         )
@@ -535,62 +548,75 @@ export function EventManagement({
                     <p>期間内のエントリーがありません</p>
                   </div>
                 ) : (
-                  <table className="w-full text-sm">
-                    <thead className="sticky top-0 bg-white border-b border-green-100">
-                      <tr className="text-green-600 text-xs">
-                        <th className="text-center px-3 py-3 font-semibold w-10">順位</th>
-                        <th className="text-left px-3 py-3 font-semibold">ニックネーム</th>
-                        <th className="text-right px-3 py-3 font-semibold whitespace-nowrap">飛距離</th>
-                        <th className="text-left px-3 py-3 font-semibold whitespace-nowrap">使用ドライバー</th>
-                        <th className="text-left px-3 py-3 font-semibold whitespace-nowrap">ゴルフ場 / ラウンド日</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {sortedTobashikko.map((row, i) => {
-                        const displayRank = sortOrder === "distance" ? row.rank : i + 1;
-                        const isTop3ByDistance = row.rank <= 3 && sortOrder === "distance";
-                        return (
-                          <tr
-                            key={`${row.rank}-${row.nickname}-${row.round_date}`}
-                            className={`border-b border-green-50 last:border-0 ${
-                              isTop3ByDistance && row.rank === 1
-                                ? "bg-yellow-50"
-                                : isTop3ByDistance && row.rank === 2
-                                ? "bg-gray-50"
-                                : isTop3ByDistance && row.rank === 3
-                                ? "bg-orange-50"
-                                : ""
-                            }`}
-                          >
-                            <td className="px-3 py-3 text-center font-bold text-green-800">
-                              {sortOrder === "distance" && row.rank === 1 ? "🥇"
-                                : sortOrder === "distance" && row.rank === 2 ? "🥈"
-                                : sortOrder === "distance" && row.rank === 3 ? "🥉"
-                                : displayRank}
-                            </td>
-                            <td className="px-3 py-3 font-medium text-green-900">{row.nickname}</td>
-                            <td className="px-3 py-3 text-right tabular-nums font-semibold text-green-800 whitespace-nowrap">
-                              {row.distance_yards} yd
-                              {row.distance_meters != null && (
-                                <span className="text-green-400 font-normal ml-1 text-xs">
-                                  ({row.distance_meters.toFixed(1)} m)
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm min-w-[900px]">
+                      <thead className="sticky top-0 bg-white border-b border-green-100">
+                        <tr className="text-green-600 text-xs">
+                          <th className="text-center px-3 py-3 font-semibold w-10">順位</th>
+                          <th className="text-left px-3 py-3 font-semibold whitespace-nowrap">ニックネーム</th>
+                          <th className="text-right px-3 py-3 font-semibold whitespace-nowrap">飛距離</th>
+                          <th className="text-left px-3 py-3 font-semibold whitespace-nowrap">使用ドライバー</th>
+                          <th className="text-left px-3 py-3 font-semibold whitespace-nowrap">使用シャフト</th>
+                          <th className="text-left px-3 py-3 font-semibold whitespace-nowrap">使用ボール</th>
+                          <th className="text-left px-3 py-3 font-semibold whitespace-nowrap">ゴルフ場・ホール / ラウンド日</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {sortedTobashikko.map((row, i) => {
+                          const displayRank = sortOrder === "distance" ? row.rank : i + 1;
+                          const isTop3ByDistance = row.rank <= 3 && sortOrder === "distance";
+                          const driverText = joinBrandModel(row.driver_brand, row.driver_model);
+                          const shaftText  = joinBrandModel(row.shaft_brand,  row.shaft_model);
+                          const ballText   = joinBrandModel(row.ball_brand,   row.ball_model);
+                          return (
+                            <tr
+                              key={`${row.rank}-${row.nickname}-${row.round_date}`}
+                              className={`border-b border-green-50 last:border-0 ${
+                                isTop3ByDistance && row.rank === 1
+                                  ? "bg-yellow-50"
+                                  : isTop3ByDistance && row.rank === 2
+                                  ? "bg-gray-50"
+                                  : isTop3ByDistance && row.rank === 3
+                                  ? "bg-orange-50"
+                                  : ""
+                              }`}
+                            >
+                              <td className="px-3 py-3 text-center font-bold text-green-800">
+                                {sortOrder === "distance" && row.rank === 1 ? "🥇"
+                                  : sortOrder === "distance" && row.rank === 2 ? "🥈"
+                                  : sortOrder === "distance" && row.rank === 3 ? "🥉"
+                                  : displayRank}
+                              </td>
+                              <td className="px-3 py-3 font-medium text-green-900 whitespace-nowrap">{row.nickname}</td>
+                              <td className="px-3 py-3 text-right tabular-nums font-semibold text-green-800 whitespace-nowrap">
+                                {row.distance_yards} yd
+                                {row.distance_meters != null && (
+                                  <span className="text-green-400 font-normal ml-1 text-xs">
+                                    ({row.distance_meters.toFixed(1)} m)
+                                  </span>
+                                )}
+                              </td>
+                              <td className="px-3 py-3 text-green-700 text-xs whitespace-nowrap">
+                                {driverText ?? "—"}
+                              </td>
+                              <td className="px-3 py-3 text-green-700 text-xs whitespace-nowrap">
+                                {shaftText ?? "—"}
+                              </td>
+                              <td className="px-3 py-3 text-green-700 text-xs whitespace-nowrap">
+                                {ballText ?? "—"}
+                              </td>
+                              <td className="px-3 py-3 text-green-500 text-xs whitespace-nowrap">
+                                {row.course_name} H{row.hole_number}
+                                <span className="text-green-400 ml-1">
+                                  {new Date(row.round_date).toLocaleDateString("ja-JP")}
                                 </span>
-                              )}
-                            </td>
-                            <td className="px-3 py-3 text-green-700 text-xs whitespace-nowrap">
-                              {row.driver_text ?? "—"}
-                            </td>
-                            <td className="px-3 py-3 text-green-500 text-xs whitespace-nowrap">
-                              {row.course_name}
-                              <span className="text-green-400 ml-1">
-                                {new Date(row.round_date).toLocaleDateString("ja-JP")}
-                              </span>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
                 )
               ) : sortedRanking.length === 0 ? (
                 <div className="py-12 text-center text-green-400 text-sm">

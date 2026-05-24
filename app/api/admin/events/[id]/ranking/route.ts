@@ -55,16 +55,29 @@ export async function GET(
     });
 
     if (wantsCsv) {
-      const header = "順位,ニックネーム,飛距離(yd),飛距離(m),使用ドライバー,ゴルフ場,ラウンド日\n";
+      // メーカーと機種は別カラム（後の集計・分析しやすさのため）
+      const header =
+        "順位,ニックネーム,飛距離(yd),飛距離(m)," +
+        "使用ドライバーメーカー,使用ドライバー機種," +
+        "使用シャフトメーカー,使用シャフト機種," +
+        "使用ボールメーカー,使用ボール機種," +
+        "ゴルフ場名,ホール番号,ラウンド日\n";
+      const esc = (v: string | null) => `"${(v ?? "").replace(/"/g, '""')}"`;
       const body = ranking
         .map((r) =>
           [
             r.rank,
-            `"${r.nickname}"`,
+            esc(r.nickname),
             r.distance_yards,
             r.distance_meters != null ? r.distance_meters.toFixed(1) : "",
-            `"${r.driver_text ?? ""}"`,
-            `"${r.course_name}"`,
+            esc(r.driver_brand),
+            esc(r.driver_model),
+            esc(r.shaft_brand),
+            esc(r.shaft_model),
+            esc(r.ball_brand),
+            esc(r.ball_model),
+            esc(r.course_name),
+            r.hole_number,
             new Date(r.round_date).toLocaleDateString("ja-JP"),
           ].join(",")
         )

@@ -1,6 +1,6 @@
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import Link from "next/link";
-import { fetchTobashikkoRanking, type TobashikkoRankingRow } from "@/lib/tobashikko/ranking";
+import { fetchTobashikkoRanking, joinBrandModel, type TobashikkoRankingRow } from "@/lib/tobashikko/ranking";
 
 export const dynamic = "force-dynamic";
 
@@ -80,35 +80,38 @@ export default async function PublicTobashikkoRankingPage() {
         </div>
       ) : (
         <div className="card space-y-2">
-          {ranking.map((row) => (
-            <div
-              key={`${row.rank}-${row.nickname}-${row.round_date}`}
-              className={`flex items-center gap-3 py-2 border-b border-green-50 last:border-0 ${
-                row.rank === 1 ? "bg-yellow-50/40 -mx-2 px-2 rounded" :
-                row.rank === 2 ? "bg-gray-50/60  -mx-2 px-2 rounded" :
-                row.rank === 3 ? "bg-orange-50/40 -mx-2 px-2 rounded" : ""
-              }`}
-            >
-              <div className="w-9 text-center flex-shrink-0">
-                <Medal rank={row.rank} />
+          {ranking.map((row) => {
+            const driverText = joinBrandModel(row.driver_brand, row.driver_model);
+            return (
+              <div
+                key={`${row.rank}-${row.nickname}-${row.round_date}`}
+                className={`flex items-center gap-3 py-2 border-b border-green-50 last:border-0 ${
+                  row.rank === 1 ? "bg-yellow-50/40 -mx-2 px-2 rounded" :
+                  row.rank === 2 ? "bg-gray-50/60  -mx-2 px-2 rounded" :
+                  row.rank === 3 ? "bg-orange-50/40 -mx-2 px-2 rounded" : ""
+                }`}
+              >
+                <div className="w-9 text-center flex-shrink-0">
+                  <Medal rank={row.rank} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-green-900 truncate">{row.nickname}</p>
+                  {driverText && (
+                    <p className="text-xs text-green-500 truncate">{driverText}</p>
+                  )}
+                  <p className="text-[10px] text-green-400 truncate">
+                    {row.course_name} H{row.hole_number} {fmtDate(row.round_date)}
+                  </p>
+                </div>
+                <div className="text-right flex-shrink-0">
+                  <p className="text-lg font-bold text-amber-800 tabular-nums">
+                    {row.distance_yards}
+                    <span className="text-xs font-normal text-amber-500 ml-0.5">yd</span>
+                  </p>
+                </div>
               </div>
-              <div className="flex-1 min-w-0">
-                <p className="font-semibold text-green-900 truncate">{row.nickname}</p>
-                {row.driver_text && (
-                  <p className="text-xs text-green-500 truncate">{row.driver_text}</p>
-                )}
-                <p className="text-[10px] text-green-400 truncate">
-                  {row.course_name} {fmtDate(row.round_date)}
-                </p>
-              </div>
-              <div className="text-right flex-shrink-0">
-                <p className="text-lg font-bold text-amber-800 tabular-nums">
-                  {row.distance_yards}
-                  <span className="text-xs font-normal text-amber-500 ml-0.5">yd</span>
-                </p>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </PageShell>
