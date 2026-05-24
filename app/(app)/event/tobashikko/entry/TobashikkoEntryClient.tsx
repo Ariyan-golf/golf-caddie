@@ -76,14 +76,18 @@ function ShotLine({ shot }: { shot: DriverShot }) {
 
 export function TobashikkoEntryClient({
   driverShots,
-  entries: initialEntries,
+  entries:       initialEntries,
+  hiddenShotIds: initialHiddenShotIds,
 }: {
-  driverShots: DriverShot[];
-  entries:     EntryRow[];
+  driverShots:   DriverShot[];
+  entries:       EntryRow[];
+  hiddenShotIds: string[];
 }) {
-  const [entries,    setEntries]    = useState<EntryRow[]>(initialEntries);
-  const [busyShotId, setBusyShotId] = useState<string | null>(null);
-  const [topError,   setTopError]   = useState<string>("");
+  const [entries,       setEntries]       = useState<EntryRow[]>(initialEntries);
+  const [hiddenShotIds, setHiddenShotIds] = useState<string[]>(initialHiddenShotIds);
+  const [busyShotId,    setBusyShotId]    = useState<string | null>(null);
+  const [topError,      setTopError]      = useState<string>("");
+  const [showHidden,    setShowHidden]    = useState(false);
 
   const entryByShotId = useMemo(
     () => new Map(entries.map((e) => [e.shot_id, e])),
@@ -93,12 +97,20 @@ export function TobashikkoEntryClient({
     () => new Map(driverShots.map((s) => [s.id, s])),
     [driverShots]
   );
+  const hiddenSet = useMemo(() => new Set(hiddenShotIds), [hiddenShotIds]);
 
-  const entryable = driverShots.filter((s) => !entryByShotId.has(s.id));
-  const entered   = entries
+  // 「まだエントリーしていない」かつ「非表示にしていない」ドライバーショットのみ。
+  const entryable = driverShots.filter(
+    (s) => !entryByShotId.has(s.id) && !hiddenSet.has(s.id)
+  );
+  const entered = entries
     .map((e) => ({ entry: e, shot: shotById.get(e.shot_id) }))
     .filter((row): row is { entry: EntryRow; shot: DriverShot } => row.shot != null)
     .sort((a, b) => b.shot.distance_yards - a.shot.distance_yards);
+  // 非表示一覧（飛距離降順）。driverShots に存在するものだけ表示。
+  const hiddenShots = driverShots
+    .filter((s) => hiddenSet.has(s.id))
+    .sort((a, b) => b.distance_yards - a.distance_yards);
 
   async function handleEntry(shotId: string) {
     setTopError("");
@@ -120,6 +132,43 @@ export function TobashikkoEntryClient({
     }
   }
 
+  async function handleHide(shotId: string) {
+    if (!confirm("このショットをエントリー候補から非表示にしますか？\n（スタッツ画面の記録は残ります）")) return;
+    setTopError("");
+    setBusyShotId(shotId);
+    try {
+      const res = await fetch("/api/event/tobashikko/hidden", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ shot_id: shotId }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setTopError(data.error ?? "非表示にできませんでした");
+        return;
+      }
+      setHiddenShotIds((prev) => (prev.includes(shotId) ? prev : [...prev, shotId]));
+    } finally {
+      setBusyShotId(null);
+    }
+  }
+
+  async function handleUnhide(shotId: string) {
+    setTopError("");
+    setBusyShotId(shotId);
+    try {
+      const res = await fetch(`/api/event/tobashikko/hidden/${shotId}`, { method: "DELETE" });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setTopError(data.error ?? "元に戻せませんでした");
+        return;
+      }
+      setHiddenShotIds((prev) => prev.filter((id) => id !== shotId));
+    } finally {
+      setBusyShotId(null);
+    }
+  }
+
   function handleUpdated(updated: EntryRow) {
     setEntries((prev) => prev.map((e) => (e.id === updated.id ? updated : e)));
   }
@@ -136,36 +185,7 @@ export function TobashikkoEntryClient({
         </div>
       )}
 
-      {/* セクション1: エントリーできるショット */}
-      <section className="card space-y-3">
-        <h2 className="font-semibold text-green-800">エントリーできるショット</h2>
-        {entryable.length === 0 ? (
-          <p className="text-sm text-green-500 leading-relaxed py-2">
-            エントリーできるショットがありません。<br />
-            ラウンドでドライバーの飛距離を記録するとここに表示されます。
-          </p>
-        ) : (
-          <div className="space-y-2">
-            {entryable.map((shot) => (
-              <div
-                key={shot.id}
-                className="flex items-center justify-between gap-2 py-2 border-b border-green-50 last:border-0"
-              >
-                <ShotLine shot={shot} />
-                <button
-                  onClick={() => handleEntry(shot.id)}
-                  disabled={busyShotId === shot.id}
-                  className="bg-green-600 hover:bg-green-700 active:bg-green-800 disabled:opacity-50 text-white text-xs font-semibold px-3 py-2 rounded-lg flex-shrink-0"
-                >
-                  {busyShotId === shot.id ? "..." : "エントリー"}
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
-
-      {/* セクション2: エントリー済み */}
+      {/* セクション1: エントリー済み（上に表示） */}
       <section className="card space-y-3">
         <h2 className="font-semibold text-green-800">
           エントリー済み（使用ドライバー・シャフト・ボールを入力）
@@ -183,6 +203,78 @@ export function TobashikkoEntryClient({
                 onDeleted={handleDeleted}
               />
             ))}
+          </div>
+        )}
+      </section>
+
+      {/* セクション2: エントリーできるショット（下に表示） */}
+      <section className="card space-y-3">
+        <h2 className="font-semibold text-green-800">エントリーできるショット</h2>
+        {entryable.length === 0 ? (
+          <p className="text-sm text-green-500 leading-relaxed py-2">
+            エントリーできるショットがありません。<br />
+            ラウンドでドライバーの飛距離を記録するとここに表示されます。
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {entryable.map((shot) => (
+              <div
+                key={shot.id}
+                className="flex items-center justify-between gap-2 py-2 border-b border-green-50 last:border-0"
+              >
+                <ShotLine shot={shot} />
+                <div className="flex gap-1.5 flex-shrink-0">
+                  <button
+                    onClick={() => handleEntry(shot.id)}
+                    disabled={busyShotId === shot.id}
+                    className="bg-green-600 hover:bg-green-700 active:bg-green-800 disabled:opacity-50 text-white text-xs font-semibold px-3 py-2 rounded-lg"
+                  >
+                    {busyShotId === shot.id ? "..." : "エントリー"}
+                  </button>
+                  <button
+                    onClick={() => handleHide(shot.id)}
+                    disabled={busyShotId === shot.id}
+                    className="bg-gray-200 hover:bg-gray-300 disabled:opacity-50 text-gray-600 text-xs font-medium px-2.5 py-2 rounded-lg"
+                    title="エントリー候補から非表示にする"
+                  >
+                    非表示
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* 非表示にしたショットの展開トグル */}
+        {hiddenShots.length > 0 && (
+          <div className="pt-2 border-t border-green-50">
+            <button
+              onClick={() => setShowHidden((v) => !v)}
+              className="text-xs text-green-600 underline"
+            >
+              {showHidden
+                ? `非表示にしたショットを隠す（${hiddenShots.length}件）`
+                : `非表示にしたショットを表示（${hiddenShots.length}件）`}
+            </button>
+            {showHidden && (
+              <div className="mt-3 space-y-2">
+                {hiddenShots.map((shot) => (
+                  <div
+                    key={shot.id}
+                    className="flex items-center justify-between gap-2 py-1.5 border-b border-green-50 last:border-0"
+                  >
+                    <ShotLine shot={shot} />
+                    <button
+                      onClick={() => handleUnhide(shot.id)}
+                      disabled={busyShotId === shot.id}
+                      className="bg-gray-200 hover:bg-gray-300 disabled:opacity-50 text-gray-700 text-xs font-medium px-2.5 py-1.5 rounded-lg flex-shrink-0"
+                    >
+                      {busyShotId === shot.id ? "..." : "元に戻す"}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </section>

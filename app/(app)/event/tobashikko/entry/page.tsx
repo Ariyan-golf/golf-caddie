@@ -52,6 +52,14 @@ export default async function TobashikkoEntryPage() {
     ball_model:   e.ball_model   ?? null,
   }));
 
+  // エントリー候補から「非表示」にしたショットの shot_id 一覧。
+  // shots 本体は触らない（スタッツ画面の記録を壊さないため）。
+  const { data: hiddenRows } = await supabase
+    .from("tobashikko_hidden_shots")
+    .select("shot_id")
+    .eq("user_id", user.id);
+  const hiddenShotIds: string[] = (hiddenRows ?? []).map((r) => r.shot_id as string);
+
   return (
     <div className="max-w-lg mx-auto p-4 space-y-6 pb-24">
       <div className="pt-4">
@@ -64,7 +72,11 @@ export default async function TobashikkoEntryPage() {
         </p>
       </div>
 
-      <TobashikkoEntryClient driverShots={driverShots} entries={entries} />
+      <TobashikkoEntryClient
+        driverShots={driverShots}
+        entries={entries}
+        hiddenShotIds={hiddenShotIds}
+      />
     </div>
   );
 }
