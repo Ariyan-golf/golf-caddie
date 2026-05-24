@@ -1948,7 +1948,7 @@ function LiePicker({
 
 // ── Distance measurement clubs ────────────────────────────────────────
 const DM_CLUBS = [
-  { value: "driver", label: "ドライバー" },
+  { value: "1w",     label: "ドライバー（1W）" },
   { value: "3w",     label: "3W" },
   { value: "5w",     label: "5W" },
   { value: "4i",     label: "4I" },
@@ -1993,7 +1993,7 @@ function ScoreEntryCard({
   const [dmEnd, setDmEnd]           = useState<{lat: number; lng: number} | null>(null);
   const [dmLoading, setDmLoading]   = useState<"idle" | "start" | "end">("idle");
   const [dmDistance, setDmDistance] = useState<{yards: number; meters: number} | null>(null);
-  const [dmClub, setDmClub]         = useState("driver");
+  const [dmClub, setDmClub]         = useState("1w");
   const [dmSaved, setDmSaved]       = useState(false);
   const [dmHistory, setDmHistory]   = useState<Array<{club: string; yards: number; meters: number}>>([]);
   // Sequential button enforcement: which action is up next
