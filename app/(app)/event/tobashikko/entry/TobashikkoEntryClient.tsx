@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
 
 export interface DriverShot {
   id: string;
@@ -50,14 +49,17 @@ function ShotLine({ shot }: { shot: DriverShot }) {
 
 export function TobashikkoEntryClient({
   driverShots,
-  entries,
+  entries: initialEntries,
 }: {
   driverShots: DriverShot[];
   entries:     EntryRow[];
 }) {
-  const router = useRouter();
-  const [busyShotId,  setBusyShotId]  = useState<string | null>(null);
-  const [topError,    setTopError]    = useState<string>("");
+  // 親で entries を完全管理する。
+  // POST/PATCH/DELETE 成功時はサーバーから返ってきた entry を直接 setEntries で反映し、
+  // router.refresh() に頼らずに UI を即時更新する。
+  const [entries, setEntries] = useState<EntryRow[]>(initialEntries);
+  const [busyShotId, setBusyShotId] = useState<string | null>(null);
+  const [topError,   setTopError]   = useState<string>("");
 
   const entryByShotId = useMemo(
     () => new Map(entries.map((e) => [e.shot_id, e])),
@@ -83,15 +85,23 @@ export function TobashikkoEntryClient({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ shot_id: shotId }),
       });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.entry) {
         setTopError(data.error ?? "エントリーに失敗しました");
         return;
       }
-      router.refresh();
+      setEntries((prev) => [...prev, data.entry as EntryRow]);
     } finally {
       setBusyShotId(null);
     }
+  }
+
+  function handleUpdated(updated: EntryRow) {
+    setEntries((prev) => prev.map((e) => (e.id === updated.id ? updated : e)));
+  }
+
+  function handleDeleted(id: string) {
+    setEntries((prev) => prev.filter((e) => e.id !== id));
   }
 
   return (
@@ -141,7 +151,13 @@ export function TobashikkoEntryClient({
         ) : (
           <div className="space-y-4">
             {entered.map(({ entry, shot }) => (
-              <EnteredRow key={entry.id} entry={entry} shot={shot} onChanged={() => router.refresh()} />
+              <EnteredRow
+                key={entry.id}
+                entry={entry}
+                shot={shot}
+                onUpdated={handleUpdated}
+                onDeleted={handleDeleted}
+              />
             ))}
           </div>
         )}
@@ -152,11 +168,12 @@ export function TobashikkoEntryClient({
 
 // ── エントリー済み1行（編集UI付き） ─────────────────────────────────
 function EnteredRow({
-  entry, shot, onChanged,
+  entry, shot, onUpdated, onDeleted,
 }: {
-  entry: EntryRow;
-  shot:  DriverShot;
-  onChanged: () => void;
+  entry:     EntryRow;
+  shot:      DriverShot;
+  onUpdated: (e: EntryRow) => void;
+  onDeleted: (id: string) => void;
 }) {
   const initial = (raw: string | null) => {
     if (!raw) return { sel: "", other: "" };
@@ -173,9 +190,16 @@ function EnteredRow({
   const [ballSel,     setBallSel]     = useState(b0.sel);
   const [ballOther,   setBallOther]   = useState(b0.other);
 
-  const [saving,  setSaving]  = useState(false);
+  const [saving,   setSaving]   = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [msg,     setMsg]     = useState<{ type: "ok" | "err"; text: string } | null>(null);
+  const [errMsg,   setErrMsg]   = useState<string>("");
+  // 「保存しました」表示は明示的に消すまで残す（編集に触れたら自動で消す）。
+  const [savedAt,  setSavedAt]  = useState<number | null>(null);
+
+  function clearSaved() {
+    if (savedAt !== null) setSavedAt(null);
+    if (errMsg) setErrMsg("");
+  }
 
   function resolveValue(sel: string, other: string): string | null {
     if (!sel) return null;
@@ -187,14 +211,14 @@ function EnteredRow({
   }
 
   async function handleSave() {
-    setMsg(null);
+    setErrMsg("");
 
     if (driverSel === OTHER && !driverOther.trim()) {
-      setMsg({ type: "err", text: "「その他」のドライバー名を入力してください" });
+      setErrMsg("「その他」のドライバー名を入力してください");
       return;
     }
     if (ballSel === OTHER && !ballOther.trim()) {
-      setMsg({ type: "err", text: "「その他」のボール名を入力してください" });
+      setErrMsg("「その他」のボール名を入力してください");
       return;
     }
 
@@ -208,13 +232,13 @@ function EnteredRow({
           ball_brand:   resolveValue(ballSel,   ballOther),
         }),
       });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        setMsg({ type: "err", text: data.error ?? "保存に失敗しました" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.entry) {
+        setErrMsg(data.error ?? "保存に失敗しました");
         return;
       }
-      setMsg({ type: "ok", text: "保存しました" });
-      onChanged();
+      onUpdated(data.entry as EntryRow);
+      setSavedAt(Date.now());
     } finally {
       setSaving(false);
     }
@@ -223,15 +247,16 @@ function EnteredRow({
   async function handleDelete() {
     if (!confirm("このエントリーを取り消しますか？")) return;
     setDeleting(true);
-    setMsg(null);
+    setErrMsg("");
     try {
       const res = await fetch(`/api/event/tobashikko/entry/${entry.id}`, { method: "DELETE" });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        setMsg({ type: "err", text: data.error ?? "削除に失敗しました" });
+        setErrMsg(data.error ?? "削除に失敗しました");
         return;
       }
-      onChanged();
+      // 削除成功 → 親が unmount するのでこの後の state 更新は不要。
+      onDeleted(entry.id);
     } finally {
       setDeleting(false);
     }
@@ -248,19 +273,23 @@ function EnteredRow({
 
       <BrandPicker
         label="使用ドライバー"
-        sel={driverSel}   setSel={setDriverSel}
-        other={driverOther} setOther={setDriverOther}
+        sel={driverSel}     setSel={(v) => { clearSaved(); setDriverSel(v); }}
+        other={driverOther} setOther={(v) => { clearSaved(); setDriverOther(v); }}
       />
       <BrandPicker
         label="使用ボール"
-        sel={ballSel}   setSel={setBallSel}
-        other={ballOther} setOther={setBallOther}
+        sel={ballSel}     setSel={(v) => { clearSaved(); setBallSel(v); }}
+        other={ballOther} setOther={(v) => { clearSaved(); setBallOther(v); }}
       />
 
-      {msg && (
-        <p className={`text-xs ${msg.type === "ok" ? "text-green-600" : "text-red-600"}`}>
-          {msg.text}
-        </p>
+      {errMsg && (
+        <p className="text-xs text-red-600">{errMsg}</p>
+      )}
+      {savedAt !== null && !errMsg && (
+        <div className="flex items-center gap-1.5 bg-green-100 border border-green-300 text-green-800 rounded-lg px-3 py-2 text-sm font-semibold">
+          <span aria-hidden="true">✓</span>
+          <span>保存しました</span>
+        </div>
       )}
 
       <div className="flex gap-2 pt-1">

@@ -39,7 +39,7 @@ export async function POST(request: Request) {
   const { data: inserted, error } = await supabase
     .from("tobashikko_entries")
     .insert({ user_id: user.id, shot_id: shotId })
-    .select("id")
+    .select("id, shot_id, driver_brand, ball_brand")
     .single();
 
   if (error) {
@@ -50,5 +50,5 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  return NextResponse.json({ ok: true, id: inserted.id });
+  return NextResponse.json({ ok: true, entry: inserted });
 }

@@ -56,14 +56,14 @@ export async function PATCH(
     .update(updates)
     .eq("id", id)
     .eq("user_id", user.id)
-    .select("id")
+    .select("id, shot_id, driver_brand, ball_brand")
     .single();
 
   if (error || !data) {
     return NextResponse.json({ error: error?.message ?? "エントリーが見つかりません" }, { status: 404 });
   }
 
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, entry: data });
 }
 
 export async function DELETE(
