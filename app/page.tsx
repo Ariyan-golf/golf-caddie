@@ -32,9 +32,12 @@ export default async function HomePage() {
   );
   const todayStr = new Date().toISOString().split("T")[0];
 
+  // 飛ばしっこGO（tobashikko）は専用の /event/tobashikko/ranking で表示するため除外。
+  // ここでは monthly / comp のホール限定イベントだけを集計対象にする。
   const { data: activeEvents } = await adminDb
     .from("events")
     .select("*, golf_courses(name)")
+    .in("event_type", ["monthly", "comp"])
     .lte("start_date", todayStr)
     .gte("end_date", todayStr)
     .order("created_at", { ascending: false });
@@ -251,7 +254,7 @@ export default async function HomePage() {
             </div>
             <div className="grid grid-cols-1 gap-2">
               <Link
-                href="/#event-ranking"
+                href="/event/tobashikko/ranking"
                 className="block w-full text-center bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold py-2.5 rounded-xl"
               >
                 ランキングを見る →

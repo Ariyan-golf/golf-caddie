@@ -31,7 +31,7 @@ export async function updateSession(request: NextRequest) {
   // 未ログインでも見られる公開ページ
   const publicPaths = ["/login", "/register", "/auth/callback", "/auth/line", "/lp.html"];
   // ログイン状態に関わらず両対応するページ（middlewareでリダイレクトしない）
-  const openPaths = ["/pay", "/round/start"];
+  const openPaths = ["/pay", "/round/start", "/event/tobashikko/ranking"];
   const isPublic = publicPaths.some((p) => pathname.startsWith(p));
   const isOpen = openPaths.some((p) => pathname === p || pathname.startsWith(`${p}/`));
 
