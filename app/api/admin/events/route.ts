@@ -40,7 +40,7 @@ export async function POST(req: Request) {
   const { event_name, course_id, hole_number, start_date, end_date, event_type, event_code } =
     await req.json() as {
       event_name: string;
-      course_id: string;
+      course_id: string | null;
       hole_number: number;
       start_date: string;
       end_date: string;
@@ -48,12 +48,17 @@ export async function POST(req: Request) {
       event_code?: string;
     };
 
-  const type = event_type === "comp" ? "comp" : "monthly";
+  // event_type を 3 値に narrowing。未知の値は monthly 扱い。
+  const type: "monthly" | "comp" | "tobashikko" =
+    event_type === "comp"       ? "comp" :
+    event_type === "tobashikko" ? "tobashikko" :
+    "monthly";
 
   if (!event_name?.trim()) {
     return NextResponse.json({ error: "イベント名は必須です" }, { status: 400 });
   }
-  if (!course_id) {
+  // 飛ばしっこGOは全国対象なのでゴルフ場必須チェックをスキップ。
+  if (type !== "tobashikko" && !course_id) {
     return NextResponse.json({ error: "ゴルフ場を選択してください" }, { status: 400 });
   }
   if (!hole_number || hole_number < 1 || hole_number > 18) {
@@ -74,16 +79,26 @@ export async function POST(req: Request) {
     }
   }
 
+  // event_code の保存値：
+  //   comp       → trim + 大文字化（既存仕様）
+  //   tobashikko → クライアントが組み立てた "TOBASHIKKO_YYYY_MM" をそのまま（trim のみ）
+  //   monthly    → null
+  const codeToSave: string | null =
+    type === "comp"       ? event_code!.trim().toUpperCase() :
+    type === "tobashikko" ? (event_code?.trim() || null) :
+    null;
+
   const { data, error } = await admin
     .from("events")
     .insert({
       event_name: event_name.trim(),
-      course_id,
+      // 飛ばしっこGO は course_id を強制 null（ゴルフ場に紐付けない）。
+      course_id:  type === "tobashikko" ? null : course_id,
       hole_number,
       start_date,
       end_date,
       event_type: type,
-      event_code: type === "comp" ? event_code!.trim().toUpperCase() : null,
+      event_code: codeToSave,
     })
     .select()
     .single();

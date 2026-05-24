@@ -62,7 +62,7 @@ export function EventManagement({
   const [eventName,  setEventName]  = useState("");
   const [courseId,   setCourseId]   = useState(courses[0]?.id ?? "");
   const [holeNum,    setHoleNum]    = useState(1);
-  const [eventType,  setEventType]  = useState<"monthly" | "comp">("monthly");
+  const [eventType,  setEventType]  = useState<"monthly" | "comp" | "tobashikko">("monthly");
   const [eventCode,  setEventCode]  = useState("");
   const [startDate,  setStartDate]  = useState("");
   const [endDate,    setEndDate]    = useState("");
@@ -90,18 +90,35 @@ export function EventManagement({
     setSubmitting(true);
     setFormError(null);
 
+    // 飛ばしっこGOは course/hole 不要・コードは開始日(YYYY-MM-DD)から自動生成。
+    let payload: Record<string, unknown>;
+    if (eventType === "tobashikko") {
+      const [y, m] = (startDate || "").split("-");
+      payload = {
+        event_name:  eventName,
+        course_id:   null,
+        hole_number: 1,            // CHECK制約(1〜18)を満たすためのダミー値・集計では使わない
+        start_date:  startDate,
+        end_date:    endDate,
+        event_type:  "tobashikko",
+        event_code:  y && m ? `TOBASHIKKO_${y}_${m}` : "",
+      };
+    } else {
+      payload = {
+        event_name:  eventName,
+        course_id:   courseId,
+        hole_number: holeNum,
+        start_date:  startDate,
+        end_date:    eventType === "comp" ? startDate : endDate,
+        event_type:  eventType,
+        event_code:  eventType === "comp" ? eventCode : undefined,
+      };
+    }
+
     const res = await fetch("/api/admin/events", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        event_name: eventName,
-        course_id: courseId,
-        hole_number: holeNum,
-        start_date: startDate,
-        end_date: eventType === "comp" ? startDate : endDate,
-        event_type: eventType,
-        event_code: eventType === "comp" ? eventCode : undefined,
-      }),
+      body: JSON.stringify(payload),
     });
     const data = await res.json();
 
@@ -183,7 +200,7 @@ export function EventManagement({
           <div>
             <label className="text-xs text-green-600 font-medium block mb-1">イベントタイプ *</label>
             <div className="flex gap-3">
-              {(["monthly", "comp"] as const).map((t) => (
+              {(["monthly", "comp", "tobashikko"] as const).map((t) => (
                 <label key={t} className="flex items-center gap-1.5 cursor-pointer text-sm">
                   <input
                     type="radio"
@@ -194,7 +211,9 @@ export function EventManagement({
                     className="accent-green-600"
                   />
                   <span className="text-green-700">
-                    {t === "monthly" ? "月間イベント" : "コンペイベント（当日限定）"}
+                    {t === "monthly"   ? "月間イベント" :
+                     t === "comp"      ? "コンペイベント（当日限定）" :
+                                         "飛ばしっこGO（全国）"}
                   </span>
                 </label>
               ))}
@@ -206,7 +225,11 @@ export function EventManagement({
             <input
               value={eventName}
               onChange={(e) => setEventName(e.target.value)}
-              placeholder={eventType === "comp" ? "〇〇カップ ドラコン" : "春の飛距離コンテスト"}
+              placeholder={
+                eventType === "comp"       ? "〇〇カップ ドラコン" :
+                eventType === "tobashikko" ? "飛ばしっこGO 2026年8月度" :
+                                             "春の飛距離コンテスト"
+              }
               required
               className="w-full border border-green-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
             />
@@ -228,37 +251,40 @@ export function EventManagement({
             </div>
           )}
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs text-green-600 font-medium block mb-1">ゴルフ場 *</label>
-              <select
-                value={courseId}
-                onChange={(e) => setCourseId(e.target.value)}
-                required
-                className="w-full border border-green-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
-              >
-                {courses.length === 0 && (
-                  <option value="">ゴルフ場がありません</option>
-                )}
-                {courses.map((c) => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-              </select>
-            </div>
+          {/* 飛ばしっこGO は全国対象なのでゴルフ場・ホール番号入力不要 */}
+          {eventType !== "tobashikko" && (
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs text-green-600 font-medium block mb-1">ゴルフ場 *</label>
+                <select
+                  value={courseId}
+                  onChange={(e) => setCourseId(e.target.value)}
+                  required
+                  className="w-full border border-green-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
+                >
+                  {courses.length === 0 && (
+                    <option value="">ゴルフ場がありません</option>
+                  )}
+                  {courses.map((c) => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+              </div>
 
-            <div>
-              <label className="text-xs text-green-600 font-medium block mb-1">対象ホール番号 *</label>
-              <input
-                type="number"
-                min={1}
-                max={18}
-                value={holeNum}
-                onChange={(e) => setHoleNum(Number(e.target.value))}
-                required
-                className="w-full border border-green-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
-              />
+              <div>
+                <label className="text-xs text-green-600 font-medium block mb-1">対象ホール番号 *</label>
+                <input
+                  type="number"
+                  min={1}
+                  max={18}
+                  value={holeNum}
+                  onChange={(e) => setHoleNum(Number(e.target.value))}
+                  required
+                  className="w-full border border-green-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
+                />
+              </div>
             </div>
-          </div>
+          )}
 
           {eventType === "comp" ? (
             <div>
@@ -305,7 +331,7 @@ export function EventManagement({
 
           <button
             type="submit"
-            disabled={submitting || courses.length === 0}
+            disabled={submitting || (eventType !== "tobashikko" && courses.length === 0)}
             className="w-full bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white font-semibold py-2 rounded-lg text-sm transition-colors"
           >
             {submitting ? "登録中…" : "イベントを登録"}
@@ -351,6 +377,10 @@ export function EventManagement({
                     {ev.event_type === "comp" ? (
                       <span className="bg-orange-100 text-orange-600 px-2 py-0.5 rounded-full font-semibold text-xs">
                         コンペ
+                      </span>
+                    ) : ev.event_type === "tobashikko" ? (
+                      <span className="bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full font-semibold text-xs whitespace-nowrap">
+                        飛ばしっこGO
                       </span>
                     ) : (
                       <span className="bg-green-100 text-green-600 px-2 py-0.5 rounded-full font-semibold text-xs">
