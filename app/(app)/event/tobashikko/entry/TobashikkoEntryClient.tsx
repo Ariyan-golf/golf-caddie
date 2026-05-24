@@ -14,23 +14,50 @@ export interface EntryRow {
   id:           string;
   shot_id:      string;
   driver_brand: string | null;
+  driver_model: string | null;
+  shaft_brand:  string | null;
+  shaft_model:  string | null;
   ball_brand:   string | null;
+  ball_model:   string | null;
 }
 
-const BRAND_OPTIONS = [
-  "テーラーメイド",
-  "キャロウェイ",
-  "ピン",
-  "タイトリスト",
-  "ダンロップ・スリクソン",
-  "ブリヂストン",
-  "ミズノ",
-  "本間",
-  "ヤマハ",
-  "コブラ",
-] as const;
+// ── メーカープルダウン候補（カテゴリ別） ─────────────────────────
+const DRIVER_BRANDS = [
+  "テーラーメイド", "キャロウェイ", "ピン", "タイトリスト",
+  "ダンロップ・スリクソン", "ブリヂストン", "ミズノ", "本間",
+  "ヤマハ", "コブラ",
+];
+const SHAFT_BRANDS = [
+  "フジクラ", "三菱ケミカル", "グラファイトデザイン",
+  "USTマミヤ", "グラフ", "純正",
+];
+const BALL_BRANDS = [
+  "テーラーメイド", "キャロウェイ", "タイトリスト",
+  "ダンロップ・スリクソン", "ブリヂストン", "本間", "スリクソン",
+];
 
-const OTHER = "その他";
+// ── 編集中6フィールドの型 ─────────────────────────────────────
+type FormValues = {
+  driver_brand: string; driver_model: string;
+  shaft_brand:  string; shaft_model:  string;
+  ball_brand:   string; ball_model:   string;
+};
+const FIELD_KEYS: (keyof FormValues)[] = [
+  "driver_brand", "driver_model",
+  "shaft_brand",  "shaft_model",
+  "ball_brand",   "ball_model",
+];
+
+function entryToForm(e: EntryRow): FormValues {
+  return {
+    driver_brand: e.driver_brand ?? "",
+    driver_model: e.driver_model ?? "",
+    shaft_brand:  e.shaft_brand  ?? "",
+    shaft_model:  e.shaft_model  ?? "",
+    ball_brand:   e.ball_brand   ?? "",
+    ball_model:   e.ball_model   ?? "",
+  };
+}
 
 function fmtDate(s: string) {
   return new Date(s).toLocaleDateString("ja-JP");
@@ -54,10 +81,7 @@ export function TobashikkoEntryClient({
   driverShots: DriverShot[];
   entries:     EntryRow[];
 }) {
-  // 親で entries を完全管理する。
-  // POST/PATCH/DELETE 成功時はサーバーから返ってきた entry を直接 setEntries で反映し、
-  // router.refresh() に頼らずに UI を即時更新する。
-  const [entries, setEntries] = useState<EntryRow[]>(initialEntries);
+  const [entries,    setEntries]    = useState<EntryRow[]>(initialEntries);
   const [busyShotId, setBusyShotId] = useState<string | null>(null);
   const [topError,   setTopError]   = useState<string>("");
 
@@ -144,7 +168,7 @@ export function TobashikkoEntryClient({
       {/* セクション2: エントリー済み */}
       <section className="card space-y-3">
         <h2 className="font-semibold text-green-800">
-          エントリー済み（使用クラブ・ボールを入力）
+          エントリー済み（使用ドライバー・シャフト・ボールを入力）
         </h2>
         {entered.length === 0 ? (
           <p className="text-sm text-green-500 py-2">エントリー済みのショットはまだありません。</p>
@@ -175,70 +199,51 @@ function EnteredRow({
   onUpdated: (e: EntryRow) => void;
   onDeleted: (id: string) => void;
 }) {
-  const initial = (raw: string | null) => {
-    if (!raw) return { sel: "", other: "" };
-    if (BRAND_OPTIONS.includes(raw as typeof BRAND_OPTIONS[number])) {
-      return { sel: raw, other: "" };
-    }
-    return { sel: OTHER, other: raw };
-  };
-  const d0 = initial(entry.driver_brand);
-  const b0 = initial(entry.ball_brand);
-
-  const [driverSel,   setDriverSel]   = useState(d0.sel);
-  const [driverOther, setDriverOther] = useState(d0.other);
-  const [ballSel,     setBallSel]     = useState(b0.sel);
-  const [ballOther,   setBallOther]   = useState(b0.other);
-
+  const [values,   setValues]   = useState<FormValues>(() => entryToForm(entry));
+  const [baseline, setBaseline] = useState<FormValues>(() => entryToForm(entry));
   const [saving,   setSaving]   = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [errMsg,   setErrMsg]   = useState<string>("");
-  // 「保存しました」表示は明示的に消すまで残す（編集に触れたら自動で消す）。
-  const [savedAt,  setSavedAt]  = useState<number | null>(null);
+  // 「保存しました」バッジ表示フラグ。編集に触れたら自動で消す。
+  const [savedJustNow, setSavedJustNow] = useState(false);
 
-  function clearSaved() {
-    if (savedAt !== null) setSavedAt(null);
+  const isDirty = useMemo(
+    () => FIELD_KEYS.some((k) => values[k] !== baseline[k]),
+    [values, baseline]
+  );
+
+  function updateField<K extends keyof FormValues>(key: K, val: string) {
+    setValues((prev) => ({ ...prev, [key]: val }));
+    if (savedJustNow) setSavedJustNow(false);
     if (errMsg) setErrMsg("");
-  }
-
-  function resolveValue(sel: string, other: string): string | null {
-    if (!sel) return null;
-    if (sel === OTHER) {
-      const v = other.trim();
-      return v ? v : null;
-    }
-    return sel;
   }
 
   async function handleSave() {
     setErrMsg("");
-
-    if (driverSel === OTHER && !driverOther.trim()) {
-      setErrMsg("「その他」のドライバー名を入力してください");
-      return;
-    }
-    if (ballSel === OTHER && !ballOther.trim()) {
-      setErrMsg("「その他」のボール名を入力してください");
-      return;
-    }
-
     setSaving(true);
     try {
+      // 空欄は null として送る（API 側でも trim→空なら null に正規化される）。
+      const payload: Record<string, string | null> = {};
+      for (const k of FIELD_KEYS) {
+        const v = values[k].trim();
+        payload[k] = v === "" ? null : v;
+      }
+
       const res = await fetch(`/api/event/tobashikko/entry/${entry.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          driver_brand: resolveValue(driverSel, driverOther),
-          ball_brand:   resolveValue(ballSel,   ballOther),
-        }),
+        body: JSON.stringify(payload),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.entry) {
         setErrMsg(data.error ?? "保存に失敗しました");
         return;
       }
+      const next = entryToForm(data.entry as EntryRow);
       onUpdated(data.entry as EntryRow);
-      setSavedAt(Date.now());
+      setBaseline(next);
+      setValues(next);          // server で trim 済の値で UI も同期
+      setSavedJustNow(true);
     } finally {
       setSaving(false);
     }
@@ -255,15 +260,21 @@ function EnteredRow({
         setErrMsg(data.error ?? "削除に失敗しました");
         return;
       }
-      // 削除成功 → 親が unmount するのでこの後の state 更新は不要。
       onDeleted(entry.id);
     } finally {
       setDeleting(false);
     }
   }
 
+  // 保存ボタンの見た目
+  const isSavedState = savedJustNow && !isDirty;
+  const saveClass = isSavedState
+    ? "bg-green-200 text-green-700 cursor-default"
+    : "bg-green-600 hover:bg-green-700 text-white";
+  const saveLabel = saving ? "保存中..." : isSavedState ? "保存済み" : "保存";
+
   return (
-    <div className="border border-green-100 rounded-xl p-3 space-y-3 bg-green-50/40">
+    <div className="border border-green-100 rounded-xl p-3 space-y-4 bg-green-50/40">
       <div className="flex items-center justify-between gap-2">
         <ShotLine shot={shot} />
         <span className="text-[10px] bg-green-100 text-green-700 font-semibold px-2 py-0.5 rounded-full flex-shrink-0">
@@ -271,21 +282,59 @@ function EnteredRow({
         </span>
       </div>
 
-      <BrandPicker
-        label="使用ドライバー"
-        sel={driverSel}     setSel={(v) => { clearSaved(); setDriverSel(v); }}
-        other={driverOther} setOther={(v) => { clearSaved(); setDriverOther(v); }}
-      />
-      <BrandPicker
-        label="使用ボール"
-        sel={ballSel}     setSel={(v) => { clearSaved(); setBallSel(v); }}
-        other={ballOther} setOther={(v) => { clearSaved(); setBallOther(v); }}
-      />
+      {/* 使用ドライバー */}
+      <fieldset className="space-y-2">
+        <legend className="text-sm font-semibold text-green-800">使用ドライバー</legend>
+        <BrandPicker
+          label="メーカー"
+          options={DRIVER_BRANDS}
+          value={values.driver_brand}
+          onChange={(v) => updateField("driver_brand", v)}
+        />
+        <TextField
+          label="機種名"
+          placeholder="例：Qi10LS 9.5度"
+          value={values.driver_model}
+          onChange={(v) => updateField("driver_model", v)}
+        />
+      </fieldset>
 
-      {errMsg && (
-        <p className="text-xs text-red-600">{errMsg}</p>
-      )}
-      {savedAt !== null && !errMsg && (
+      {/* 使用シャフト */}
+      <fieldset className="space-y-2">
+        <legend className="text-sm font-semibold text-green-800">使用シャフト（任意）</legend>
+        <BrandPicker
+          label="メーカー"
+          options={SHAFT_BRANDS}
+          value={values.shaft_brand}
+          onChange={(v) => updateField("shaft_brand", v)}
+        />
+        <TextField
+          label="機種名"
+          placeholder="例：ベンタスTR"
+          value={values.shaft_model}
+          onChange={(v) => updateField("shaft_model", v)}
+        />
+      </fieldset>
+
+      {/* 使用ボール */}
+      <fieldset className="space-y-2">
+        <legend className="text-sm font-semibold text-green-800">使用ボール</legend>
+        <BrandPicker
+          label="メーカー"
+          options={BALL_BRANDS}
+          value={values.ball_brand}
+          onChange={(v) => updateField("ball_brand", v)}
+        />
+        <TextField
+          label="機種名"
+          placeholder="例：TOUR B X"
+          value={values.ball_model}
+          onChange={(v) => updateField("ball_model", v)}
+        />
+      </fieldset>
+
+      {errMsg && <p className="text-xs text-red-600">{errMsg}</p>}
+      {isSavedState && (
         <div className="flex items-center gap-1.5 bg-green-100 border border-green-300 text-green-800 rounded-lg px-3 py-2 text-sm font-semibold">
           <span aria-hidden="true">✓</span>
           <span>保存しました</span>
@@ -295,10 +344,10 @@ function EnteredRow({
       <div className="flex gap-2 pt-1">
         <button
           onClick={handleSave}
-          disabled={saving}
-          className="flex-1 bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white text-sm font-semibold py-2 rounded-xl"
+          disabled={saving || isSavedState}
+          className={`flex-1 disabled:opacity-50 text-sm font-semibold py-2 rounded-xl transition-colors ${saveClass}`}
         >
-          {saving ? "保存中..." : "保存"}
+          {saveLabel}
         </button>
         <button
           onClick={handleDelete}
@@ -312,37 +361,62 @@ function EnteredRow({
   );
 }
 
+// ── BrandPicker: プルダウン + 常時表示テキスト欄 ─────────────────
+// プルダウンで選ぶとテキスト欄に値が流れ込み、ユーザーは自由に書き換え可。
+// 保存時はテキスト欄の値が真。プルダウンは「候補にあれば」その項目を反映表示する。
 function BrandPicker({
-  label, sel, setSel, other, setOther,
+  label, options, value, onChange,
 }: {
-  label: string;
-  sel: string; setSel: (v: string) => void;
-  other: string; setOther: (v: string) => void;
+  label:    string;
+  options:  string[];
+  value:    string;
+  onChange: (v: string) => void;
 }) {
+  const selectVal = options.includes(value) ? value : "";
   return (
     <div>
       <label className="label">{label}</label>
       <select
-        value={sel}
-        onChange={(e) => setSel(e.target.value)}
+        value={selectVal}
+        onChange={(e) => onChange(e.target.value)}
         className="input"
       >
         <option value="">未選択</option>
-        {BRAND_OPTIONS.map((b) => (
+        {options.map((b) => (
           <option key={b} value={b}>{b}</option>
         ))}
-        <option value={OTHER}>{OTHER}</option>
       </select>
-      {sel === OTHER && (
-        <input
-          type="text"
-          className="input mt-2"
-          placeholder="メーカー名を入力"
-          value={other}
-          onChange={(e) => setOther(e.target.value)}
-          maxLength={50}
-        />
-      )}
+      <input
+        type="text"
+        className="input mt-2"
+        placeholder="メーカー名（プルダウンに無いものは直接入力）"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        maxLength={100}
+      />
+    </div>
+  );
+}
+
+function TextField({
+  label, placeholder, value, onChange,
+}: {
+  label:       string;
+  placeholder: string;
+  value:       string;
+  onChange:    (v: string) => void;
+}) {
+  return (
+    <div>
+      <label className="label">{label}</label>
+      <input
+        type="text"
+        className="input"
+        placeholder={placeholder}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        maxLength={100}
+      />
     </div>
   );
 }

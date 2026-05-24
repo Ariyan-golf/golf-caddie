@@ -39,7 +39,7 @@ export async function POST(request: Request) {
   const { data: inserted, error } = await supabase
     .from("tobashikko_entries")
     .insert({ user_id: user.id, shot_id: shotId })
-    .select("id, shot_id, driver_brand, ball_brand")
+    .select("id, shot_id, driver_brand, driver_model, shaft_brand, shaft_model, ball_brand, ball_model")
     .single();
 
   if (error) {

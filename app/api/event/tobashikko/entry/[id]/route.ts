@@ -2,17 +2,32 @@ import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const MAX_BRAND_LEN = 50;
+const MAX_TEXT_LEN = 100;
 
-function normalizeBrand(v: unknown): string | null | undefined {
-  if (v === undefined) return undefined;       // フィールド未指定 → 触らない
-  if (v === null) return null;                  // 明示 null → クリア
-  if (typeof v !== "string") return undefined;
+const FIELDS = [
+  "driver_brand", "driver_model",
+  "shaft_brand",  "shaft_model",
+  "ball_brand",   "ball_model",
+] as const;
+type FieldKey = typeof FIELDS[number];
+
+type NormalizeResult =
+  | { kind: "skip" }              // フィールド未指定 → 触らない
+  | { kind: "set"; value: string | null }
+  | { kind: "too_long" };
+
+function normalize(v: unknown): NormalizeResult {
+  if (v === undefined) return { kind: "skip" };
+  if (v === null) return { kind: "set", value: null };
+  if (typeof v !== "string") return { kind: "skip" };
   const trimmed = v.trim();
-  if (!trimmed) return null;
-  if (trimmed.length > MAX_BRAND_LEN) return undefined;
-  return trimmed;
+  if (!trimmed) return { kind: "set", value: null };
+  if (trimmed.length > MAX_TEXT_LEN) return { kind: "too_long" };
+  return { kind: "set", value: trimmed };
 }
+
+const SELECT_COLS =
+  "id, shot_id, driver_brand, driver_model, shaft_brand, shaft_model, ball_brand, ball_model";
 
 export async function PATCH(
   request: Request,
@@ -27,23 +42,18 @@ export async function PATCH(
     return NextResponse.json({ error: "id が不正です" }, { status: 400 });
   }
 
-  const body = await request.json() as {
-    driver_brand?: unknown;
-    ball_brand?:   unknown;
-  };
+  const body = await request.json() as Partial<Record<FieldKey, unknown>>;
+  const updates: Partial<Record<FieldKey, string | null>> = {};
 
-  const updates: Record<string, string | null> = {};
-  const d = normalizeBrand(body.driver_brand);
-  const b = normalizeBrand(body.ball_brand);
-  if (d !== undefined) updates.driver_brand = d;
-  if (b !== undefined) updates.ball_brand   = b;
-
-  // 文字列だが長すぎ等で undefined に弾かれたケースを区別
-  if (body.driver_brand !== undefined && d === undefined && body.driver_brand !== null) {
-    return NextResponse.json({ error: "driver_brand が長すぎます（50文字以内）" }, { status: 400 });
-  }
-  if (body.ball_brand !== undefined && b === undefined && body.ball_brand !== null) {
-    return NextResponse.json({ error: "ball_brand が長すぎます（50文字以内）" }, { status: 400 });
+  for (const key of FIELDS) {
+    const r = normalize(body[key]);
+    if (r.kind === "too_long") {
+      return NextResponse.json(
+        { error: `${key} が長すぎます（${MAX_TEXT_LEN}文字以内）` },
+        { status: 400 }
+      );
+    }
+    if (r.kind === "set") updates[key] = r.value;
   }
 
   if (Object.keys(updates).length === 0) {
@@ -56,7 +66,7 @@ export async function PATCH(
     .update(updates)
     .eq("id", id)
     .eq("user_id", user.id)
-    .select("id, shot_id, driver_brand, ball_brand")
+    .select(SELECT_COLS)
     .single();
 
   if (error || !data) {

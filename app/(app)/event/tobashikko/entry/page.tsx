@@ -38,14 +38,18 @@ export default async function TobashikkoEntryPage() {
 
   const { data: entryRows } = await supabase
     .from("tobashikko_entries")
-    .select("id, shot_id, driver_brand, ball_brand")
+    .select("id, shot_id, driver_brand, driver_model, shaft_brand, shaft_model, ball_brand, ball_model")
     .eq("user_id", user.id);
 
   const entries: EntryRow[] = (entryRows ?? []).map((e) => ({
     id:           e.id,
     shot_id:      e.shot_id,
     driver_brand: e.driver_brand ?? null,
-    ball_brand:   e.ball_brand ?? null,
+    driver_model: e.driver_model ?? null,
+    shaft_brand:  e.shaft_brand  ?? null,
+    shaft_model:  e.shaft_model  ?? null,
+    ball_brand:   e.ball_brand   ?? null,
+    ball_model:   e.ball_model   ?? null,
   }));
 
   return (
