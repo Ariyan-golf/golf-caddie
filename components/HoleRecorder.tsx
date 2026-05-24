@@ -338,7 +338,7 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
             registered_by: user?.id ?? null,
             registered_at: new Date().toISOString(),
           },
-          { onConflict: "course_id,hole_number,green_type" },
+          { onConflict: "course_id,course_section,hole_number,green_type" },
         );
       if (error) throw error;
       setGreenCenters((prev) => ({
