@@ -123,7 +123,7 @@ export default async function HomePage() {
 
   const [{ data: profile }, { data: roundsRaw }, { data: clubStats }, { data: handicapData }] =
     await Promise.all([
-      supabase.from("profiles").select("display_name, plan, round_count").eq("id", user.id).single(),
+      supabase.from("profiles").select("display_name, plan, round_count, nickname, age_group").eq("id", user.id).single(),
       supabase
         .from("rounds")
         .select("id, course_name, date, total_score, holes(putts)")
@@ -150,6 +150,8 @@ export default async function HomePage() {
   const isSubscriber = profile?.plan === "premium" || profile?.plan === "premium_paid" || profile?.plan === "standard";
   const roundCount = profile?.round_count ?? 0;
   const remainingFree = Math.max(FREE_ROUND_LIMIT - roundCount, 0);
+
+  const tobashikkoConfigured = !!profile?.nickname && !!profile?.age_group;
 
   // スコアあり10ラウンド分のグラフデータ
   const graphData = (roundsRaw ?? []).map((r) => {
@@ -237,9 +239,34 @@ export default async function HomePage() {
           </Link>
         </div>
 
+        {/* 飛ばしっこGO 導線 */}
+        <Link
+          href={tobashikkoConfigured ? "/#event-ranking" : "/event/tobashikko/settings"}
+          className="block card border-2 border-amber-300 bg-gradient-to-r from-amber-50 to-orange-50 hover:border-amber-400 transition-colors"
+        >
+          <div className="flex items-center gap-3">
+            <span className="text-3xl flex-shrink-0">🚀</span>
+            <div className="flex-1">
+              <p className="font-bold text-amber-900 text-sm">
+                {tobashikkoConfigured
+                  ? "飛ばしっこGO ランキングを見る"
+                  : "飛ばしっこGOに参加する（設定が必要です）"}
+              </p>
+              <p className="text-xs text-amber-600 mt-0.5">
+                {tobashikkoConfigured
+                  ? "ニックネーム・年代・性別・区分の設定済み"
+                  : "ニックネームと年代を設定してランキングに参加しよう"}
+              </p>
+            </div>
+            <span className="text-amber-500 text-lg flex-shrink-0">→</span>
+          </div>
+        </Link>
+
         {/* 開催中イベント */}
         {eventRankings.length > 0 && (
-          <EventRankingSection events={eventRankings} />
+          <div id="event-ranking">
+            <EventRankingSection events={eventRankings} />
+          </div>
         )}
 
         {/* 平均スコア / GCAハンディ */}
