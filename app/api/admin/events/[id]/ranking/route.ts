@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
+import { fetchTobashikkoRanking } from "@/lib/tobashikko/ranking";
 
 const ADMIN_EMAIL = "t.a.0903076959@i.softbank.jp";
 
@@ -43,6 +44,44 @@ export async function GET(
     return NextResponse.json({ error: "イベントが見つかりません" }, { status: 404 });
   }
 
+  const { searchParams } = new URL(req.url);
+  const wantsCsv = searchParams.get("format") === "csv";
+
+  // ── 飛ばしっこGO 分岐: 共通モジュールで集計 ───────────────────
+  if (event.event_type === "tobashikko") {
+    const ranking = await fetchTobashikkoRanking(admin, {
+      start_date: event.start_date,
+      end_date:   event.end_date,
+    });
+
+    if (wantsCsv) {
+      const header = "順位,ニックネーム,飛距離(yd),飛距離(m),使用ドライバー,ゴルフ場,ラウンド日\n";
+      const body = ranking
+        .map((r) =>
+          [
+            r.rank,
+            `"${r.nickname}"`,
+            r.distance_yards,
+            r.distance_meters != null ? r.distance_meters.toFixed(1) : "",
+            `"${r.driver_text ?? ""}"`,
+            `"${r.course_name}"`,
+            new Date(r.round_date).toLocaleDateString("ja-JP"),
+          ].join(",")
+        )
+        .join("\n");
+
+      return new Response(header + body, {
+        headers: {
+          "Content-Type":        "text/csv; charset=utf-8",
+          "Content-Disposition": `attachment; filename="tobashikko_ranking_${eventId}.csv"`,
+        },
+      });
+    }
+
+    return NextResponse.json({ event, type: "tobashikko", ranking });
+  }
+
+  // ── monthly / comp（既存ロジック・shot_distances ベース） ─────
   // 終了日の翌日（exclusive upper bound）
   const endExclusive = new Date(event.end_date);
   endExclusive.setDate(endExclusive.getDate() + 1);
@@ -91,8 +130,7 @@ export async function GET(
   }
 
   if (byUser.size === 0) {
-    const { searchParams } = new URL(req.url);
-    if (searchParams.get("format") === "csv") {
+    if (wantsCsv) {
       return new Response("順位,名前,最長飛距離(m),最長飛距離(yd),記録日\n", {
         headers: {
           "Content-Type": "text/csv; charset=utf-8",
@@ -100,7 +138,7 @@ export async function GET(
         },
       });
     }
-    return NextResponse.json({ event, ranking: [] });
+    return NextResponse.json({ event, type: "default", ranking: [] });
   }
 
   // profiles を取得
@@ -124,8 +162,7 @@ export async function GET(
     .map((row, i) => ({ rank: i + 1, ...row }));
 
   // CSV 出力
-  const { searchParams } = new URL(req.url);
-  if (searchParams.get("format") === "csv") {
+  if (wantsCsv) {
     const header = "順位,名前,最長飛距離(m),最長飛距離(yd),記録日\n";
     const body = ranking
       .map((r) =>
@@ -147,5 +184,5 @@ export async function GET(
     });
   }
 
-  return NextResponse.json({ event, ranking });
+  return NextResponse.json({ event, type: "default", ranking });
 }

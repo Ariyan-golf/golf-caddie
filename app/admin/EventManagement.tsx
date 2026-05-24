@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import type { TobashikkoRankingRow } from "@/lib/tobashikko/ranking";
 
 interface GolfCourse {
   id: string;
@@ -70,20 +71,28 @@ export function EventManagement({
   const [formError,  setFormError]  = useState<string | null>(null);
 
   // ランキングモーダル状態
-  const [rankingEvent,   setRankingEvent]   = useState<RankingEvent | null>(null);
-  const [ranking,        setRanking]        = useState<RankingRow[]>([]);
-  const [rankingLoading, setRankingLoading] = useState(false);
-  const [rankingError,   setRankingError]   = useState<string | null>(null);
-  const [sortOrder,      setSortOrder]      = useState<SortOrder>("distance");
+  const [rankingEvent,       setRankingEvent]       = useState<RankingEvent | null>(null);
+  const [rankingType,        setRankingType]        = useState<"default" | "tobashikko">("default");
+  const [ranking,            setRanking]            = useState<RankingRow[]>([]);
+  const [tobashikkoRanking,  setTobashikkoRanking]  = useState<TobashikkoRankingRow[]>([]);
+  const [rankingLoading,     setRankingLoading]     = useState(false);
+  const [rankingError,       setRankingError]       = useState<string | null>(null);
+  const [sortOrder,          setSortOrder]          = useState<SortOrder>("distance");
 
   // 削除中のID管理
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  // 現在の並び順に応じたランキング
+  // 現在の並び順に応じたランキング（default 用・shot_distances ベース）
   const sortedRanking: RankingRow[] =
     sortOrder === "distance"
       ? [...ranking].sort((a, b) => b.max_distance_meters - a.max_distance_meters)
       : [...ranking].sort((a, b) => new Date(b.recorded_at).getTime() - new Date(a.recorded_at).getTime());
+
+  // 並び順に応じた飛ばしっこGOランキング
+  const sortedTobashikko: TobashikkoRankingRow[] =
+    sortOrder === "distance"
+      ? [...tobashikkoRanking].sort((a, b) => b.distance_yards - a.distance_yards)
+      : [...tobashikkoRanking].sort((a, b) => (a.round_date < b.round_date ? 1 : a.round_date > b.round_date ? -1 : 0));
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -149,6 +158,8 @@ export function EventManagement({
   async function handleShowRanking(ev: Event) {
     setRankingEvent(ev);
     setRanking([]);
+    setTobashikkoRanking([]);
+    setRankingType(ev.event_type === "tobashikko" ? "tobashikko" : "default");
     setRankingError(null);
     setRankingLoading(true);
     setSortOrder("distance");
@@ -158,34 +169,62 @@ export function EventManagement({
 
     if (!res.ok) {
       setRankingError(data.error ?? "取得に失敗しました");
+    } else if (data.type === "tobashikko") {
+      setRankingType("tobashikko");
+      setTobashikkoRanking(data.ranking ?? []);
     } else {
-      setRanking(data.ranking);
+      setRankingType("default");
+      setRanking(data.ranking ?? []);
     }
     setRankingLoading(false);
   }
 
   function handleCsvDownload() {
-    if (!rankingEvent || sortedRanking.length === 0) return;
+    if (!rankingEvent) return;
 
-    const header = "順位(飛距離),名前,最長飛距離(yd),最長飛距離(m),記録日時\n";
-    const body = sortedRanking
-      .map((r) =>
-        [
-          r.rank,
-          `"${r.display_name}"`,
-          r.max_distance_yards,
-          r.max_distance_meters.toFixed(1),
-          `"${formatDatetime(r.recorded_at)}"`,
-        ].join(",")
-      )
-      .join("\n");
+    let header = "";
+    let body   = "";
+    let filename = `event_ranking_${rankingEvent.id}.csv`;
+
+    if (rankingType === "tobashikko") {
+      if (sortedTobashikko.length === 0) return;
+      header = "順位,ニックネーム,飛距離(yd),飛距離(m),使用ドライバー,ゴルフ場,ラウンド日\n";
+      body = sortedTobashikko
+        .map((r) =>
+          [
+            r.rank,
+            `"${r.nickname}"`,
+            r.distance_yards,
+            r.distance_meters != null ? r.distance_meters.toFixed(1) : "",
+            `"${r.driver_text ?? ""}"`,
+            `"${r.course_name}"`,
+            new Date(r.round_date).toLocaleDateString("ja-JP"),
+          ].join(",")
+        )
+        .join("\n");
+      filename = `tobashikko_ranking_${rankingEvent.id}.csv`;
+    } else {
+      if (sortedRanking.length === 0) return;
+      header = "順位(飛距離),名前,最長飛距離(yd),最長飛距離(m),記録日時\n";
+      body = sortedRanking
+        .map((r) =>
+          [
+            r.rank,
+            `"${r.display_name}"`,
+            r.max_distance_yards,
+            r.max_distance_meters.toFixed(1),
+            `"${formatDatetime(r.recorded_at)}"`,
+          ].join(",")
+        )
+        .join("\n");
+    }
 
     const bom = "﻿";
     const blob = new Blob([bom + header + body], { type: "text/csv; charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `event_ranking_${rankingEvent.id}.csv`;
+    a.download = filename;
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -372,7 +411,9 @@ export function EventManagement({
                     )}
                   </td>
                   <td className="px-4 py-3 text-green-700 text-xs">{ev.golf_courses?.name ?? "—"}</td>
-                  <td className="px-4 py-3 text-center text-green-700">{ev.hole_number}</td>
+                  <td className="px-4 py-3 text-center text-green-700">
+                    {ev.event_type === "tobashikko" ? "—" : ev.hole_number}
+                  </td>
                   <td className="px-4 py-3 text-xs whitespace-nowrap">
                     {ev.event_type === "comp" ? (
                       <span className="bg-orange-100 text-orange-600 px-2 py-0.5 rounded-full font-semibold text-xs">
@@ -432,7 +473,10 @@ export function EventManagement({
                 <div>
                   <p className="font-bold text-green-900">{rankingEvent.event_name}</p>
                   <p className="text-xs text-green-500 mt-0.5">
-                    {rankingEvent.golf_courses?.name} / {rankingEvent.hole_number}番ホール ／{" "}
+                    {rankingType === "tobashikko"
+                      ? "全国（全ホール対象）"
+                      : `${rankingEvent.golf_courses?.name ?? "—"} / ${rankingEvent.hole_number}番ホール`}
+                    {" ／ "}
                     {new Date(rankingEvent.start_date).toLocaleDateString("ja-JP")} 〜{" "}
                     {new Date(rankingEvent.end_date).toLocaleDateString("ja-JP")}
                   </p>
@@ -446,7 +490,7 @@ export function EventManagement({
               </div>
 
               {/* 並び替えボタン */}
-              {!rankingLoading && ranking.length > 0 && (
+              {!rankingLoading && (rankingType === "tobashikko" ? tobashikkoRanking.length : ranking.length) > 0 && (
                 <div className="flex gap-2">
                   <button
                     onClick={() => setSortOrder("distance")}
@@ -484,6 +528,70 @@ export function EventManagement({
                 <div className="py-12 text-center text-green-400 text-sm">読み込み中…</div>
               ) : rankingError ? (
                 <div className="py-8 text-center text-red-400 text-sm">{rankingError}</div>
+              ) : rankingType === "tobashikko" ? (
+                sortedTobashikko.length === 0 ? (
+                  <div className="py-12 text-center text-green-400 text-sm">
+                    <p className="text-2xl mb-2">🏌️</p>
+                    <p>期間内のエントリーがありません</p>
+                  </div>
+                ) : (
+                  <table className="w-full text-sm">
+                    <thead className="sticky top-0 bg-white border-b border-green-100">
+                      <tr className="text-green-600 text-xs">
+                        <th className="text-center px-3 py-3 font-semibold w-10">順位</th>
+                        <th className="text-left px-3 py-3 font-semibold">ニックネーム</th>
+                        <th className="text-right px-3 py-3 font-semibold whitespace-nowrap">飛距離</th>
+                        <th className="text-left px-3 py-3 font-semibold whitespace-nowrap">使用ドライバー</th>
+                        <th className="text-left px-3 py-3 font-semibold whitespace-nowrap">ゴルフ場 / ラウンド日</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sortedTobashikko.map((row, i) => {
+                        const displayRank = sortOrder === "distance" ? row.rank : i + 1;
+                        const isTop3ByDistance = row.rank <= 3 && sortOrder === "distance";
+                        return (
+                          <tr
+                            key={`${row.rank}-${row.nickname}-${row.round_date}`}
+                            className={`border-b border-green-50 last:border-0 ${
+                              isTop3ByDistance && row.rank === 1
+                                ? "bg-yellow-50"
+                                : isTop3ByDistance && row.rank === 2
+                                ? "bg-gray-50"
+                                : isTop3ByDistance && row.rank === 3
+                                ? "bg-orange-50"
+                                : ""
+                            }`}
+                          >
+                            <td className="px-3 py-3 text-center font-bold text-green-800">
+                              {sortOrder === "distance" && row.rank === 1 ? "🥇"
+                                : sortOrder === "distance" && row.rank === 2 ? "🥈"
+                                : sortOrder === "distance" && row.rank === 3 ? "🥉"
+                                : displayRank}
+                            </td>
+                            <td className="px-3 py-3 font-medium text-green-900">{row.nickname}</td>
+                            <td className="px-3 py-3 text-right tabular-nums font-semibold text-green-800 whitespace-nowrap">
+                              {row.distance_yards} yd
+                              {row.distance_meters != null && (
+                                <span className="text-green-400 font-normal ml-1 text-xs">
+                                  ({row.distance_meters.toFixed(1)} m)
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-3 py-3 text-green-700 text-xs whitespace-nowrap">
+                              {row.driver_text ?? "—"}
+                            </td>
+                            <td className="px-3 py-3 text-green-500 text-xs whitespace-nowrap">
+                              {row.course_name}
+                              <span className="text-green-400 ml-1">
+                                {new Date(row.round_date).toLocaleDateString("ja-JP")}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                )
               ) : sortedRanking.length === 0 ? (
                 <div className="py-12 text-center text-green-400 text-sm">
                   <p className="text-2xl mb-2">🏌️</p>

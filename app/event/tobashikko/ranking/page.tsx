@@ -1,17 +1,8 @@
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import Link from "next/link";
+import { fetchTobashikkoRanking, type TobashikkoRankingRow } from "@/lib/tobashikko/ranking";
 
 export const dynamic = "force-dynamic";
-
-// 公開ランキング情報のみ。本名・メール・user_id 等の個人情報はクライアントに出さない。
-interface PublicRankingRow {
-  rank:           number;
-  nickname:       string;
-  distance_yards: number;
-  driver_text:    string | null;   // "テーラーメイド Qi10LS 9.5度" 等
-  course_name:    string;
-  round_date:     string;          // YYYY-MM-DD
-}
 
 interface ActiveEvent {
   id:         string;
@@ -64,90 +55,11 @@ export default async function PublicTobashikkoRankingPage() {
     );
   }
 
-  // ── tobashikko_entries → shots → holes → rounds をネスト取得 ──
-  const { data: entryRows } = await admin
-    .from("tobashikko_entries")
-    .select(`
-      user_id, driver_brand, driver_model,
-      shots!inner(distance_yards, holes!inner(rounds!inner(course_name, date)))
-    `);
-
-  interface EntryLike {
-    user_id:      string;
-    driver_brand: string | null;
-    driver_model: string | null;
-    shots: {
-      distance_yards: number | null;
-      holes: {
-        rounds: {
-          course_name: string;
-          date:        string;
-        };
-      };
-    } | null;
-  }
-
-  // 期間内フィルタ（ラウンド日 = rounds.date が event の start〜end に収まるもの）。
-  // ひとり 1 記録（最高飛距離）に絞る。
-  const byUser = new Map<string, {
-    user_id:        string;
-    driver_brand:   string | null;
-    driver_model:   string | null;
-    distance_yards: number;
-    course_name:    string;
-    round_date:     string;
-  }>();
-
-  for (const row of (entryRows ?? []) as unknown as EntryLike[]) {
-    const shot   = row.shots;
-    const date   = shot?.holes?.rounds?.date;
-    const course = shot?.holes?.rounds?.course_name;
-    const yards  = shot?.distance_yards;
-    if (!shot || !date || !course || yards == null) continue;
-    if (date < event.start_date || date > event.end_date) continue;
-
-    const prev = byUser.get(row.user_id);
-    if (!prev || yards > prev.distance_yards) {
-      byUser.set(row.user_id, {
-        user_id:        row.user_id,
-        driver_brand:   row.driver_brand,
-        driver_model:   row.driver_model,
-        distance_yards: yards,
-        course_name:    course,
-        round_date:     date,
-      });
-    }
-  }
-
-  let ranking: PublicRankingRow[] = [];
-  if (byUser.size > 0) {
-    // nickname を取得（user_id 配列は集計内で使うのみで、クライアントには出さない）
-    const userIds = Array.from(byUser.keys());
-    const { data: profs } = await admin
-      .from("profiles")
-      .select("id, nickname")
-      .in("id", userIds);
-    const nameMap = new Map(
-      (profs ?? []).map((p: { id: string; nickname: string | null }) => [p.id, p.nickname])
-    );
-
-    ranking = Array.from(byUser.values())
-      .sort((a, b) => b.distance_yards - a.distance_yards)
-      .map((row, i) => {
-        const driverText =
-          row.driver_brand && row.driver_model
-            ? `${row.driver_brand} ${row.driver_model}`
-            : row.driver_brand || row.driver_model || null;
-        return {
-          rank:           i + 1,
-          nickname:       nameMap.get(row.user_id)?.trim() || "ゴルファー",
-          distance_yards: row.distance_yards,
-          driver_text:    driverText,
-          course_name:    row.course_name,
-          round_date:     row.round_date,
-        };
-      });
-  }
+  // ── ランキング集計（共通モジュール） ─────────────────────────
+  const ranking: TobashikkoRankingRow[] = await fetchTobashikkoRanking(admin, {
+    start_date: event.start_date,
+    end_date:   event.end_date,
+  });
 
   return (
     <PageShell>
