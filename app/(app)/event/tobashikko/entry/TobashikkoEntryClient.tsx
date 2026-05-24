@@ -133,7 +133,7 @@ export function TobashikkoEntryClient({
   }
 
   async function handleHide(shotId: string) {
-    if (!confirm("このショットをエントリー候補から非表示にしますか？\n（スタッツ画面の記録は残ります）")) return;
+    if (!confirm("このショットはエントリーを見送ります。スタッツ画面の記録はそのまま残ります。よろしいですか？")) return;
     setTopError("");
     setBusyShotId(shotId);
     try {
@@ -144,7 +144,7 @@ export function TobashikkoEntryClient({
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        setTopError(data.error ?? "非表示にできませんでした");
+        setTopError(data.error ?? "見送りにできませんでした");
         return;
       }
       setHiddenShotIds((prev) => (prev.includes(shotId) ? prev : [...prev, shotId]));
@@ -235,9 +235,9 @@ export function TobashikkoEntryClient({
                     onClick={() => handleHide(shot.id)}
                     disabled={busyShotId === shot.id}
                     className="bg-gray-200 hover:bg-gray-300 disabled:opacity-50 text-gray-600 text-xs font-medium px-2.5 py-2 rounded-lg"
-                    title="エントリー候補から非表示にする"
+                    title="このショットのエントリーを見送る"
                   >
-                    非表示
+                    見送る
                   </button>
                 </div>
               </div>
@@ -253,8 +253,8 @@ export function TobashikkoEntryClient({
               className="text-xs text-green-600 underline"
             >
               {showHidden
-                ? `非表示にしたショットを隠す（${hiddenShots.length}件）`
-                : `非表示にしたショットを表示（${hiddenShots.length}件）`}
+                ? `見送ったショットを隠す（${hiddenShots.length}件）`
+                : `見送ったショットを表示（${hiddenShots.length}件）`}
             </button>
             {showHidden && (
               <div className="mt-3 space-y-2">
