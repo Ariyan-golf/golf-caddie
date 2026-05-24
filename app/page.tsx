@@ -240,27 +240,49 @@ export default async function HomePage() {
         </div>
 
         {/* 飛ばしっこGO 導線 */}
-        <Link
-          href={tobashikkoConfigured ? "/#event-ranking" : "/event/tobashikko/settings"}
-          className="block card border-2 border-amber-300 bg-gradient-to-r from-amber-50 to-orange-50 hover:border-amber-400 transition-colors"
-        >
-          <div className="flex items-center gap-3">
-            <span className="text-3xl flex-shrink-0">🚀</span>
-            <div className="flex-1">
-              <p className="font-bold text-amber-900 text-sm">
-                {tobashikkoConfigured
-                  ? "飛ばしっこGO ランキングを見る"
-                  : "飛ばしっこGOに参加する（設定が必要です）"}
-              </p>
-              <p className="text-xs text-amber-600 mt-0.5">
-                {tobashikkoConfigured
-                  ? "ニックネーム・年代・性別・区分の設定済み"
-                  : "ニックネームと年代を設定してランキングに参加しよう"}
-              </p>
+        {tobashikkoConfigured ? (
+          <div className="card border-2 border-amber-300 bg-gradient-to-r from-amber-50 to-orange-50 space-y-3">
+            <div className="flex items-center gap-3">
+              <span className="text-3xl flex-shrink-0">🚀</span>
+              <div>
+                <p className="font-bold text-amber-900 text-sm">飛ばしっこGO</p>
+                <p className="text-xs text-amber-600 mt-0.5">参加設定済み</p>
+              </div>
             </div>
-            <span className="text-amber-500 text-lg flex-shrink-0">→</span>
+            <div className="grid grid-cols-1 gap-2">
+              <Link
+                href="/#event-ranking"
+                className="block w-full text-center bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold py-2.5 rounded-xl"
+              >
+                ランキングを見る →
+              </Link>
+              <Link
+                href="/event/tobashikko/entry"
+                className="block w-full text-center bg-white hover:bg-amber-50 border-2 border-amber-400 text-amber-700 text-sm font-semibold py-2.5 rounded-xl"
+              >
+                ショットをエントリーする →
+              </Link>
+            </div>
           </div>
-        </Link>
+        ) : (
+          <Link
+            href="/event/tobashikko/settings"
+            className="block card border-2 border-amber-300 bg-gradient-to-r from-amber-50 to-orange-50 hover:border-amber-400 transition-colors"
+          >
+            <div className="flex items-center gap-3">
+              <span className="text-3xl flex-shrink-0">🚀</span>
+              <div className="flex-1">
+                <p className="font-bold text-amber-900 text-sm">
+                  飛ばしっこGOに参加する（設定が必要です）
+                </p>
+                <p className="text-xs text-amber-600 mt-0.5">
+                  ニックネームと年代を設定してランキングに参加しよう
+                </p>
+              </div>
+              <span className="text-amber-500 text-lg flex-shrink-0">→</span>
+            </div>
+          </Link>
+        )}
 
         {/* 開催中イベント */}
         {eventRankings.length > 0 && (
