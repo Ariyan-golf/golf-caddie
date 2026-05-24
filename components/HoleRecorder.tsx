@@ -3205,7 +3205,7 @@ function ActiveShotPanel({
   );
 }
 
-// ── CompactScoreEntry: -/+ counters for par / score / putts ─────────
+// ── CompactScoreEntry: tap value → numeric keypad modal ──────────────
 
 function CompactScoreEntry({
   par, score, putts, onParChange, onScoreChange, onPuttsChange,
@@ -3219,106 +3219,165 @@ function CompactScoreEntry({
 }) {
   return (
     <div className="card !p-2 space-y-1.5">
-      <QuickPickRow
-        label="パー"
-        value={par}
-        options={[3, 4, 5, 6]}
-        min={3}
-        max={7}
-        onChange={onParChange}
-      />
-      <QuickPickRow
-        label="打数"
-        value={score}
-        options={[1, 2, 3, 4, 5]}
-        min={1}
-        max={20}
-        onChange={onScoreChange}
-      />
-      <QuickPickRow
-        label="パット"
-        value={putts}
-        options={[0, 1, 2, 3, 4]}
-        min={0}
-        max={10}
-        onChange={onPuttsChange}
-      />
+      <KeypadEntryRow label="パー"   value={par}   min={3} max={7}  onChange={onParChange} />
+      <KeypadEntryRow label="打数"   value={score} min={1} max={99} onChange={onScoreChange} />
+      <KeypadEntryRow label="パット" value={putts} min={0} max={99} onChange={onPuttsChange} />
     </div>
   );
 }
 
-// Horizontal number quick-select: [-] [n1] [n2] ... [+]
-// — number buttons set the value in one tap (primary path)
-// — ±  are for out-of-range values (rare: e.g. 8打, 5パット)
-function QuickPickRow({
-  label, value, options, min, max, onChange,
+// One row: label + current-value chip. Tap the chip to open the keypad.
+function KeypadEntryRow({
+  label, value, min, max, onChange,
 }: {
   label: string;
   value: number | null;
-  options: number[];
   min: number;
   max: number;
   onChange: (n: number) => void;
 }) {
-  function dec() {
-    if (value == null) return;
-    if (value <= min) return;
-    onChange(value - 1);
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <div className="flex items-center gap-2">
+        <span className="text-base font-semibold text-green-700 w-14 flex-shrink-0">{label}</span>
+        <button
+          onClick={() => setOpen(true)}
+          className="flex-1 h-12 rounded-xl border-2 border-green-300 bg-white hover:bg-green-50
+                     active:bg-green-100 active:scale-[0.98] text-2xl font-bold text-green-700
+                     tabular-nums transition-colors"
+        >
+          {value ?? "—"}
+        </button>
+      </div>
+      {open && (
+        <NumericKeypadModal
+          label={label}
+          initialValue={value}
+          min={min}
+          max={max}
+          onConfirm={(n) => { onChange(n); setOpen(false); }}
+          onClose={() => setOpen(false)}
+        />
+      )}
+    </>
+  );
+}
+
+// Phone-dial style keypad: 1-9 grid, ⌫ / 0 / 確定 on the bottom row.
+// Large hit targets for glove + one-hand use on the course.
+function NumericKeypadModal({
+  label, initialValue, min, max, onConfirm, onClose,
+}: {
+  label: string;
+  initialValue: number | null;
+  min: number;
+  max: number;
+  onConfirm: (n: number) => void;
+  onClose: () => void;
+}) {
+  const maxLen = String(max).length;
+  const [input, setInput] = useState<string>(initialValue != null ? String(initialValue) : "");
+  // Once the user starts typing, the first digit replaces the seeded value
+  // rather than appending — matches phone-dial expectations when re-editing.
+  const [touched, setTouched] = useState(false);
+
+  function press(digit: string) {
+    setInput((cur) => {
+      const base = touched ? cur : "";
+      const next = (base + digit).replace(/^0+(?=\d)/, "");
+      if (next.length > maxLen) return cur;
+      return next;
+    });
+    setTouched(true);
   }
-  function inc() {
-    if (value == null) { onChange(options[0] ?? min); return; }
-    if (value >= max) return;
-    onChange(value + 1);
+  function backspace() {
+    setInput((cur) => (touched ? cur : "").slice(0, -1));
+    setTouched(true);
   }
-  // When the current value is outside the displayed options, show it as a
-  // small badge so the user can still see where they are without scrolling.
-  const valueOutsideOptions = value != null && !options.includes(value);
+
+  const parsed = input === "" ? null : parseInt(input, 10);
+  const valid = parsed !== null && parsed >= min && parsed <= max;
+
+  function handleConfirm() {
+    if (!valid || parsed == null) return;
+    onConfirm(parsed);
+  }
 
   return (
-    <div className="flex items-center gap-1">
-      <span className="text-base font-semibold text-green-700 w-10 flex-shrink-0">{label}</span>
-      <button
-        onClick={dec}
-        disabled={value == null || value <= min}
-        className="w-9 h-10 rounded-lg bg-gray-100 hover:bg-gray-200 active:bg-gray-300
-                   text-gray-700 font-bold text-base transition-colors active:scale-95
-                   disabled:opacity-40 flex-shrink-0"
-      >
-        −
-      </button>
-      <div className="flex gap-1 flex-1 min-w-0">
-        {options.map((n) => {
-          const selected = value === n;
-          return (
+    <div
+      role="dialog"
+      aria-label={`${label}を入力`}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div className="w-full max-w-sm bg-white rounded-2xl shadow-xl p-4 space-y-3">
+        <div className="flex items-baseline justify-between">
+          <h3 className="text-lg font-bold text-green-800">{label}を入力</h3>
+          <span className="text-xs text-gray-500">範囲: {min}〜{max}</span>
+        </div>
+
+        <div className="h-16 rounded-xl border-2 border-green-300 bg-green-50 flex items-center justify-center">
+          <span className="text-4xl font-bold text-green-700 tabular-nums">
+            {input === "" ? "—" : input}
+          </span>
+        </div>
+
+        <p
+          className={`text-sm text-center min-h-[1.25rem] ${
+            input !== "" && !valid ? "text-red-600" : "text-transparent"
+          }`}
+        >
+          {min}〜{max}の範囲で入力してください
+        </p>
+
+        <div className="grid grid-cols-3 gap-2">
+          {["1","2","3","4","5","6","7","8","9"].map((k) => (
             <button
-              key={n}
-              onClick={() => onChange(n)}
-              className={`flex-1 h-10 rounded-lg border-2 font-bold text-base tabular-nums
-                          transition-colors active:scale-95 min-w-0 ${
-                selected
-                  ? "bg-green-600 border-green-600 text-white shadow-sm"
-                  : "bg-white border-green-300 text-green-700 hover:bg-green-50"
-              }`}
+              key={k}
+              onClick={() => press(k)}
+              className="h-14 rounded-xl bg-gray-100 hover:bg-gray-200 active:bg-gray-300
+                         active:scale-95 text-2xl font-bold text-gray-800 transition-colors"
             >
-              {n}
+              {k}
             </button>
-          );
-        })}
+          ))}
+          <button
+            onClick={backspace}
+            disabled={input === ""}
+            className="h-14 rounded-xl bg-gray-200 hover:bg-gray-300 active:bg-gray-400
+                       active:scale-95 text-xl font-bold text-gray-700 transition-colors
+                       disabled:opacity-40 disabled:cursor-not-allowed"
+            aria-label="1文字消す"
+          >
+            ⌫
+          </button>
+          <button
+            onClick={() => press("0")}
+            className="h-14 rounded-xl bg-gray-100 hover:bg-gray-200 active:bg-gray-300
+                       active:scale-95 text-2xl font-bold text-gray-800 transition-colors"
+          >
+            0
+          </button>
+          <button
+            onClick={handleConfirm}
+            disabled={!valid}
+            className="h-14 rounded-xl bg-green-600 hover:bg-green-700 active:bg-green-800
+                       active:scale-95 text-base font-bold text-white shadow-sm transition-colors
+                       disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            確定
+          </button>
+        </div>
+
+        <button
+          onClick={onClose}
+          className="w-full h-10 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700
+                     text-sm font-medium transition-colors"
+        >
+          キャンセル
+        </button>
       </div>
-      <button
-        onClick={inc}
-        disabled={value != null && value >= max}
-        className="w-9 h-10 rounded-lg bg-green-600 hover:bg-green-700 active:bg-green-800
-                   text-white font-bold text-base transition-colors active:scale-95
-                   disabled:opacity-40 flex-shrink-0"
-      >
-        ＋
-      </button>
-      {valueOutsideOptions && (
-        <span className="text-base font-bold text-green-700 tabular-nums w-6 text-center flex-shrink-0">
-          {value}
-        </span>
-      )}
     </div>
   );
 }
