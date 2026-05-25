@@ -447,6 +447,21 @@ export default async function HomePage() {
             </div>
           </div>
         )}
+
+        {/* 使い方ガイド */}
+        <Link
+          href="/guide"
+          className="card flex items-center gap-3 hover:border-green-300 transition-colors"
+        >
+          <span className="text-2xl flex-shrink-0">📖</span>
+          <div className="flex-1">
+            <p className="font-semibold text-green-800 text-sm">使い方ガイド</p>
+            <p className="text-xs text-green-500 mt-0.5">
+              アプリの使い方が分からないときはこちら
+            </p>
+          </div>
+          <span className="text-green-400 text-lg flex-shrink-0">→</span>
+        </Link>
       </div>
       <Navigation />
     </div>
