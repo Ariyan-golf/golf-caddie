@@ -59,8 +59,9 @@ export default async function RoundStartPage({ searchParams }: Props) {
       .single(),
     supabase
       .from("course_tees")
-      .select("id, green_type, tee_name, course_rating, slope_rating, distance")
+      .select("id, green_type, tee_name, course_rating, slope_rating, distance, display_order")
       .eq("course_id", course_id)
+      .order("display_order", { ascending: true, nullsFirst: false })
       .order("green_type")
       .order("tee_name"),
     supabase

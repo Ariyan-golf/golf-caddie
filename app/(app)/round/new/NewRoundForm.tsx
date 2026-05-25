@@ -86,6 +86,7 @@ interface CourseTee {
   course_rating: number | null;
   slope_rating: number | null;
   distance: number | null;
+  display_order: number | null;
 }
 
 export function NewRoundForm({ linkedCourseId }: { linkedCourseId?: string }) {
