@@ -103,6 +103,7 @@ export function NewRoundForm({ linkedCourseId }: { linkedCourseId?: string }) {
   const [selectedCourseId, setSelectedCourseId] = useState(linkedCourseId ?? "");
   const [courseName, setCourseName]             = useState("");
   const [courseType, setCourseType]             = useState<string>("18H");
+  const [isCourseModalOpen, setIsCourseModalOpen] = useState(false);
 
   // ティー
   const [tees, setTees]               = useState<CourseTee[]>([]);
@@ -308,110 +309,32 @@ export function NewRoundForm({ linkedCourseId }: { linkedCourseId?: string }) {
         </div>
       )}
 
-      {/* ── ゴルフ場選択（3段階ドリルダウン） ────────────── */}
+      {/* ── ゴルフ場選択 ───────────────────────────────── */}
       <div className="space-y-3">
         <label className="label">ゴルフ場</label>
 
-        {/* ステップ1: 地域選択 */}
-        {!selectedRegion && (
-          <div className="flex flex-col gap-2">
-            {REGION_PREFECTURES.map((r) => (
-              <button
-                key={r.region}
-                type="button"
-                className="w-full py-3 px-4 rounded-xl border-2 border-gray-200 bg-white text-sm font-bold text-gray-700
-                           hover:border-green-300 transition-colors active:scale-[0.98] text-left"
-                onClick={() => { setSelectedRegion(r.region); setSelectedPrefecture(""); setSelectedCourseId(""); setCourseName(""); }}
-              >
-                {r.region}
-              </button>
-            ))}
-            <button
-              type="button"
-              className="w-full py-3 px-4 rounded-xl border-2 border-dashed border-gray-300 bg-white text-sm font-bold text-gray-400
-                         hover:border-green-300 transition-colors active:scale-[0.98] text-left"
-              onClick={() => { setSelectedRegion("__manual__"); setSelectedPrefecture(""); setSelectedCourseId(""); setCourseName(""); }}
-            >
-              指定なし（手動入力）
-            </button>
-          </div>
+        {/* 未選択: モーダルを開くボタン */}
+        {!selectedCourseId && selectedRegion !== "__manual__" && (
+          <button
+            type="button"
+            className="w-full py-3 px-4 rounded-xl border-2 border-dashed border-green-300 bg-white text-sm font-bold text-green-600
+                       hover:bg-green-50 transition-colors active:scale-[0.98]"
+            onClick={() => setIsCourseModalOpen(true)}
+          >
+            ゴルフ場を選ぶ
+          </button>
         )}
-
-        {/* ステップ2: 県選択 */}
-        {selectedRegion && selectedRegion !== "__manual__" && !selectedPrefecture && (
-          <>
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-green-700 font-medium">{selectedRegion}</span>
-              <button
-                type="button"
-                className="text-xs text-green-600 underline"
-                onClick={() => { setSelectedRegion(""); setSelectedPrefecture(""); setSelectedCourseId(""); setCourseName(""); }}
-              >
-                ← 地域を選び直す
-              </button>
-            </div>
-            <div className="flex flex-col gap-2">
-              {REGION_PREFECTURES.find((r) => r.region === selectedRegion)?.prefectures.map((p) => (
-                <button
-                  key={p}
-                  type="button"
-                  className="w-full py-3 px-4 rounded-xl border-2 border-gray-200 bg-white text-sm font-bold text-gray-700
-                             hover:border-green-300 transition-colors active:scale-[0.98] text-left"
-                  onClick={() => { setSelectedPrefecture(p); setSelectedCourseId(""); setCourseName(""); }}
-                >
-                  {p}
-                </button>
-              ))}
-            </div>
-          </>
-        )}
-
-        {/* ステップ3: ゴルフ場選択 */}
-        {selectedRegion && selectedRegion !== "__manual__" && selectedPrefecture && !selectedCourseId && (() => {
-          const filtered = courses.filter((c) => c.prefecture === selectedPrefecture);
-          return (
-            <>
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-green-700 font-medium">{selectedRegion} &gt; {selectedPrefecture}</span>
-                <button
-                  type="button"
-                  className="text-xs text-green-600 underline"
-                  onClick={() => { setSelectedPrefecture(""); setSelectedCourseId(""); setCourseName(""); }}
-                >
-                  ← 県を選び直す
-                </button>
-              </div>
-              {filtered.length === 0 ? (
-                <p className="text-sm text-green-500">この県のゴルフ場は準備中です</p>
-              ) : (
-                <div className="flex flex-col gap-2">
-                  {filtered.map((c) => (
-                    <button
-                      key={c.id}
-                      type="button"
-                      className="w-full py-3 px-4 rounded-xl border-2 border-gray-200 bg-white text-sm font-bold text-gray-700
-                                 hover:border-green-300 transition-colors active:scale-[0.98] text-left"
-                      onClick={() => { setSelectedCourseId(c.id); setCourseName(c.name); }}
-                    >
-                      {c.name}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </>
-          );
-        })()}
 
         {/* 選択確定表示 */}
-        {selectedRegion && selectedRegion !== "__manual__" && selectedCourseId && (
+        {selectedCourseId && selectedRegion !== "__manual__" && (
           <div className="flex items-center gap-2">
             <span className="text-sm text-green-700 font-medium">{courseName}</span>
             <button
               type="button"
               className="text-xs text-green-600 underline"
-              onClick={() => { setSelectedCourseId(""); setCourseName(""); }}
+              onClick={() => { setSelectedCourseId(""); setCourseName(""); setIsCourseModalOpen(true); }}
             >
-              ゴルフ場を変更
+              変更
             </button>
           </div>
         )}
@@ -424,9 +347,9 @@ export function NewRoundForm({ linkedCourseId }: { linkedCourseId?: string }) {
               <button
                 type="button"
                 className="text-xs text-green-600 underline"
-                onClick={() => { setSelectedRegion(""); setSelectedPrefecture(""); setSelectedCourseId(""); setCourseName(""); }}
+                onClick={() => { setSelectedRegion(""); setSelectedPrefecture(""); setSelectedCourseId(""); setCourseName(""); setIsCourseModalOpen(true); }}
               >
-                ← 地域を選び直す
+                変更
               </button>
             </div>
             <div>
@@ -692,6 +615,126 @@ export function NewRoundForm({ linkedCourseId }: { linkedCourseId?: string }) {
       </button>
     </form>
     {showGeoGuide && <GeoPermissionGuide onClose={() => setShowGeoGuide(false)} />}
+
+    {/* ── ゴルフ場選択モーダル ──────────────────────────── */}
+    {isCourseModalOpen && (
+      <div
+        className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-4 sm:items-center"
+        onClick={() => setIsCourseModalOpen(false)}
+      >
+        <div
+          className="bg-white rounded-2xl max-w-md w-full max-h-[80vh] flex flex-col shadow-xl"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* ヘッダー */}
+          <div className="flex items-center justify-between p-4 pb-3 border-b border-gray-100">
+            <h2 className="text-base font-bold text-green-800">ゴルフ場を選ぶ</h2>
+            <button
+              type="button"
+              className="w-8 h-8 flex items-center justify-center rounded-full text-gray-400 hover:bg-gray-100 transition-colors"
+              onClick={() => setIsCourseModalOpen(false)}
+            >
+              ✕
+            </button>
+          </div>
+
+          {/* ボディ（スクロール可能） */}
+          <div className="p-4 overflow-y-auto flex-1 space-y-3">
+
+            {/* ステップ1: 地域選択 */}
+            {!selectedRegion && (
+              <div className="flex flex-col gap-2">
+                {REGION_PREFECTURES.map((r) => (
+                  <button
+                    key={r.region}
+                    type="button"
+                    className="w-full py-3 px-4 rounded-xl border-2 border-gray-200 bg-white text-sm font-bold text-gray-700
+                               hover:border-green-300 transition-colors active:scale-[0.98] text-left"
+                    onClick={() => { setSelectedRegion(r.region); setSelectedPrefecture(""); setSelectedCourseId(""); setCourseName(""); }}
+                  >
+                    {r.region}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  className="w-full py-3 px-4 rounded-xl border-2 border-dashed border-gray-300 bg-white text-sm font-bold text-gray-400
+                             hover:border-green-300 transition-colors active:scale-[0.98] text-left"
+                  onClick={() => { setSelectedRegion("__manual__"); setSelectedPrefecture(""); setSelectedCourseId(""); setCourseName(""); setIsCourseModalOpen(false); }}
+                >
+                  指定なし（手動入力）
+                </button>
+              </div>
+            )}
+
+            {/* ステップ2: 県選択 */}
+            {selectedRegion && selectedRegion !== "__manual__" && !selectedPrefecture && (
+              <>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-green-700 font-medium">{selectedRegion}</span>
+                  <button
+                    type="button"
+                    className="text-xs text-green-600 underline"
+                    onClick={() => { setSelectedRegion(""); setSelectedPrefecture(""); setSelectedCourseId(""); setCourseName(""); }}
+                  >
+                    ← 地域を選び直す
+                  </button>
+                </div>
+                <div className="flex flex-col gap-2">
+                  {REGION_PREFECTURES.find((r) => r.region === selectedRegion)?.prefectures.map((p) => (
+                    <button
+                      key={p}
+                      type="button"
+                      className="w-full py-3 px-4 rounded-xl border-2 border-gray-200 bg-white text-sm font-bold text-gray-700
+                                 hover:border-green-300 transition-colors active:scale-[0.98] text-left"
+                      onClick={() => { setSelectedPrefecture(p); setSelectedCourseId(""); setCourseName(""); }}
+                    >
+                      {p}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {/* ステップ3: ゴルフ場選択 */}
+            {selectedRegion && selectedRegion !== "__manual__" && selectedPrefecture && (() => {
+              const filtered = courses.filter((c) => c.prefecture === selectedPrefecture);
+              return (
+                <>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-green-700 font-medium">{selectedRegion} &gt; {selectedPrefecture}</span>
+                    <button
+                      type="button"
+                      className="text-xs text-green-600 underline"
+                      onClick={() => { setSelectedPrefecture(""); setSelectedCourseId(""); setCourseName(""); }}
+                    >
+                      ← 県を選び直す
+                    </button>
+                  </div>
+                  {filtered.length === 0 ? (
+                    <p className="text-sm text-green-500">この県のゴルフ場は準備中です</p>
+                  ) : (
+                    <div className="flex flex-col gap-2">
+                      {filtered.map((c) => (
+                        <button
+                          key={c.id}
+                          type="button"
+                          className="w-full py-3 px-4 rounded-xl border-2 border-gray-200 bg-white text-sm font-bold text-gray-700
+                                     hover:border-green-300 transition-colors active:scale-[0.98] text-left"
+                          onClick={() => { setSelectedCourseId(c.id); setCourseName(c.name); setIsCourseModalOpen(false); }}
+                        >
+                          {c.name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </>
+              );
+            })()}
+
+          </div>
+        </div>
+      </div>
+    )}
     </>
   );
 }
