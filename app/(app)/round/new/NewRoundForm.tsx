@@ -314,30 +314,27 @@ export function NewRoundForm({ linkedCourseId }: { linkedCourseId?: string }) {
 
         {/* ステップ1: 地域選択 */}
         {!selectedRegion && (
-          <select
-            className="input"
-            value=""
-            onChange={(e) => {
-              const v = e.target.value;
-              if (v === "__manual__") {
-                setSelectedRegion("__manual__");
-                setSelectedPrefecture("");
-                setSelectedCourseId("");
-                setCourseName("");
-              } else if (v) {
-                setSelectedRegion(v);
-                setSelectedPrefecture("");
-                setSelectedCourseId("");
-                setCourseName("");
-              }
-            }}
-          >
-            <option value="">地域を選択してください</option>
+          <div className="flex flex-col gap-2">
             {REGION_PREFECTURES.map((r) => (
-              <option key={r.region} value={r.region}>{r.region}</option>
+              <button
+                key={r.region}
+                type="button"
+                className="w-full py-3 px-4 rounded-xl border-2 border-gray-200 bg-white text-sm font-bold text-gray-700
+                           hover:border-green-300 transition-colors active:scale-[0.98] text-left"
+                onClick={() => { setSelectedRegion(r.region); setSelectedPrefecture(""); setSelectedCourseId(""); setCourseName(""); }}
+              >
+                {r.region}
+              </button>
             ))}
-            <option value="__manual__">指定なし（手動入力）</option>
-          </select>
+            <button
+              type="button"
+              className="w-full py-3 px-4 rounded-xl border-2 border-dashed border-gray-300 bg-white text-sm font-bold text-gray-400
+                         hover:border-green-300 transition-colors active:scale-[0.98] text-left"
+              onClick={() => { setSelectedRegion("__manual__"); setSelectedPrefecture(""); setSelectedCourseId(""); setCourseName(""); }}
+            >
+              指定なし（手動入力）
+            </button>
+          </div>
         )}
 
         {/* ステップ2: 県選択 */}
@@ -353,22 +350,19 @@ export function NewRoundForm({ linkedCourseId }: { linkedCourseId?: string }) {
                 ← 地域を選び直す
               </button>
             </div>
-            <select
-              className="input"
-              value=""
-              onChange={(e) => {
-                if (e.target.value) {
-                  setSelectedPrefecture(e.target.value);
-                  setSelectedCourseId("");
-                  setCourseName("");
-                }
-              }}
-            >
-              <option value="">県を選択してください</option>
+            <div className="flex flex-col gap-2">
               {REGION_PREFECTURES.find((r) => r.region === selectedRegion)?.prefectures.map((p) => (
-                <option key={p} value={p}>{p}</option>
+                <button
+                  key={p}
+                  type="button"
+                  className="w-full py-3 px-4 rounded-xl border-2 border-gray-200 bg-white text-sm font-bold text-gray-700
+                             hover:border-green-300 transition-colors active:scale-[0.98] text-left"
+                  onClick={() => { setSelectedPrefecture(p); setSelectedCourseId(""); setCourseName(""); }}
+                >
+                  {p}
+                </button>
               ))}
-            </select>
+            </div>
           </>
         )}
 
@@ -390,22 +384,19 @@ export function NewRoundForm({ linkedCourseId }: { linkedCourseId?: string }) {
               {filtered.length === 0 ? (
                 <p className="text-sm text-green-500">この県のゴルフ場は準備中です</p>
               ) : (
-                <select
-                  className="input"
-                  value=""
-                  onChange={(e) => {
-                    if (e.target.value) {
-                      setSelectedCourseId(e.target.value);
-                      const c = courses.find((c) => c.id === e.target.value);
-                      if (c) setCourseName(c.name);
-                    }
-                  }}
-                >
-                  <option value="">ゴルフ場を選択してください</option>
+                <div className="flex flex-col gap-2">
                   {filtered.map((c) => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
+                    <button
+                      key={c.id}
+                      type="button"
+                      className="w-full py-3 px-4 rounded-xl border-2 border-gray-200 bg-white text-sm font-bold text-gray-700
+                                 hover:border-green-300 transition-colors active:scale-[0.98] text-left"
+                      onClick={() => { setSelectedCourseId(c.id); setCourseName(c.name); }}
+                    >
+                      {c.name}
+                    </button>
                   ))}
-                </select>
+                </div>
               )}
             </>
           );
