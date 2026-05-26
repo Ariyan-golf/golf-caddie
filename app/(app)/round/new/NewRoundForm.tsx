@@ -9,6 +9,7 @@ import { acquireWakeLock } from "@/lib/wakeLock";
 import { GeoPermissionGuide } from "@/components/GeoPermissionGuide";
 import type { StartHole, Weather, WindSpeed, WindDirection } from "@/types";
 import { WEATHER_OPTIONS, WIND_SPEED_OPTIONS } from "@/types";
+import { REGION_PREFECTURES } from "@/lib/region-prefectures";
 
 const WIND_DIRECTION_GRID: { dir: WindDirection; row: number; col: number }[] = [
   { dir: "北西", row: 0, col: 0 },
@@ -77,6 +78,9 @@ type WeatherStatus = "idle" | "locating" | "fetching" | "ok" | "error";
 interface GolfCourse {
   id: string;
   name: string;
+  region: string | null;
+  prefecture: string | null;
+  name_kana: string | null;
 }
 
 interface CourseTee {
@@ -92,8 +96,10 @@ interface CourseTee {
 export function NewRoundForm({ linkedCourseId }: { linkedCourseId?: string }) {
   const router = useRouter();
 
-  // ゴルフ場選択
+  // ゴルフ場選択（3段階ドリルダウン）
   const [courses, setCourses]                   = useState<GolfCourse[]>([]);
+  const [selectedRegion, setSelectedRegion]     = useState("");
+  const [selectedPrefecture, setSelectedPrefecture] = useState("");
   const [selectedCourseId, setSelectedCourseId] = useState(linkedCourseId ?? "");
   const [courseName, setCourseName]             = useState("");
   const [courseType, setCourseType]             = useState<string>("18H");
@@ -128,8 +134,8 @@ export function NewRoundForm({ linkedCourseId }: { linkedCourseId?: string }) {
     const supabase = createClient();
     supabase
       .from("golf_courses")
-      .select("id, name")
-      .order("name")
+      .select("id, name, region, prefecture, name_kana")
+      .order("name_kana", { nullsFirst: false })
       .then(({ data }) => setCourses(data ?? []));
   }, []);
 
@@ -302,38 +308,150 @@ export function NewRoundForm({ linkedCourseId }: { linkedCourseId?: string }) {
         </div>
       )}
 
-      {/* ── ゴルフ場選択 ───────────────────────────────── */}
-      <div>
+      {/* ── ゴルフ場選択（3段階ドリルダウン） ────────────── */}
+      <div className="space-y-3">
         <label className="label">ゴルフ場</label>
-        <select
-          className="input"
-          value={selectedCourseId}
-          onChange={(e) => {
-            setSelectedCourseId(e.target.value);
-            if (!e.target.value) setCourseName("");
-          }}
-        >
-          <option value="">指定なし（手動入力）</option>
-          {courses.map((c) => (
-            <option key={c.id} value={c.id}>{c.name}</option>
-          ))}
-        </select>
-      </div>
 
-      {/* ── コース名（指定なしのみ表示） ─────────────────── */}
-      {!selectedCourseId && (
-        <div>
-          <label className="label">コース名 *</label>
-          <input
-            type="text"
+        {/* ステップ1: 地域選択 */}
+        {!selectedRegion && (
+          <select
             className="input"
-            placeholder="コース名を入力"
-            value={courseName}
-            onChange={(e) => setCourseName(e.target.value)}
-            required
-          />
-        </div>
-      )}
+            value=""
+            onChange={(e) => {
+              const v = e.target.value;
+              if (v === "__manual__") {
+                setSelectedRegion("__manual__");
+                setSelectedPrefecture("");
+                setSelectedCourseId("");
+                setCourseName("");
+              } else if (v) {
+                setSelectedRegion(v);
+                setSelectedPrefecture("");
+                setSelectedCourseId("");
+                setCourseName("");
+              }
+            }}
+          >
+            <option value="">地域を選択してください</option>
+            {REGION_PREFECTURES.map((r) => (
+              <option key={r.region} value={r.region}>{r.region}</option>
+            ))}
+            <option value="__manual__">指定なし（手動入力）</option>
+          </select>
+        )}
+
+        {/* ステップ2: 県選択 */}
+        {selectedRegion && selectedRegion !== "__manual__" && !selectedPrefecture && (
+          <>
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-green-700 font-medium">{selectedRegion}</span>
+              <button
+                type="button"
+                className="text-xs text-green-600 underline"
+                onClick={() => { setSelectedRegion(""); setSelectedPrefecture(""); setSelectedCourseId(""); setCourseName(""); }}
+              >
+                ← 地域を選び直す
+              </button>
+            </div>
+            <select
+              className="input"
+              value=""
+              onChange={(e) => {
+                if (e.target.value) {
+                  setSelectedPrefecture(e.target.value);
+                  setSelectedCourseId("");
+                  setCourseName("");
+                }
+              }}
+            >
+              <option value="">県を選択してください</option>
+              {REGION_PREFECTURES.find((r) => r.region === selectedRegion)?.prefectures.map((p) => (
+                <option key={p} value={p}>{p}</option>
+              ))}
+            </select>
+          </>
+        )}
+
+        {/* ステップ3: ゴルフ場選択 */}
+        {selectedRegion && selectedRegion !== "__manual__" && selectedPrefecture && !selectedCourseId && (() => {
+          const filtered = courses.filter((c) => c.prefecture === selectedPrefecture);
+          return (
+            <>
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-green-700 font-medium">{selectedRegion} &gt; {selectedPrefecture}</span>
+                <button
+                  type="button"
+                  className="text-xs text-green-600 underline"
+                  onClick={() => { setSelectedPrefecture(""); setSelectedCourseId(""); setCourseName(""); }}
+                >
+                  ← 県を選び直す
+                </button>
+              </div>
+              {filtered.length === 0 ? (
+                <p className="text-sm text-green-500">この県のゴルフ場は準備中です</p>
+              ) : (
+                <select
+                  className="input"
+                  value=""
+                  onChange={(e) => {
+                    if (e.target.value) {
+                      setSelectedCourseId(e.target.value);
+                      const c = courses.find((c) => c.id === e.target.value);
+                      if (c) setCourseName(c.name);
+                    }
+                  }}
+                >
+                  <option value="">ゴルフ場を選択してください</option>
+                  {filtered.map((c) => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+              )}
+            </>
+          );
+        })()}
+
+        {/* 選択確定表示 */}
+        {selectedRegion && selectedRegion !== "__manual__" && selectedCourseId && (
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-green-700 font-medium">{courseName}</span>
+            <button
+              type="button"
+              className="text-xs text-green-600 underline"
+              onClick={() => { setSelectedCourseId(""); setCourseName(""); }}
+            >
+              ゴルフ場を変更
+            </button>
+          </div>
+        )}
+
+        {/* 手動入力モード */}
+        {selectedRegion === "__manual__" && (
+          <>
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-green-700 font-medium">指定なし（手動入力）</span>
+              <button
+                type="button"
+                className="text-xs text-green-600 underline"
+                onClick={() => { setSelectedRegion(""); setSelectedPrefecture(""); setSelectedCourseId(""); setCourseName(""); }}
+              >
+                ← 地域を選び直す
+              </button>
+            </div>
+            <div>
+              <label className="label">コース名 *</label>
+              <input
+                type="text"
+                className="input"
+                placeholder="コース名を入力"
+                value={courseName}
+                onChange={(e) => setCourseName(e.target.value)}
+                required
+              />
+            </div>
+          </>
+        )}
+      </div>
 
       {/* ── ティーグランド選択（ゴルフ場選択時） ────────── */}
       {selectedCourseId && (
