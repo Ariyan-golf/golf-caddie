@@ -49,7 +49,7 @@ export async function GET(
 
   // ── 飛ばしっこGO 分岐: 共通モジュールで集計 ───────────────────
   if (event.event_type === "tobashikko") {
-    const ranking = await fetchTobashikkoRanking(admin, {
+    const { ranking } = await fetchTobashikkoRanking(admin, {
       start_date: event.start_date,
       end_date:   event.end_date,
     });

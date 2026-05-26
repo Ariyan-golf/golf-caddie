@@ -26,6 +26,18 @@ export interface TobashikkoEventWindow {
   end_date:   string;   // YYYY-MM-DD
 }
 
+export interface TobashikkoMyRank {
+  rank:            number;
+  total:           number;
+  nickname:        string;
+  distance_yards:  number;
+}
+
+export interface TobashikkoRankingResult {
+  ranking: TobashikkoRankingRow[];
+  myRank:  TobashikkoMyRank | null;
+}
+
 /**
  * メーカーと機種を表示用に連結（"テーラーメイド Qi10LS 9.5度" 等）。
  * 片方しかなければそれだけ、両方 null なら null。
@@ -50,8 +62,9 @@ export function joinBrandModel(brand: string | null, model: string | null): stri
  */
 export async function fetchTobashikkoRanking(
   admin: SupabaseClient,
-  event: TobashikkoEventWindow
-): Promise<TobashikkoRankingRow[]> {
+  event: TobashikkoEventWindow,
+  currentUserId?: string,
+): Promise<TobashikkoRankingResult> {
   const { data: entryRows } = await admin
     .from("tobashikko_entries")
     .select(`
@@ -130,7 +143,7 @@ export async function fetchTobashikkoRanking(
     }
   }
 
-  if (byUser.size === 0) return [];
+  if (byUser.size === 0) return { ranking: [], myRank: null };
 
   // nickname を一括取得（user_id 配列はここで使い切り、戻り値には乗せない）
   const userIds = Array.from(byUser.keys());
@@ -142,21 +155,37 @@ export async function fetchTobashikkoRanking(
     (profs ?? []).map((p: { id: string; nickname: string | null }) => [p.id, p.nickname])
   );
 
-  return Array.from(byUser.values())
-    .sort((a, b) => b.distance_yards - a.distance_yards)
-    .map((row, i) => ({
-      rank:            i + 1,
-      nickname:        nameMap.get(row.user_id)?.trim() || "ゴルファー",
-      distance_yards:  row.distance_yards,
-      distance_meters: row.distance_meters,
-      driver_brand:    row.driver_brand,
-      driver_model:    row.driver_model,
-      shaft_brand:     row.shaft_brand,
-      shaft_model:     row.shaft_model,
-      ball_brand:      row.ball_brand,
-      ball_model:      row.ball_model,
-      hole_number:     row.hole_number,
-      course_name:     row.course_name,
-      round_date:      row.round_date,
-    }));
+  const sorted = Array.from(byUser.values())
+    .sort((a, b) => b.distance_yards - a.distance_yards);
+
+  const ranking = sorted.map((row, i) => ({
+    rank:            i + 1,
+    nickname:        nameMap.get(row.user_id)?.trim() || "ゴルファー",
+    distance_yards:  row.distance_yards,
+    distance_meters: row.distance_meters,
+    driver_brand:    row.driver_brand,
+    driver_model:    row.driver_model,
+    shaft_brand:     row.shaft_brand,
+    shaft_model:     row.shaft_model,
+    ball_brand:      row.ball_brand,
+    ball_model:      row.ball_model,
+    hole_number:     row.hole_number,
+    course_name:     row.course_name,
+    round_date:      row.round_date,
+  }));
+
+  let myRank: TobashikkoMyRank | null = null;
+  if (currentUserId) {
+    const idx = sorted.findIndex((r) => r.user_id === currentUserId);
+    if (idx !== -1) {
+      myRank = {
+        rank:           idx + 1,
+        total:          sorted.length,
+        nickname:       nameMap.get(currentUserId)?.trim() || "ゴルファー",
+        distance_yards: sorted[idx].distance_yards,
+      };
+    }
+  }
+
+  return { ranking, myRank };
 }

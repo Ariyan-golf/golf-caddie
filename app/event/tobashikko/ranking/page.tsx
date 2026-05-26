@@ -1,6 +1,7 @@
 import { createClient as createAdminClient } from "@supabase/supabase-js";
+import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
-import { fetchTobashikkoRanking, joinBrandModel, type TobashikkoRankingRow } from "@/lib/tobashikko/ranking";
+import { fetchTobashikkoRanking, joinBrandModel, type TobashikkoRankingRow, type TobashikkoMyRank } from "@/lib/tobashikko/ranking";
 
 export const dynamic = "force-dynamic";
 
@@ -55,11 +56,26 @@ export default async function PublicTobashikkoRankingPage() {
     );
   }
 
+  // ── ログインユーザー取得（未ログインでも動作する公開ページ） ────
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  // ── ニックネーム設定状況の確認（ログイン時のみ） ─────────────
+  let nicknameConfigured = false;
+  if (user) {
+    const { data: prof } = await admin
+      .from("profiles")
+      .select("nickname, age_group")
+      .eq("id", user.id)
+      .single();
+    nicknameConfigured = !!(prof?.nickname?.trim() && prof?.age_group);
+  }
+
   // ── ランキング集計（共通モジュール） ─────────────────────────
-  const ranking: TobashikkoRankingRow[] = await fetchTobashikkoRanking(admin, {
+  const { ranking, myRank } = await fetchTobashikkoRanking(admin, {
     start_date: event.start_date,
     end_date:   event.end_date,
-  });
+  }, user?.id);
 
   return (
     <PageShell>
@@ -71,6 +87,9 @@ export default async function PublicTobashikkoRankingPage() {
           {fmtDate(event.start_date)} 〜 {fmtDate(event.end_date)}
         </p>
       </div>
+
+      {/* 本人ハイライト（ログイン時のみ） */}
+      {user && <MyRankCard myRank={myRank} nicknameConfigured={nicknameConfigured} />}
 
       {/* ランキング */}
       {ranking.length === 0 ? (
@@ -115,6 +134,45 @@ export default async function PublicTobashikkoRankingPage() {
         </div>
       )}
     </PageShell>
+  );
+}
+
+// ── 本人ハイライトカード ─────────────────────────────────────
+function MyRankCard({ myRank, nicknameConfigured }: { myRank: TobashikkoMyRank | null; nicknameConfigured: boolean }) {
+  if (!nicknameConfigured) {
+    return (
+      <div className="card border-2 border-amber-300 bg-gradient-to-r from-amber-50 to-orange-50 text-center py-6">
+        <p className="text-amber-800 font-semibold">参加するにはニックネームの設定が必要です</p>
+        <Link href="/event/tobashikko/settings" className="inline-block mt-3 text-sm font-bold text-amber-700 underline">
+          設定ページへ
+        </Link>
+      </div>
+    );
+  }
+
+  if (!myRank) {
+    return (
+      <div className="card border-2 border-amber-300 bg-gradient-to-r from-amber-50 to-orange-50 text-center py-6">
+        <p className="text-amber-800 font-semibold">まだ記録がありません。エントリーして参加しよう！</p>
+        <Link href="/event/tobashikko/entry" className="inline-block mt-3 text-sm font-bold text-amber-700 underline">
+          エントリーページへ
+        </Link>
+      </div>
+    );
+  }
+
+  return (
+    <div className="card border-2 border-amber-300 bg-gradient-to-r from-amber-50 to-orange-50 text-center py-6">
+      <p className="text-xs font-bold text-amber-700 mb-1">🎯 あなたの順位</p>
+      <p className="text-3xl font-bold text-amber-900">
+        {myRank.rank}<span className="text-base font-normal text-amber-700 ml-1">位</span>
+        <span className="text-sm font-normal text-amber-600 ml-2">/ {myRank.total}人中</span>
+      </p>
+      <p className="text-lg font-bold text-amber-800 mt-2 tabular-nums">
+        {myRank.distance_yards}
+        <span className="text-sm font-normal text-amber-500 ml-0.5">yd</span>
+      </p>
+    </div>
   );
 }
 
