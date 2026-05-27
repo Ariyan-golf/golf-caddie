@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import QRCode from "qrcode";
+import { REGION_PREFECTURES } from "@/lib/region-prefectures";
 
 // ── Constants ─────────────────────────────────────────────────────────
 
@@ -331,7 +332,10 @@ function TeeEntriesSection({ tees, onChange }: {
 
 export function GolfCourseForm() {
   const [name, setName] = useState("");
+  const [nameKana, setNameKana] = useState("");
   const [address, setAddress] = useState("");
+  const [region, setRegion] = useState("");
+  const [prefecture, setPrefecture] = useState("");
   const [localRules, setLocalRules] = useState("");
   const [tees, setTees] = useState<TeeEntry[]>(defaultTees);
   const [holes, setHoles] = useState<HoleInput[]>(defaultHoles);
@@ -364,7 +368,7 @@ export function GolfCourseForm() {
     setLoading(true); setError(null); setNewCourse(null);
 
     const payload = {
-      name, address, localRules,
+      name, nameKana, address, region, prefecture, localRules,
       tees: tees.map((t) => ({
         green_type: t.green_type,
         tee_name: t.tee_name,
@@ -399,7 +403,7 @@ export function GolfCourseForm() {
       setError(data.error ?? "エラーが発生しました");
     } else {
       setNewCourse(data.course);
-      setName(""); setAddress(""); setLocalRules("");
+      setName(""); setNameKana(""); setAddress(""); setRegion(""); setPrefecture(""); setLocalRules("");
       setTees(defaultTees()); setHoles(defaultHoles());
       setTimeout(() => successRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
     }
@@ -448,6 +452,37 @@ export function GolfCourseForm() {
             <input value={name} onChange={(e) => setName(e.target.value)} required
               placeholder="〇〇カントリークラブ"
               className="w-full border border-green-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400" />
+          </div>
+          <div>
+            <label className="text-xs text-green-600 font-medium block mb-1">ふりがな</label>
+            <input value={nameKana} onChange={(e) => setNameKana(e.target.value)}
+              placeholder="まるまるかんとりーくらぶ"
+              className="w-full border border-green-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs text-green-600 font-medium block mb-1">地域</label>
+              <select value={region}
+                onChange={(e) => { setRegion(e.target.value); setPrefecture(""); }}
+                className="w-full border border-green-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400">
+                <option value="">選択してください</option>
+                {REGION_PREFECTURES.map((r) => (
+                  <option key={r.region} value={r.region}>{r.region}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs text-green-600 font-medium block mb-1">県</label>
+              <select value={prefecture}
+                onChange={(e) => setPrefecture(e.target.value)}
+                disabled={!region}
+                className="w-full border border-green-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400 disabled:opacity-50 disabled:bg-gray-50">
+                <option value="">選択してください</option>
+                {REGION_PREFECTURES.find((r) => r.region === region)?.prefectures.map((p) => (
+                  <option key={p} value={p}>{p}</option>
+                ))}
+              </select>
+            </div>
           </div>
           <div>
             <label className="text-xs text-green-600 font-medium block mb-1">住所</label>
