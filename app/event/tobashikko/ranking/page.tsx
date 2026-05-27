@@ -1,9 +1,34 @@
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
-import { fetchTobashikkoRanking, joinBrandModel, type TobashikkoRankingRow, type TobashikkoMyRank } from "@/lib/tobashikko/ranking";
+import { fetchTobashikkoRanking, joinBrandModel, type TobashikkoRankingRow, type TobashikkoMyRank, type TobashikkoRankingFilter } from "@/lib/tobashikko/ranking";
 
 export const dynamic = "force-dynamic";
+
+// ── 区分タブ定義 ──────────────────────────────────────────────
+const CAT_TABS = [
+  { key: "",             label: "全体" },
+  { key: "am",           label: "アマ男性",  category: "amateur",   gender: "male" },
+  { key: "af",           label: "アマ女性",  category: "amateur",   gender: "female" },
+  { key: "pm",           label: "プロ男性",  category: "pro_coach", gender: "male" },
+  { key: "pf",           label: "プロ女性",  category: "pro_coach", gender: "female" },
+] as const;
+
+const AGE_TABS = [
+  { key: "",       label: "全年代" },
+  { key: "20s",    label: "20代" },
+  { key: "30s",    label: "30代" },
+  { key: "40s",    label: "40代" },
+  { key: "50s",    label: "50代" },
+  { key: "60plus", label: "60代以上" },
+] as const;
+
+function catKeyForUser(category: string | null, gender: string | null): string {
+  const tab = CAT_TABS.find(
+    (t) => t.key && "category" in t && t.category === category && t.gender === gender
+  );
+  return tab?.key ?? "";
+}
 
 interface ActiveEvent {
   id:         string;
@@ -23,9 +48,14 @@ function Medal({ rank }: { rank: number }) {
   return <span className="text-sm font-bold text-amber-700">{rank}</span>;
 }
 
-export default async function PublicTobashikkoRankingPage() {
+export default async function PublicTobashikkoRankingPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ cat?: string; age?: string }>;
+}) {
+  const params = await searchParams;
+
   // 公開ページなので Service Role で集計（RLS bypass）。
-  // 個人情報がクライアントに漏れないよう、外に出すデータは明示的に絞り込む。
   const admin = createAdminClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -60,22 +90,63 @@ export default async function PublicTobashikkoRankingPage() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
-  // ── ニックネーム設定状況の確認（ログイン時のみ） ─────────────
+  // ── ユーザープロフィール取得（ログイン時のみ） ─────────────
   let nicknameConfigured = false;
+  let userCatKey = "";
+  let userCategory: string | null = null;
+  let userGender: string | null = null;
   if (user) {
     const { data: prof } = await admin
       .from("profiles")
-      .select("nickname, age_group")
+      .select("nickname, age_group, gender, category")
       .eq("id", user.id)
       .single();
     nicknameConfigured = !!(prof?.nickname?.trim() && prof?.age_group);
+    userCategory = prof?.category ?? null;
+    userGender = prof?.gender ?? null;
+    userCatKey = catKeyForUser(userCategory, userGender);
   }
 
-  // ── ランキング集計（共通モジュール） ─────────────────────────
-  const { ranking, myRank } = await fetchTobashikkoRanking(admin, {
-    start_date: event.start_date,
-    end_date:   event.end_date,
-  }, user?.id);
+  // ── タブの選択状態を決定 ──────────────────────────────────
+  const rawCat = params.cat ?? undefined;
+  const rawAge = params.age ?? undefined;
+
+  // URL にパラメータがなければ初期値を使う
+  const hasExplicitCat = rawCat !== undefined;
+  const activeCatKey = hasExplicitCat
+    ? (CAT_TABS.some((t) => t.key === rawCat) ? rawCat : "")
+    : (user ? userCatKey : "");
+  const activeAgeKey = AGE_TABS.some((t) => t.key === rawAge) ? (rawAge ?? "") : "";
+
+  // ── フィルタ構築 ──────────────────────────────────────────
+  const activeCatTab = CAT_TABS.find((t) => t.key === activeCatKey);
+  const filter: TobashikkoRankingFilter = {};
+  if (activeCatTab && "category" in activeCatTab) {
+    filter.category = activeCatTab.category;
+    filter.gender = activeCatTab.gender;
+  }
+  if (activeAgeKey) filter.ageGroup = activeAgeKey;
+
+  // ── ランキング集計 ─────────────────────────────────────────
+  const { ranking, myRank } = await fetchTobashikkoRanking(
+    admin,
+    { start_date: event.start_date, end_date: event.end_date },
+    user?.id,
+    filter,
+  );
+
+  // ── ハイライト表示判定: 自分が含まれるフィルタのときだけ ─────
+  const showHighlight = (() => {
+    if (!user || !nicknameConfigured) return true;
+    if (activeCatKey === "") return true;
+    return activeCatKey === userCatKey;
+  })();
+
+  // ── フィルタのラベル生成 ─────────────────────────────────────
+  const filterLabel = [
+    activeCatTab?.key ? activeCatTab.label : "",
+    activeAgeKey ? AGE_TABS.find((t) => t.key === activeAgeKey)?.label : "",
+  ].filter(Boolean).join("・");
 
   return (
     <PageShell>
@@ -88,14 +159,32 @@ export default async function PublicTobashikkoRankingPage() {
         </p>
       </div>
 
-      {/* 本人ハイライト（ログイン時のみ） */}
-      {user && <MyRankCard myRank={myRank} nicknameConfigured={nicknameConfigured} />}
+      {/* 区分タブ */}
+      <FilterTabs
+        tabs={CAT_TABS}
+        activeKey={activeCatKey}
+        paramName="cat"
+        otherParams={{ age: activeAgeKey }}
+      />
+
+      {/* 年代タブ */}
+      <FilterTabs
+        tabs={AGE_TABS}
+        activeKey={activeAgeKey}
+        paramName="age"
+        otherParams={{ cat: activeCatKey }}
+      />
+
+      {/* 本人ハイライト（ログイン時 & 自分が含まれるフィルタ） */}
+      {user && showHighlight && (
+        <MyRankCard myRank={myRank} nicknameConfigured={nicknameConfigured} filterLabel={filterLabel} />
+      )}
 
       {/* ランキング */}
       {ranking.length === 0 ? (
         <div className="card text-center py-10">
           <p className="text-4xl mb-3">🏌️</p>
-          <p className="text-green-600 font-semibold">まだエントリーがありません</p>
+          <p className="text-green-600 font-semibold">該当するエントリーはまだありません</p>
         </div>
       ) : (
         <div className="card space-y-2">
@@ -137,8 +226,56 @@ export default async function PublicTobashikkoRankingPage() {
   );
 }
 
+// ── フィルタタブ ─────────────────────────────────────────────
+function FilterTabs({
+  tabs,
+  activeKey,
+  paramName,
+  otherParams,
+}: {
+  tabs: ReadonlyArray<{ key: string; label: string }>;
+  activeKey: string;
+  paramName: string;
+  otherParams: Record<string, string>;
+}) {
+  return (
+    <div className="flex gap-1.5 overflow-x-auto pb-1 -mx-1 px-1">
+      {tabs.map((tab) => {
+        const qs = new URLSearchParams();
+        if (tab.key) qs.set(paramName, tab.key);
+        for (const [k, v] of Object.entries(otherParams)) {
+          if (v) qs.set(k, v);
+        }
+        const href = qs.toString() ? `?${qs.toString()}` : "/event/tobashikko/ranking";
+        const isActive = tab.key === activeKey;
+        return (
+          <Link
+            key={tab.key}
+            href={href}
+            className={`flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold transition-colors ${
+              isActive
+                ? "bg-green-700 text-white"
+                : "bg-green-50 text-green-700 border border-green-200"
+            }`}
+          >
+            {tab.label}
+          </Link>
+        );
+      })}
+    </div>
+  );
+}
+
 // ── 本人ハイライトカード ─────────────────────────────────────
-function MyRankCard({ myRank, nicknameConfigured }: { myRank: TobashikkoMyRank | null; nicknameConfigured: boolean }) {
+function MyRankCard({
+  myRank,
+  nicknameConfigured,
+  filterLabel,
+}: {
+  myRank: TobashikkoMyRank | null;
+  nicknameConfigured: boolean;
+  filterLabel: string;
+}) {
   if (!nicknameConfigured) {
     return (
       <div className="card border-2 border-amber-300 bg-gradient-to-r from-amber-50 to-orange-50 text-center py-6">
@@ -161,9 +298,13 @@ function MyRankCard({ myRank, nicknameConfigured }: { myRank: TobashikkoMyRank |
     );
   }
 
+  const heading = filterLabel
+    ? `🎯 あなたの順位（${filterLabel}）`
+    : "🎯 あなたの順位";
+
   return (
     <div className="card border-2 border-amber-300 bg-gradient-to-r from-amber-50 to-orange-50 text-center py-6">
-      <p className="text-xs font-bold text-amber-700 mb-1">🎯 あなたの順位</p>
+      <p className="text-xs font-bold text-amber-700 mb-1">{heading}</p>
       <p className="text-3xl font-bold text-amber-900">
         {myRank.rank}<span className="text-base font-normal text-amber-700 ml-1">位</span>
         <span className="text-sm font-normal text-amber-600 ml-2">/ {myRank.total}人中</span>

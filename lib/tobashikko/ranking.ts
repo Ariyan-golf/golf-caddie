@@ -33,6 +33,12 @@ export interface TobashikkoMyRank {
   distance_yards:  number;
 }
 
+export interface TobashikkoRankingFilter {
+  category?: string;   // 'amateur' | 'pro_coach'
+  gender?:   string;   // 'male' | 'female'
+  ageGroup?: string;   // '20s' | '30s' | '40s' | '50s' | '60plus'
+}
+
 export interface TobashikkoRankingResult {
   ranking: TobashikkoRankingRow[];
   myRank:  TobashikkoMyRank | null;
@@ -64,6 +70,7 @@ export async function fetchTobashikkoRanking(
   admin: SupabaseClient,
   event: TobashikkoEventWindow,
   currentUserId?: string,
+  filter?: TobashikkoRankingFilter,
 ): Promise<TobashikkoRankingResult> {
   const { data: entryRows } = await admin
     .from("tobashikko_entries")
@@ -145,22 +152,42 @@ export async function fetchTobashikkoRanking(
 
   if (byUser.size === 0) return { ranking: [], myRank: null };
 
-  // nickname を一括取得（user_id 配列はここで使い切り、戻り値には乗せない）
+  // profiles を一括取得（nickname + フィルタ用の age_group / gender / category）
   const userIds = Array.from(byUser.keys());
   const { data: profs } = await admin
     .from("profiles")
-    .select("id, nickname")
+    .select("id, nickname, age_group, gender, category")
     .in("id", userIds);
-  const nameMap = new Map(
-    (profs ?? []).map((p: { id: string; nickname: string | null }) => [p.id, p.nickname])
+
+  interface ProfRow {
+    id: string;
+    nickname: string | null;
+    age_group: string | null;
+    gender: string | null;
+    category: string | null;
+  }
+  const profMap = new Map(
+    (profs ?? []).map((p: ProfRow) => [p.id, p])
   );
 
-  const sorted = Array.from(byUser.values())
-    .sort((a, b) => b.distance_yards - a.distance_yards);
+  // フィルタ適用: 該当ユーザーだけ残す
+  let candidates = Array.from(byUser.values());
+  if (filter?.category || filter?.gender || filter?.ageGroup) {
+    candidates = candidates.filter((row) => {
+      const prof = profMap.get(row.user_id);
+      if (!prof) return false;
+      if (filter.category && prof.category !== filter.category) return false;
+      if (filter.gender   && prof.gender   !== filter.gender)   return false;
+      if (filter.ageGroup && prof.age_group !== filter.ageGroup) return false;
+      return true;
+    });
+  }
+
+  const sorted = candidates.sort((a, b) => b.distance_yards - a.distance_yards);
 
   const ranking = sorted.map((row, i) => ({
     rank:            i + 1,
-    nickname:        nameMap.get(row.user_id)?.trim() || "ゴルファー",
+    nickname:        profMap.get(row.user_id)?.nickname?.trim() || "ゴルファー",
     distance_yards:  row.distance_yards,
     distance_meters: row.distance_meters,
     driver_brand:    row.driver_brand,
@@ -181,7 +208,7 @@ export async function fetchTobashikkoRanking(
       myRank = {
         rank:           idx + 1,
         total:          sorted.length,
-        nickname:       nameMap.get(currentUserId)?.trim() || "ゴルファー",
+        nickname:       profMap.get(currentUserId)?.nickname?.trim() || "ゴルファー",
         distance_yards: sorted[idx].distance_yards,
       };
     }
