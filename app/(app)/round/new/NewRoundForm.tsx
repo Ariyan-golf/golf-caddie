@@ -118,7 +118,7 @@ export function NewRoundForm({ linkedCourseId }: { linkedCourseId?: string }) {
   // ラウンド情報
   const [date, setDate]               = useState(new Date().toISOString().split("T")[0]);
   const [startHole, setStartHole]     = useState<StartHole>(1);
-  const [mode, setMode]               = useState<"shot" | "score">("score");
+  const mode = "score" as const;
   const [loading, setLoading]         = useState(false);
   const [error, setError]             = useState("");
 
@@ -489,34 +489,6 @@ export function NewRoundForm({ linkedCourseId }: { linkedCourseId?: string }) {
               {hole === 1 ? "アウト" : "イン"}
               <span className="block text-xs font-normal opacity-80">
                 {hole === 1 ? "1番スタート" : "10番スタート"}
-              </span>
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* ── 記録モード ────────────────────────────────────── */}
-      <div>
-        <label className="label">記録モード *</label>
-        <div className="grid grid-cols-2 gap-3 mt-1">
-          {(["shot", "score"] as const).map((m) => (
-            <button
-              key={m}
-              type="button"
-              onClick={() => setMode(m)}
-              className={`py-4 px-4 rounded-xl border-2 text-left transition-colors active:scale-95 ${
-                mode === m
-                  ? "bg-green-600 border-green-600 text-white"
-                  : "bg-white border-gray-200 text-gray-600 hover:border-green-300"
-              }`}
-            >
-              <span className="block font-bold text-sm">
-                {m === "shot" ? "ショット記録" : "スコア記録"}
-              </span>
-              <span className="block text-xs opacity-75 mt-0.5 leading-tight">
-                {m === "shot"
-                  ? "打つ前にボタンを押してGPS記録"
-                  : "ホール後にスコアを数字入力するだけ"}
               </span>
             </button>
           ))}
