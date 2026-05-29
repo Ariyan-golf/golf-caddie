@@ -948,20 +948,20 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
 
   return (
     <div className="space-y-2 pb-3">
-      {/* Header — round name · GPS strength */}
+      {/* Header — live running score · GPS strength.
+          コース名は上位ページ (round/[id]/page.tsx) のヘッダーで表示済みのため
+          ここでは重複表示しない（縦スペース節約 / 認知負荷低減）。
+          ライブ途中経過スコアと GPS ステータスは残す。 */}
       <div className="flex items-center justify-between gap-2 px-1 pt-1">
         <div className="min-w-0 flex-1">
-          <p className="text-xl font-bold text-green-800 truncate">
-            {golfCourseName || "ラウンド"}
-            {completedHoles.length > 0 && (
-              <span className="ml-2 text-lg font-normal text-green-500 tabular-nums">
-                {completedHoles.length}H {totalScore}
-                {totalDiff !== 0 && (
-                  <span className="ml-0.5">({totalDiff > 0 ? "+" : ""}{totalDiff})</span>
-                )}
-              </span>
-            )}
-          </p>
+          {completedHoles.length > 0 && (
+            <p className="text-lg font-normal text-green-500 tabular-nums">
+              {completedHoles.length}H {totalScore}
+              {totalDiff !== 0 && (
+                <span className="ml-0.5">({totalDiff > 0 ? "+" : ""}{totalDiff})</span>
+              )}
+            </p>
+          )}
         </div>
         <GpsIndicator />
       </div>
