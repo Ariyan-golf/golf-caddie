@@ -148,6 +148,17 @@ function scoreLabel(score: number, par: number) {
   return { text: `${score} (+${d})`, cls: "bg-gray-100 text-gray-600" };
 }
 
+// スコアカード「計」の文字色をパーとの差で決定。未入力(null)は既存色のまま（呼び出し側で未適用）。
+function getScoreColor(total: number | null, par: number): string {
+  if (total === null || total === undefined) return "inherit";
+  const diff = total - par;
+  if (diff <= -2) return "#FFD700"; // イーグル以上：金
+  if (diff === -1) return "#E53935"; // バーディー：赤
+  if (diff === 0) return "#000000"; // パー：黒
+  if (diff === 1) return "#1E88E5"; // ボギー：青
+  return "#1A237E"; // ダブルボギー以上：濃い青
+}
+
 // ── Main component ──────────────────────────────────────────────────
 
 export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "shot", windDirection, windSpeed, courseRating, slopeRating, courseHoles, paymentStatus = "paid", golfCourseName = "", inputMode = "post_round", golfCourseId = null, greenType = "main", initialGreenCenters = {}, pastView = false }: HoleRecorderProps) {
@@ -2715,28 +2726,10 @@ function RoundComplete({
   }
 
   function ScoreBadge({ score, par }: { score: number | null; par: number }) {
-    const box = "inline-flex items-center justify-center w-7 h-7 font-bold tabular-nums";
+    const box = "inline-flex items-center justify-center w-7 h-7 font-bold tabular-nums text-base";
     if (score == null) return <span className={`${box} text-gray-400`}>—</span>;
-    const d = score - par;
-
-    if (d <= -2) {
-      // イーグル以下: 赤い丸囲み
-      return <span className={`${box} text-sm rounded-full border-2 border-red-600 text-red-600`}>{score}</span>;
-    }
-    if (d === -1) {
-      // バーディ: 装飾なし、太い赤文字
-      return <span className={`${box} text-base text-red-600`}>{score}</span>;
-    }
-    if (d === 0) {
-      // パー: 黒/グレーの丸囲み
-      return <span className={`${box} text-sm rounded-full border-2 border-gray-800 text-gray-800`}>{score}</span>;
-    }
-    if (d === 1) {
-      // ボギー: 黒/グレーの四角囲み
-      return <span className={`${box} text-sm border-2 border-gray-800 text-gray-800`}>{score}</span>;
-    }
-    // ダブルボギー以上: 装飾なし、太い黒文字
-    return <span className={`${box} text-base text-gray-800`}>{score}</span>;
+    // 〇□囲みは廃止。計の数字をパーとの差で色分け（金/赤/黒/青/濃青）。
+    return <span className={box} style={{ color: getScoreColor(score, par) }}>{score}</span>;
   }
 
   function EditableCell({
