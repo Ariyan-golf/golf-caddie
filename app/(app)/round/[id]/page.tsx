@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { notFound } from "next/navigation";
 import { HoleRecorder } from "@/components/HoleRecorder";
+import { BackButton } from "@/components/BackButton";
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -119,15 +120,18 @@ export default async function RoundDetailPage({ params, searchParams }: Props) {
 
   return (
     <div className="max-w-lg mx-auto px-4 py-2 space-y-2">
-      <div className="pt-2 flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold text-green-800">{round.course_name}</h1>
-          <p className="text-sm text-green-500">
-            {new Date(round.date).toLocaleDateString("ja-JP")}
-            {round.total_score && (
-              <span className="ml-2 font-bold text-green-700">{round.total_score}打</span>
-            )}
-          </p>
+      <div className="pt-2 space-y-1">
+        <BackButton />
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-xl font-bold text-green-800">{round.course_name}</h1>
+            <p className="text-sm text-green-500">
+              {new Date(round.date).toLocaleDateString("ja-JP")}
+              {round.total_score && (
+                <span className="ml-2 font-bold text-green-700">{round.total_score}打</span>
+              )}
+            </p>
+          </div>
         </div>
       </div>
 
