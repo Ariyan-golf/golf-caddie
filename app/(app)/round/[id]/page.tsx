@@ -118,8 +118,8 @@ export default async function RoundDetailPage({ params, searchParams }: Props) {
   }
 
   return (
-    <div className="max-w-lg mx-auto p-4 space-y-4">
-      <div className="pt-4 flex items-center justify-between">
+    <div className="max-w-lg mx-auto px-4 py-2 space-y-2">
+      <div className="pt-2 flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-green-800">{round.course_name}</h1>
           <p className="text-sm text-green-500">

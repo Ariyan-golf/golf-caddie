@@ -952,7 +952,7 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
           コース名は上位ページ (round/[id]/page.tsx) のヘッダーで表示済みのため
           ここでは重複表示しない（縦スペース節約 / 認知負荷低減）。
           ライブ途中経過スコアと GPS ステータスは残す。 */}
-      <div className="flex items-center justify-between gap-2 px-1 pt-1">
+      <div className="flex items-center justify-between gap-2 px-1">
         <div className="min-w-0 flex-1">
           {completedHoles.length > 0 && (
             <p className="text-lg font-normal text-green-500 tabular-nums">
