@@ -199,6 +199,20 @@ body {
   display: block;
 }
 
+.hero-title .line {
+  display: block;
+  white-space: nowrap;
+  font-size: clamp(28px, 8vw, 42px);
+  line-height: 1.3;
+  letter-spacing: 0.02em;
+  color: #fff;
+}
+
+.hero-title .accent {
+  display: inline;
+  color: #ffd764;
+}
+
 .hero-subtitle {
   font-size: clamp(14px, 3vw, 18px);
   color: rgba(255,255,255,0.8);
@@ -1068,8 +1082,8 @@ nav {
     <div class="hero-badge">🏌️ AI GOLF ASSISTANT</div>
     <div class="hero-promo">🎉 プレオープン中｜今なら全機能無料</div>
     <h1 class="hero-title">
-      次のラウンドが、<br>
-      <span style="display:inline;color:#ffd764;">もっと楽しみ</span>になる。
+      <span class="line">次のラウンドが、</span>
+      <span class="line"><span class="accent">もっと楽しみ</span>になる。</span>
     </h1>
     <p class="hero-subtitle">
       AIキャディと一緒に、<br>
