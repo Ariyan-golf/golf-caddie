@@ -148,6 +148,17 @@ function scoreLabel(score: number, par: number) {
   return { text: `${score} (+${d})`, cls: "bg-gray-100 text-gray-600" };
 }
 
+// 打数チップの文字色をパーとの差で決定。未入力(null)は既存色のまま（呼び出し側で未適用）。
+function getScoreColor(score: number | null, par: number): string {
+  if (score === null || score === undefined) return "inherit";
+  const diff = score - par;
+  if (diff <= -2) return "#FFD700"; // イーグル以上：金
+  if (diff === -1) return "#E53935"; // バーディー：赤
+  if (diff === 0) return "#000000"; // パー：黒
+  if (diff === 1) return "#1E88E5"; // ボギー：青
+  return "#1A237E"; // ダブルボギー以上：濃い青
+}
+
 // ── Main component ──────────────────────────────────────────────────
 
 export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "shot", windDirection, windSpeed, courseRating, slopeRating, courseHoles, paymentStatus = "paid", golfCourseName = "", inputMode = "post_round", golfCourseId = null, greenType = "main", initialGreenCenters = {}, pastView = false }: HoleRecorderProps) {
@@ -3220,7 +3231,8 @@ function CompactScoreEntry({
   return (
     <div className="card !p-2 space-y-1.5">
       <KeypadEntryRow label="パー"   value={par}   min={3} max={7}  onChange={onParChange} />
-      <KeypadEntryRow label="打数"   value={score} min={1} max={99} onChange={onScoreChange} />
+      <KeypadEntryRow label="打数"   value={score} min={1} max={99} onChange={onScoreChange}
+        valueColor={score != null && par != null ? getScoreColor(score, par) : undefined} />
       <KeypadEntryRow label="パット" value={putts} min={0} max={99} onChange={onPuttsChange} />
     </div>
   );
@@ -3228,13 +3240,14 @@ function CompactScoreEntry({
 
 // One row: label + current-value chip. Tap the chip to open the keypad.
 function KeypadEntryRow({
-  label, value, min, max, onChange,
+  label, value, min, max, onChange, valueColor,
 }: {
   label: string;
   value: number | null;
   min: number;
   max: number;
   onChange: (n: number) => void;
+  valueColor?: string;
 }) {
   const [open, setOpen] = useState(false);
   return (
@@ -3243,6 +3256,7 @@ function KeypadEntryRow({
         <span className="text-base font-semibold text-green-700 w-14 flex-shrink-0">{label}</span>
         <button
           onClick={() => setOpen(true)}
+          style={valueColor ? { color: valueColor } : undefined}
           className="flex-1 h-12 rounded-xl border-2 border-green-300 bg-white hover:bg-green-50
                      active:bg-green-100 active:scale-[0.98] text-2xl font-bold text-green-700
                      tabular-nums transition-colors"
