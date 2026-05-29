@@ -120,18 +120,16 @@ export default async function RoundDetailPage({ params, searchParams }: Props) {
 
   return (
     <div className="max-w-lg mx-auto px-4 py-2 space-y-2">
-      <div className="pt-2 space-y-1">
+      <div className="pt-2 flex items-start gap-3">
         <BackButton />
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-bold text-green-800">{round.course_name}</h1>
-            <p className="text-sm text-green-500">
-              {new Date(round.date).toLocaleDateString("ja-JP")}
-              {round.total_score && (
-                <span className="ml-2 font-bold text-green-700">{round.total_score}打</span>
-              )}
-            </p>
-          </div>
+        <div className="flex-1 min-w-0">
+          <h1 className="text-xl font-bold text-green-800 truncate">{round.course_name}</h1>
+          <p className="text-sm text-green-500">
+            {new Date(round.date).toLocaleDateString("ja-JP")}
+            {round.total_score && (
+              <span className="ml-2 font-bold text-green-700">{round.total_score}打</span>
+            )}
+          </p>
         </div>
       </div>
 
