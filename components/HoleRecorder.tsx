@@ -976,6 +976,18 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
         onEndRound={() => setConfirmEarlyEnd(true)}
       />
 
+      {/* Compact score entry: パー / 打数 / パット
+          目線の流れ（見る→入力する→状況確認→打つ準備）に合わせ、
+          スコア表の直下に配置（コンパス・飛距離測定より上）。 */}
+      <CompactScoreEntry
+        par={currentHole?.par ?? null}
+        score={currentHole?.score ?? null}
+        putts={currentHole?.putts ?? null}
+        onParChange={updateHolePar}
+        onScoreChange={updateHoleScoreUnified}
+        onPuttsChange={updateHolePutts}
+      />
+
       {/* Compact wind compass — half-height. Always rendered so the green-direction
           control is reachable even when wind data is unavailable. */}
       <CompactCompass
@@ -1018,16 +1030,6 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
         />
       )}
 
-      {/* Compact score entry: パー / 打数 / パット */}
-      <CompactScoreEntry
-        par={currentHole?.par ?? null}
-        score={currentHole?.score ?? null}
-        putts={currentHole?.putts ?? null}
-        onParChange={updateHolePar}
-        onScoreChange={updateHoleScoreUnified}
-        onPuttsChange={updateHolePutts}
-      />
-
       {/* C8b: 残り距離カード（グリーンセンター登録済みホールで表示） */}
       {currentHole && (
         <RemainingDistanceCard
@@ -1041,27 +1043,9 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
         />
       )}
 
-      {/* Green-center registration — disabled when no course is linked to the round */}
-      {currentHole && (
-        <button
-          onClick={() => {
-            setGreenDialogError(null);
-            setGreenDialogStatus("idle");
-            setGreenDialogOpen(true);
-          }}
-          disabled={!golfCourseId}
-          className={`w-full py-2.5 rounded-xl text-lg font-semibold border transition-colors
-                      active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 ${
-            greenCenters[currentHole.hole_number]
-              ? "bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100"
-              : "bg-white border-emerald-300 text-emerald-700 hover:bg-emerald-50"
-          }`}
-        >
-          {greenCenters[currentHole.hole_number]
-            ? `📍 グリーンセンター登録済み（再登録）`
-            : `📍 グリーンセンターを登録`}
-        </button>
-      )}
+      {/* グリーンセンター登録ボタンは管理者機能のため一般ユーザーには非表示。
+          GreenCenterDialog / handleConfirmGreenCenter / green-dialog state は
+          休眠状態で残置（到達不能だが将来の管理者UI再導入用に温存）。 */}
 
       {/* Modals */}
       {confirmEarlyEnd && (
