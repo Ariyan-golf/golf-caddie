@@ -243,6 +243,15 @@ export function NewRoundForm({ linkedCourseId }: { linkedCourseId?: string }) {
     );
   }
 
+  // INSERT 成功後の共通処理: GPS追跡・Wake Lock を起動してラウンド画面へ遷移。
+  // handleSubmit と handleStartWithoutCourse で再利用する。
+  function navigateToRound(roundId: string) {
+    void startGpsTracking();
+    void acquireWakeLock();
+
+    router.push(`/round/${roundId}`);
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
@@ -282,10 +291,43 @@ export function NewRoundForm({ linkedCourseId }: { linkedCourseId?: string }) {
       return;
     }
 
-    void startGpsTracking();
-    void acquireWakeLock();
+    navigateToRound(data.id);
+  }
 
-    router.push(`/round/${data.id}`);
+  // 「コースを決めずに開始」: course_name はプレースホルダ "コース未選択"、
+  // golf_course_id は null。course_tee_id / course_rating / slope_rating /
+  // out_section / in_section は INSERT 句に含めない（手動入力モードと同じ扱い）。
+  // courseName が空でも実行できる（既存送信ボタンの !courseName とは独立）。
+  async function handleStartWithoutCourse() {
+    setError("");
+    setLoading(true);
+
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+
+    const { data, error: err } = await supabase
+      .from("rounds")
+      .insert({
+        user_id:        user!.id,
+        course_name:    "コース未選択",
+        date,
+        start_hole:     startHole,
+        mode,
+        weather:        weather ?? null,
+        wind_speed:     windSpeed ?? null,
+        wind_direction: windDirection ?? null,
+        golf_course_id: null,
+      })
+      .select("id")
+      .single();
+
+    if (err) {
+      setError("ラウンドの作成に失敗しました");
+      setLoading(false);
+      return;
+    }
+
+    navigateToRound(data.id);
   }
 
   const compassGrid: (WindDirection | null)[][] = Array.from({ length: 3 }, () => [null, null, null]);
@@ -584,6 +626,20 @@ export function NewRoundForm({ linkedCourseId }: { linkedCourseId?: string }) {
         disabled={loading || !courseName}
       >
         {loading ? "作成中..." : "ラウンドを開始する"}
+      </button>
+
+      {/* コース未選択でも開始できる補助導線。course_name は "コース未選択" を
+          自動セットし、golf_course_id は null。後からコースを決められる前提。
+          courseName 空でも押せるよう、上の送信ボタンとは disabled 条件を分離。 */}
+      <button
+        type="button"
+        onClick={handleStartWithoutCourse}
+        disabled={loading}
+        className="w-full py-2.5 text-sm font-medium text-gray-500 underline
+                   hover:text-green-600 disabled:opacity-60 disabled:cursor-not-allowed
+                   transition-colors active:scale-95"
+      >
+        コースを決めずに開始する
       </button>
     </form>
     {showGeoGuide && <GeoPermissionGuide onClose={() => setShowGeoGuide(false)} />}
