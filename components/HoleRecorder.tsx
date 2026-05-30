@@ -240,6 +240,15 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
   // dialog merge into this map.
   const [greenCenters, setGreenCenters] = useState<Record<number, { lat: number; lng: number }>>(initialGreenCenters);
 
+  // コース後付け設定 → router.refresh() で新しい green_centers を持つ
+  // initialGreenCenters が来たら state を同期する（par 再同期と同型）。
+  // greenCenters はプレー中にユーザーが編集する一時状態ではない（登録ダイアログは
+  // 休眠）ため丸ごと置き換えてよい。initialGreenCenters の参照はサーバー再描画時のみ
+  // 変わるため、通常操作中は発火しない。
+  useEffect(() => {
+    setGreenCenters(initialGreenCenters);
+  }, [initialGreenCenters]);
+
   // 残り距離測定（C8b Min版）。green_centers と現在GPS位置の Haversine 距離。
   // 「打つ前/止まった場所」ペアとは独立した単発GPS取得（手動オンデマンド・電池影響ゼロ）。
   // ホール切替時に破棄して新ホール用に再計測を促す（selectHole 参照）。
