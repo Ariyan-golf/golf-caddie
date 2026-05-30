@@ -273,6 +273,15 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
   const currentHole  = holes.find((h) => h.hole_number === currentHoleNumber) ?? null;
   const holeCardRefs = useRef<Record<number, HTMLDivElement | null>>({});
 
+  // 「次のホール →」用。ScoreTable と同じ周回順（startHole 起点）を再現し、
+  // 現在ホールの「次」と「最終ホールか」を求める。最終ホールでは null（ボタン非活性）。
+  const playOrder = Array.from({ length: 18 }, (_, i) => ((startHole - 1 + i) % 18) + 1);
+  const currentPlayIdx = playOrder.indexOf(currentHoleNumber);
+  const nextHoleNum =
+    currentPlayIdx === -1 || currentPlayIdx === playOrder.length - 1
+      ? null
+      : playOrder[currentPlayIdx + 1];
+
   function scrollToHole(holeNumber: number) {
     const hole = holes.find((h) => h.hole_number === holeNumber);
     if (!hole) return;
@@ -1000,13 +1009,38 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
         onPuttsChange={updateHolePutts}
       />
 
+      {/* スコア入力カードの下: 風ON/OFF トグル（左寄せ・旧コンパス右上から移設）と
+          「次のホール →」ボタン。次ホール移動は表タップと同じ selectHole を流用。 */}
+      <div className="flex items-center justify-between gap-3">
+        <button
+          type="button"
+          onClick={() => setWindVisible((v) => !v)}
+          className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border transition-colors ${
+            windVisible
+              ? "bg-sky-100 border-sky-300 text-sky-700"
+              : "bg-gray-100 border-gray-200 text-gray-500"
+          }`}
+        >
+          {windVisible ? "OFF" : "ON"}
+        </button>
+        <button
+          type="button"
+          onClick={() => { if (nextHoleNum != null) selectHole(nextHoleNum); }}
+          disabled={nextHoleNum == null}
+          className="text-sm font-bold px-4 py-2 rounded-xl bg-green-600 text-white
+                     hover:bg-green-700 transition-colors active:scale-95
+                     disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          次のホール →
+        </button>
+      </div>
+
       {/* Compact wind compass — half-height. Always rendered so the green-direction
           control is reachable even when wind data is unavailable. */}
       <CompactCompass
         windDirection={windDirection ?? null}
         windSpeed={windSpeed ?? null}
         visible={windVisible}
-        onToggle={() => setWindVisible((v) => !v)}
         greenDirection={greenDirections[currentHoleNumber] ?? null}
         onSetGreenDirection={(deg) =>
           setGreenDirections((prev) => ({ ...prev, [currentHoleNumber]: deg }))

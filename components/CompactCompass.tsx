@@ -21,7 +21,6 @@ interface Props {
   windDirection: string | null;
   windSpeed: string | null;
   visible: boolean;
-  onToggle: () => void;
   greenDirection: number | null;
   onSetGreenDirection: (deg: number) => void;
   greenCenter?: { lat: number; lng: number } | null;
@@ -43,7 +42,7 @@ function shortestDelta(a: number, b: number): number {
 }
 
 export function CompactCompass({
-  windDirection, windSpeed, visible, onToggle,
+  windDirection, windSpeed, visible,
   greenDirection, onSetGreenDirection,
   greenCenter = null,
 }: Props) {
@@ -378,17 +377,6 @@ export function CompactCompass({
       ) : (
         <div className="text-base text-sky-500">🧭 コンパスOFF</div>
       )}
-
-      <button
-        onClick={onToggle}
-        className={`absolute top-1.5 right-1.5 text-[10px] font-semibold px-2 py-0.5 rounded-full border transition-colors ${
-          visible
-            ? "bg-sky-100 border-sky-300 text-sky-700"
-            : "bg-gray-100 border-gray-200 text-gray-500"
-        }`}
-      >
-        {visible ? "OFF" : "ON"}
-      </button>
     </div>
   );
 }
