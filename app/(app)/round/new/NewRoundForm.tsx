@@ -309,7 +309,7 @@ export function NewRoundForm({ linkedCourseId }: { linkedCourseId?: string }) {
       .from("rounds")
       .insert({
         user_id:        user!.id,
-        course_name:    "コース未選択",
+        course_name:    "ゴルフ場未選択",
         date,
         start_hole:     startHole,
         mode,
@@ -419,7 +419,7 @@ export function NewRoundForm({ linkedCourseId }: { linkedCourseId?: string }) {
                      hover:text-green-600 disabled:opacity-60 disabled:cursor-not-allowed
                      transition-colors active:scale-95"
         >
-          コースを決めずに開始する
+          ゴルフ場を決めずに開始する
         </button>
       </div>
 
