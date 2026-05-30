@@ -187,7 +187,7 @@ export function RoundCourseEditor({
           onClick={() => setIsModalOpen(false)}
         >
           <div
-            className="bg-white rounded-2xl max-w-md w-full max-h-[80vh] flex flex-col shadow-xl"
+            className="bg-white rounded-2xl max-w-md w-full max-h-[85dvh] flex flex-col shadow-xl"
             onClick={(e) => e.stopPropagation()}
           >
             {/* ヘッダー */}
