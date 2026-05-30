@@ -33,6 +33,79 @@ interface Props {
   initialInSection: string;
 }
 
+type SupabaseClient = ReturnType<typeof createClient>;
+
+// 設定したコースの「ホール番号 → 実パー」対応を course_holes から取得する。
+// 対応関係は app/(app)/round/[id]/page.tsx の courseHoles 構築（49〜88行）を
+// そのまま踏襲する:
+//   18H : course_section = ''（hole_number そのまま）
+//   36H : course_section = outSection（hole_number そのまま・18番分）
+//   27H : 前半 = outSection の 1〜9番、後半 = inSection の 1〜9番を +9（10〜18番）
+// 取得できたホールのみを Map に入れる（不明な番号には決して書き込まない安全側）。
+async function fetchCoursePars(
+  supabase: SupabaseClient,
+  courseId: string,
+  courseType: string,
+  outSection: string,
+  inSection: string,
+): Promise<Map<number, number>> {
+  const sel = "hole_number, par";
+  const map = new Map<number, number>();
+
+  if (courseType === "27H" && outSection && inSection) {
+    const [{ data: outData }, { data: inData }] = await Promise.all([
+      supabase.from("course_holes").select(sel)
+        .eq("course_id", courseId).eq("course_section", outSection).order("hole_number"),
+      supabase.from("course_holes").select(sel)
+        .eq("course_id", courseId).eq("course_section", inSection).order("hole_number"),
+    ]);
+    for (const h of (outData ?? []) as { hole_number: number; par: number }[]) {
+      map.set(h.hole_number, h.par);
+    }
+    for (const h of (inData ?? []) as { hole_number: number; par: number }[]) {
+      map.set(h.hole_number + 9, h.par); // page.tsx と同じ +9 変換
+    }
+  } else if (courseType === "36H" && outSection) {
+    const { data } = await supabase.from("course_holes").select(sel)
+      .eq("course_id", courseId).eq("course_section", outSection).order("hole_number");
+    for (const h of (data ?? []) as { hole_number: number; par: number }[]) {
+      map.set(h.hole_number, h.par);
+    }
+  } else {
+    // 18H（out/in セクション無し）
+    const { data } = await supabase.from("course_holes").select(sel)
+      .eq("course_id", courseId).eq("course_section", "").order("hole_number");
+    for (const h of (data ?? []) as { hole_number: number; par: number }[]) {
+      map.set(h.hole_number, h.par);
+    }
+  }
+
+  return map;
+}
+
+// 既存ホール（par=4 等で作成済み）を、設定コースの実パーへ揃える。
+// course_holes に対応パーが存在するホールのみ・現在値と異なるときのみ更新する。
+// （該当が無いホールは据え置き＝誤った par を書かない）
+async function applyCourseParsToHoles(
+  supabase: SupabaseClient,
+  roundId: string,
+  parMap: Map<number, number>,
+): Promise<void> {
+  if (parMap.size === 0) return;
+
+  const { data: existing } = await supabase
+    .from("holes")
+    .select("id, hole_number, par")
+    .eq("round_id", roundId);
+
+  for (const h of (existing ?? []) as { id: string; hole_number: number; par: number }[]) {
+    const truePar = parMap.get(h.hole_number);
+    if (typeof truePar !== "number") continue; // 対応パー無し → 据え置き
+    if (h.par === truePar) continue;            // 既に正しい → スキップ
+    await supabase.from("holes").update({ par: truePar }).eq("id", h.id);
+  }
+}
+
 // TODO: 将来 CourseSelector として NewRoundForm と共通化
 // （地域→県→ゴルフ場→ティー→セクション選択UI。現状は方針B＝複製。
 //  NewRoundForm 312〜455行＋591〜709行＋144〜193行を流用・適応したもの）
@@ -159,6 +232,23 @@ export function RoundCourseEditor({
       setError("ゴルフ場の設定に失敗しました");
       setSaving(false);
       return;
+    }
+
+    // ── 既存ホールの par を実コースの実パーへ上書き ────────────────────
+    // 未選択中に par=4 で作成済みのホールを、設定コースの正しいパーへ揃える。
+    // par は販売データの土台のため、対応が取れるホールだけを安全に更新する。
+    // ここでの失敗はラウンド設定（rounds の UPDATE）の成否に影響させない。
+    try {
+      const parMap = await fetchCoursePars(
+        supabase,
+        selectedCourseId,
+        courseType,
+        outSection,
+        inSection,
+      );
+      await applyCourseParsToHoles(supabase, roundId, parMap);
+    } catch {
+      // par 上書きの失敗は無視（rounds 設定自体は成功扱いで先へ進む）
     }
 
     setIsModalOpen(false);
