@@ -407,6 +407,20 @@ export function NewRoundForm({ linkedCourseId }: { linkedCourseId?: string }) {
             </div>
           </>
         )}
+
+        {/* 「ゴルフ場を選ぶ」の代替導線。コースを決めずに開始する。
+            course_name は "コース未選択"、golf_course_id は null で INSERT。
+            courseName 空でも押せるよう、下部の送信ボタンとは disabled 条件を分離。 */}
+        <button
+          type="button"
+          onClick={handleStartWithoutCourse}
+          disabled={loading}
+          className="w-full py-2 text-sm font-medium text-gray-500 underline
+                     hover:text-green-600 disabled:opacity-60 disabled:cursor-not-allowed
+                     transition-colors active:scale-95"
+        >
+          コースを決めずに開始する
+        </button>
       </div>
 
       {/* ── ティーグランド選択（ゴルフ場選択時） ────────── */}
@@ -626,20 +640,6 @@ export function NewRoundForm({ linkedCourseId }: { linkedCourseId?: string }) {
         disabled={loading || !courseName}
       >
         {loading ? "作成中..." : "ラウンドを開始する"}
-      </button>
-
-      {/* コース未選択でも開始できる補助導線。course_name は "コース未選択" を
-          自動セットし、golf_course_id は null。後からコースを決められる前提。
-          courseName 空でも押せるよう、上の送信ボタンとは disabled 条件を分離。 */}
-      <button
-        type="button"
-        onClick={handleStartWithoutCourse}
-        disabled={loading}
-        className="w-full py-2.5 text-sm font-medium text-gray-500 underline
-                   hover:text-green-600 disabled:opacity-60 disabled:cursor-not-allowed
-                   transition-colors active:scale-95"
-      >
-        コースを決めずに開始する
       </button>
     </form>
     {showGeoGuide && <GeoPermissionGuide onClose={() => setShowGeoGuide(false)} />}
