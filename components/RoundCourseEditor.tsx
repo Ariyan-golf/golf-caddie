@@ -183,15 +183,15 @@ export function RoundCourseEditor({
       {/* ── ゴルフ場選択モーダル（NewRoundForm 591〜709行 を適応）─────── */}
       {isModalOpen && (
         <div
-          className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-4 sm:items-center"
+          className="fixed inset-0 z-[60] flex items-end justify-center bg-black/50 p-4 sm:items-center"
           onClick={() => setIsModalOpen(false)}
         >
           <div
-            className="bg-white rounded-2xl max-w-md w-full max-h-[85dvh] flex flex-col shadow-xl"
+            className="bg-white rounded-2xl max-w-md w-full max-h-[85dvh] flex flex-col overflow-hidden shadow-xl"
             onClick={(e) => e.stopPropagation()}
           >
-            {/* ヘッダー */}
-            <div className="flex items-center justify-between p-4 pb-3 border-b border-gray-100">
+            {/* ヘッダー（固定・スクロールしない） */}
+            <div className="flex items-center justify-between p-4 pb-3 border-b border-gray-100 shrink-0">
               <h2 className="text-base font-bold text-green-800">ゴルフ場を設定</h2>
               <button
                 type="button"
@@ -202,8 +202,8 @@ export function RoundCourseEditor({
               </button>
             </div>
 
-            {/* ボディ（スクロール可能） */}
-            <div className="p-4 overflow-y-auto flex-1 space-y-3">
+            {/* ボディ（min-h-0 でスクロール可能に。最下部はナビバー＋セーフエリア分の余白） */}
+            <div className="px-4 pt-4 pb-[calc(env(safe-area-inset-bottom)+5rem)] overflow-y-auto flex-1 min-h-0 space-y-3">
               {error && (
                 <div className="bg-red-50 border border-red-200 text-red-600 rounded-xl p-3 text-sm">
                   {error}
