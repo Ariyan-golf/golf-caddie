@@ -78,12 +78,12 @@ export default async function RoundDetailPage({ params, searchParams }: Props) {
         .order("hole_number");
       courseHoles = data ?? undefined;
     } else {
-      // 18H: course_section = '' のホールを取得
+      // 18H: 単一セクション前提のため course_section に依存せず course_id の全ホールを取得。
+      // （course_holes が '' 以外の course_section で登録されていても確実に18行取れる）
       const { data } = await supabase
         .from("course_holes")
         .select("hole_number, par")
         .eq("course_id", round.golf_course_id)
-        .eq("course_section", "")
         .order("hole_number");
       courseHoles = data ?? undefined;
     }

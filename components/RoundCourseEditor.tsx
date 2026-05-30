@@ -72,9 +72,10 @@ async function fetchCoursePars(
       map.set(h.hole_number, h.par);
     }
   } else {
-    // 18H（out/in セクション無し）
+    // 18H（out/in セクション無し）。単一セクション前提のため course_section に依存せず
+    // course_id の全ホールを取得（page.tsx の18Hパスと挙動を揃える）。
     const { data } = await supabase.from("course_holes").select(sel)
-      .eq("course_id", courseId).eq("course_section", "").order("hole_number");
+      .eq("course_id", courseId).order("hole_number");
     for (const h of (data ?? []) as { hole_number: number; par: number }[]) {
       map.set(h.hole_number, h.par);
     }
