@@ -969,8 +969,10 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
 
   return (
     // 最下部（残り距離カード等）が固定ナビバー＋iOSセーフエリアに被って見切れない
-    // よう、下余白をナビ高さ(5rem)＋env(safe-area-inset-bottom)分まで確保する。
-    <div className="space-y-2 pb-[calc(env(safe-area-inset-bottom)+6rem)]">
+    // よう、下余白をナビ高さ(6rem)＋env(safe-area-inset-bottom)分まで確保する。
+    // calc() は +/- の前後に空白必須。Tailwind arbitrary value では _ が空白へ変換される
+    // （空白無し "...)+6rem" は無効CSSとして宣言ごと破棄され、padding が効かない）。
+    <div className="space-y-2 pb-[calc(env(safe-area-inset-bottom)_+_6rem)]">
       {/* Header — live running score · GPS strength.
           コース名は上位ページ (round/[id]/page.tsx) のヘッダーで表示済みのため
           ここでは重複表示しない（縦スペース節約 / 認知負荷低減）。
