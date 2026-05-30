@@ -2962,7 +2962,12 @@ function ScoreTable({
         <div className={`w-12 h-10 flex items-center justify-center text-xl tabular-nums ${cellCls(n, "P")}`}>
           {par ?? "-"}
         </div>
-        <div className={`w-12 h-10 flex items-center justify-center text-xl tabular-nums ${cellCls(n, "score")}`}>
+        {/* 「打」セル: 完了画面スコアカードと同じ getScoreColor でパー差により色分け。
+            スコア未入力のセルは従来どおり無色（inline style を当てない）。 */}
+        <div
+          className={`w-12 h-10 flex items-center justify-center text-xl tabular-nums ${cellCls(n, "score")}`}
+          style={hole?.score != null && par != null ? { color: getScoreColor(hole.score, par) } : undefined}
+        >
           {scoreTxt}
         </div>
         <div className={`w-12 h-10 rounded-b-md flex items-center justify-center text-xl tabular-nums ${cellCls(n, "putts")}`}>
