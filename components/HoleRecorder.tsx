@@ -1013,27 +1013,17 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
         onPuttsChange={updateHolePutts}
       />
 
-      {/* スコア入力カードの下: 「次のホール →」ボタン（横幅いっぱい・押しやすく）。
-          次ホール移動は表タップと同じ selectHole を流用。風ON/OFFトグルは
-          風向きカード内（「風 —」ラベル右隣）へ移設。 */}
-      <button
-        type="button"
-        onClick={() => { if (nextHoleNum != null) selectHole(nextHoleNum); }}
-        disabled={nextHoleNum == null}
-        className="w-full text-sm font-bold px-4 py-2.5 rounded-xl bg-green-600 text-white
-                   hover:bg-green-700 transition-colors active:scale-95
-                   disabled:opacity-40 disabled:cursor-not-allowed"
-      >
-        次のホール →
-      </button>
-
       {/* Compact wind compass — half-height. Always rendered so the green-direction
-          control is reachable even when wind data is unavailable. */}
+          control is reachable even when wind data is unavailable.
+          「次のホール →」は上段右（残り距離の真上）に配置。次ホール移動は表タップと
+          同じ selectHole を流用、最終ホールでは非活性。 */}
       <CompactCompass
         windDirection={windDirection ?? null}
         windSpeed={windSpeed ?? null}
         visible={windVisible}
         onToggle={() => setWindVisible((v) => !v)}
+        onNextHole={() => { if (nextHoleNum != null) selectHole(nextHoleNum); }}
+        nextHoleDisabled={nextHoleNum == null}
         greenDirection={greenDirections[currentHoleNumber] ?? null}
         onSetGreenDirection={(deg) =>
           setGreenDirections((prev) => ({ ...prev, [currentHoleNumber]: deg }))

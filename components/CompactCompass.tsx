@@ -22,6 +22,8 @@ interface Props {
   windSpeed: string | null;
   visible: boolean;
   onToggle: () => void;
+  onNextHole: () => void;
+  nextHoleDisabled: boolean;
   greenDirection: number | null;
   onSetGreenDirection: (deg: number) => void;
   greenCenter?: { lat: number; lng: number } | null;
@@ -50,6 +52,22 @@ function WindVisibilityToggle({ visible, onToggle }: { visible: boolean; onToggl
   );
 }
 
+// 「次のホール →」: 上段右（残り距離の真上）にコンパクト配置。最終ホールで非活性。
+function NextHoleButton({ onNextHole, disabled }: { onNextHole: () => void; disabled: boolean }) {
+  return (
+    <button
+      type="button"
+      onClick={onNextHole}
+      disabled={disabled}
+      className="flex-shrink-0 text-xs font-bold px-3 py-1 rounded-full bg-green-600 text-white
+                 hover:bg-green-700 transition-colors active:scale-95
+                 disabled:opacity-40 disabled:cursor-not-allowed"
+    >
+      次のホール →
+    </button>
+  );
+}
+
 function polar(angleDeg: number, radius: number) {
   const rad = ((angleDeg - 90) * Math.PI) / 180;
   return { x: CX + radius * Math.cos(rad), y: CY + radius * Math.sin(rad) };
@@ -62,6 +80,7 @@ function shortestDelta(a: number, b: number): number {
 
 export function CompactCompass({
   windDirection, windSpeed, visible, onToggle,
+  onNextHole, nextHoleDisabled,
   greenDirection, onSetGreenDirection,
   greenCenter = null,
 }: Props) {
@@ -274,11 +293,14 @@ export function CompactCompass({
           {/* Right column: wind text + green-direction control */}
           <div className="flex-1 min-w-0 flex flex-col gap-1.5 py-1">
             <div className="leading-tight">
-              <div className="flex items-center gap-2">
-                <p className="text-lg font-bold text-sky-700">
-                  風 {windDirection ? (WIND_TO_ARROW[windDirection] ?? "—") : "—"}
-                </p>
-                <WindVisibilityToggle visible={visible} onToggle={onToggle} />
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  <p className="text-lg font-bold text-sky-700">
+                    風 {windDirection ? (WIND_TO_ARROW[windDirection] ?? "—") : "—"}
+                  </p>
+                  <WindVisibilityToggle visible={visible} onToggle={onToggle} />
+                </div>
+                <NextHoleButton onNextHole={onNextHole} disabled={nextHoleDisabled} />
               </div>
               <p className="text-base text-sky-500">{windSpeed ?? "—"}</p>
             </div>
@@ -397,9 +419,12 @@ export function CompactCompass({
           </div>
         </div>
       ) : (
-        <div className="flex items-center gap-2">
-          <span className="text-base text-sky-500">🧭 コンパスOFF</span>
-          <WindVisibilityToggle visible={visible} onToggle={onToggle} />
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-base text-sky-500">🧭 コンパスOFF</span>
+            <WindVisibilityToggle visible={visible} onToggle={onToggle} />
+          </div>
+          <NextHoleButton onNextHole={onNextHole} disabled={nextHoleDisabled} />
         </div>
       )}
     </div>
