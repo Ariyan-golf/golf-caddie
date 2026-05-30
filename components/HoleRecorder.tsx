@@ -172,6 +172,18 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
                                 "shooting";
 
   const [holes, setHoles]           = useState<Hole[]>(initialHoles);
+
+  // コース後付け設定 → router.refresh() で新しい par を持つ initialHoles が来たら、
+  // 表示中ホールの par をサーバー値へ追従させる。id で対応付け、par 以外は触らない。
+  // （initialHoles の参照はサーバー再描画時のみ変わるため、通常操作中は発火しない）
+  useEffect(() => {
+    setHoles((prev) =>
+      prev.map((h) => {
+        const fresh = initialHoles.find((ih) => ih.id === h.id);
+        return fresh && fresh.par !== h.par ? { ...h, par: fresh.par } : h;
+      })
+    );
+  }, [initialHoles]);
   const [phase, setPhase]           = useState<Phase>(initPhase);
   const [holeMode, setHoleMode]     = useState<"shot" | "score">(mode);
   const [creating, setCreating]     = useState(false);
