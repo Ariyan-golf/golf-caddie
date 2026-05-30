@@ -21,6 +21,7 @@ interface Props {
   windDirection: string | null;
   windSpeed: string | null;
   visible: boolean;
+  onToggle: () => void;
   greenDirection: number | null;
   onSetGreenDirection: (deg: number) => void;
   greenCenter?: { lat: number; lng: number } | null;
@@ -30,6 +31,24 @@ const SIZE = 120;
 const CX = SIZE / 2;
 const CY = SIZE / 2;
 const R = SIZE / 2 - 12;
+
+// 風表示の ON/OFF トグル。「風 —」ラベル右隣（visible 時）と「🧭 コンパスOFF」
+// 横（OFF 時）の両方に置き、どちらの状態からも切り替えられるようにする。
+function WindVisibilityToggle({ visible, onToggle }: { visible: boolean; onToggle: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      className={`flex-shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-full border transition-colors ${
+        visible
+          ? "bg-sky-100 border-sky-300 text-sky-700"
+          : "bg-gray-100 border-gray-200 text-gray-500"
+      }`}
+    >
+      {visible ? "OFF" : "ON"}
+    </button>
+  );
+}
 
 function polar(angleDeg: number, radius: number) {
   const rad = ((angleDeg - 90) * Math.PI) / 180;
@@ -42,7 +61,7 @@ function shortestDelta(a: number, b: number): number {
 }
 
 export function CompactCompass({
-  windDirection, windSpeed, visible,
+  windDirection, windSpeed, visible, onToggle,
   greenDirection, onSetGreenDirection,
   greenCenter = null,
 }: Props) {
@@ -255,9 +274,12 @@ export function CompactCompass({
           {/* Right column: wind text + green-direction control */}
           <div className="flex-1 min-w-0 flex flex-col gap-1.5 py-1">
             <div className="leading-tight">
-              <p className="text-lg font-bold text-sky-700">
-                風 {windDirection ? (WIND_TO_ARROW[windDirection] ?? "—") : "—"}
-              </p>
+              <div className="flex items-center gap-2">
+                <p className="text-lg font-bold text-sky-700">
+                  風 {windDirection ? (WIND_TO_ARROW[windDirection] ?? "—") : "—"}
+                </p>
+                <WindVisibilityToggle visible={visible} onToggle={onToggle} />
+              </div>
               <p className="text-base text-sky-500">{windSpeed ?? "—"}</p>
             </div>
             <div className="flex gap-2 items-stretch">
@@ -375,7 +397,10 @@ export function CompactCompass({
           </div>
         </div>
       ) : (
-        <div className="text-base text-sky-500">🧭 コンパスOFF</div>
+        <div className="flex items-center gap-2">
+          <span className="text-base text-sky-500">🧭 コンパスOFF</span>
+          <WindVisibilityToggle visible={visible} onToggle={onToggle} />
+        </div>
       )}
     </div>
   );

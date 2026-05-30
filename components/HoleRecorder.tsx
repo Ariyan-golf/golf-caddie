@@ -969,10 +969,10 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
 
   return (
     // 最下部（残り距離カード等）が固定ナビバー＋iOSセーフエリアに被って見切れない
-    // よう、下余白をナビ高さ(6rem)＋env(safe-area-inset-bottom)分まで確保する。
+    // よう、下余白をナビ高さ(8rem)＋env(safe-area-inset-bottom)分まで確保する。
     // calc() は +/- の前後に空白必須。Tailwind arbitrary value では _ が空白へ変換される
-    // （空白無し "...)+6rem" は無効CSSとして宣言ごと破棄され、padding が効かない）。
-    <div className="space-y-2 pb-[calc(env(safe-area-inset-bottom)_+_6rem)]">
+    // （空白無し "...)+8rem" は無効CSSとして宣言ごと破棄され、padding が効かない）。
+    <div className="space-y-2 pb-[calc(env(safe-area-inset-bottom)_+_8rem)]">
       {/* Header — live running score · GPS strength.
           コース名は上位ページ (round/[id]/page.tsx) のヘッダーで表示済みのため
           ここでは重複表示しない（縦スペース節約 / 認知負荷低減）。
@@ -1013,31 +1013,19 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
         onPuttsChange={updateHolePutts}
       />
 
-      {/* スコア入力カードの下: 風ON/OFF トグル（左寄せ・旧コンパス右上から移設）と
-          「次のホール →」ボタン。次ホール移動は表タップと同じ selectHole を流用。 */}
-      <div className="flex items-center justify-between gap-3">
-        <button
-          type="button"
-          onClick={() => setWindVisible((v) => !v)}
-          className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border transition-colors ${
-            windVisible
-              ? "bg-sky-100 border-sky-300 text-sky-700"
-              : "bg-gray-100 border-gray-200 text-gray-500"
-          }`}
-        >
-          {windVisible ? "OFF" : "ON"}
-        </button>
-        <button
-          type="button"
-          onClick={() => { if (nextHoleNum != null) selectHole(nextHoleNum); }}
-          disabled={nextHoleNum == null}
-          className="text-sm font-bold px-4 py-2 rounded-xl bg-green-600 text-white
-                     hover:bg-green-700 transition-colors active:scale-95
-                     disabled:opacity-40 disabled:cursor-not-allowed"
-        >
-          次のホール →
-        </button>
-      </div>
+      {/* スコア入力カードの下: 「次のホール →」ボタン（横幅いっぱい・押しやすく）。
+          次ホール移動は表タップと同じ selectHole を流用。風ON/OFFトグルは
+          風向きカード内（「風 —」ラベル右隣）へ移設。 */}
+      <button
+        type="button"
+        onClick={() => { if (nextHoleNum != null) selectHole(nextHoleNum); }}
+        disabled={nextHoleNum == null}
+        className="w-full text-sm font-bold px-4 py-2.5 rounded-xl bg-green-600 text-white
+                   hover:bg-green-700 transition-colors active:scale-95
+                   disabled:opacity-40 disabled:cursor-not-allowed"
+      >
+        次のホール →
+      </button>
 
       {/* Compact wind compass — half-height. Always rendered so the green-direction
           control is reachable even when wind data is unavailable. */}
@@ -1045,6 +1033,7 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
         windDirection={windDirection ?? null}
         windSpeed={windSpeed ?? null}
         visible={windVisible}
+        onToggle={() => setWindVisible((v) => !v)}
         greenDirection={greenDirections[currentHoleNumber] ?? null}
         onSetGreenDirection={(deg) =>
           setGreenDirections((prev) => ({ ...prev, [currentHoleNumber]: deg }))
