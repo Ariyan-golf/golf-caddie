@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { notFound } from "next/navigation";
 import { HoleRecorder } from "@/components/HoleRecorder";
 import { BackButton } from "@/components/BackButton";
+import { RoundCourseEditor } from "@/components/RoundCourseEditor";
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -124,6 +125,14 @@ export default async function RoundDetailPage({ params, searchParams }: Props) {
         <BackButton />
         <div className="flex-1 min-w-0">
           <h1 className="text-xl font-bold text-green-800 truncate">{round.course_name}</h1>
+          <RoundCourseEditor
+            roundId={round.id}
+            initialGolfCourseId={round.golf_course_id ?? null}
+            initialCourseName={round.course_name ?? ""}
+            initialCourseTeeId={round.course_tee_id ?? null}
+            initialOutSection={round.out_section ?? ""}
+            initialInSection={round.in_section ?? ""}
+          />
           <p className="text-sm text-green-500">
             {new Date(round.date).toLocaleDateString("ja-JP")}
             {round.total_score && (

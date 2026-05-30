@@ -421,6 +421,7 @@ export function NewRoundForm({ linkedCourseId }: { linkedCourseId?: string }) {
         >
           ゴルフ場を決めずに開始する
         </button>
+        <p className="text-xs text-gray-400 text-center">あとからゴルフ場・ティーを設定できます</p>
       </div>
 
       {/* ── ティーグランド選択（ゴルフ場選択時） ────────── */}
