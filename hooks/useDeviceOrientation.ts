@@ -23,7 +23,7 @@ function getCompassHeading(event: DeviceOrientationEvent): number | null {
 
 export type SensorState = "unknown" | "granted" | "denied" | "unsupported";
 
-export function useDeviceOrientation() {
+export function useDeviceOrientation(enabled: boolean = true) {
   const [heading, setHeading] = useState<number | null>(null);
   const [sensorState, setSensorState] = useState<SensorState>("unknown");
 
@@ -31,6 +31,21 @@ export function useDeviceOrientation() {
   const eventNameRef = useRef<"deviceorientation" | "deviceorientationabsolute">("deviceorientation");
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const gotFirstEventRef = useRef(false);
+  // iOS は requestPermission がユーザー操作起点。一度 granted になったら、
+  // 非表示→再表示で再度 attach できるよう記録しておく（再許可は不要）。
+  const permissionGrantedRef = useRef(false);
+
+  const detachListener = useCallback(() => {
+    if (typeof window === "undefined") return;
+    if (listenerRef.current) {
+      window.removeEventListener(eventNameRef.current, listenerRef.current);
+      listenerRef.current = null;
+    }
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+  }, []);
 
   const attachListener = useCallback(() => {
     if (typeof window === "undefined") return;
@@ -68,6 +83,7 @@ export function useDeviceOrientation() {
       try {
         const result = await DOE.requestPermission();
         if (result === "granted") {
+          permissionGrantedRef.current = true;
           attachListener();
           return true;
         }
@@ -79,13 +95,18 @@ export function useDeviceOrientation() {
       }
     }
     // Non-iOS: no permission needed
+    permissionGrantedRef.current = true;
     attachListener();
     return true;
   }, [attachListener]);
 
-  // On Android (no requestPermission), attach immediately so the compass
-  // is live as soon as the component mounts. iOS waits for an explicit
-  // requestPermission() call gated behind a user gesture.
+  // Attach the orientation listener only while `enabled` (= the wind compass is
+  // actually shown). 発熱対策: 非表示中はセンサーを回さない。
+  // - Android（requestPermission 不要）: enabled になった瞬間に attach、
+  //   非表示・アンマウントで detach。従来の「マウント時に無条件で即 attach」を
+  //   表示状態連動に変更。
+  // - iOS: 初回は requestPermission（ユーザー操作）待ち。一度 granted なら、
+  //   再表示時に attach し直す（再許可は不要）。非表示時は detach。
   useEffect(() => {
     if (typeof window === "undefined") return;
 
@@ -96,21 +117,25 @@ export function useDeviceOrientation() {
 
     if (!DOE) {
       setSensorState("unsupported");
-    } else if (!needsPermission) {
-      attachListener();
+      return;
     }
 
+    if (!enabled) {
+      detachListener();
+      return;
+    }
+
+    if (!needsPermission) {
+      attachListener();
+    } else if (permissionGrantedRef.current) {
+      attachListener();
+    }
+    // iOS で未許可の場合は requestPermission() のユーザー操作を待つ。
+
     return () => {
-      if (listenerRef.current) {
-        window.removeEventListener(eventNameRef.current, listenerRef.current);
-        listenerRef.current = null;
-      }
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-        timeoutRef.current = null;
-      }
+      detachListener();
     };
-  }, [attachListener]);
+  }, [enabled, attachListener, detachListener]);
 
   const isSupported = sensorState !== "unsupported" && sensorState !== "denied";
 

@@ -8,7 +8,7 @@ import type { Club } from "@/types";
 import { CLUB_LABELS } from "@/types";
 import { calculateDistance, metersToYards } from "@/lib/distance";
 import { stopGpsTracking, getBestShotPosition, startShotWatch, stopShotWatch, awaitHighAccuracyFix, type GpsPoint } from "@/lib/gps";
-import { releaseWakeLock } from "@/lib/wakeLock";
+import { acquireWakeLock, releaseWakeLock, softReleaseWakeLock } from "@/lib/wakeLock";
 import { isBetaMode } from "@/lib/betaMode";
 import Link from "next/link";
 import { GpsIndicator } from "./GpsIndicator";
@@ -328,6 +328,55 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // ── Wake Lock 無操作オートオフ（発熱・電池消耗対策）──────────────────
+  // ラウンド画面で WAKE_LOCK_IDLE_MS 無操作になったら Wake Lock を「ソフト解除」
+  // して画面スリープを許可（食事・組待ち中の発熱と電池消耗を止める）。
+  // 操作が戻れば取り直す。画面が一度スリープ→再点灯した場合は lib/wakeLock の
+  // visibilitychange 再取得が担当し、tryAcquire の二重取得ガードで競合しない。
+  // ラウンド終了（roundEndConfirmed）後は監視を畳む（リーク防止）。
+  const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const wakeSoftReleasedRef = useRef(false);
+
+  useEffect(() => {
+    if (roundEndConfirmed) return;
+    if (typeof window === "undefined") return;
+
+    const armTimer = () => {
+      if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+      idleTimerRef.current = setTimeout(() => {
+        // 無操作タイムアウト → sentinel だけ release（requested は維持）。
+        wakeSoftReleasedRef.current = true;
+        void softReleaseWakeLock();
+      }, WAKE_LOCK_IDLE_MS);
+    };
+
+    const onActivity = () => {
+      // ソフト解除中だったときだけ取り直す。visibilitychange 側が画面再点灯時に
+      // 既に取り直していれば tryAcquire の二重取得ガードで no-op になる。
+      if (wakeSoftReleasedRef.current) {
+        wakeSoftReleasedRef.current = false;
+        void acquireWakeLock();
+      }
+      armTimer();
+    };
+
+    // 「打つ前」「止まった場所」「残り距離」「グリーン方向」等のボタン押下も
+    // pointerdown として window に伝播するため、個別配線なしでここで拾える。
+    const ACTIVITY_EVENTS = ["pointerdown", "touchstart", "scroll", "keydown"] as const;
+    ACTIVITY_EVENTS.forEach((ev) =>
+      window.addEventListener(ev, onActivity, { passive: true }),
+    );
+    armTimer();
+
+    return () => {
+      ACTIVITY_EVENTS.forEach((ev) => window.removeEventListener(ev, onActivity));
+      if (idleTimerRef.current) {
+        clearTimeout(idleTimerRef.current);
+        idleTimerRef.current = null;
+      }
+    };
+  }, [roundEndConfirmed]);
 
   // 2秒待機タイマーと関連 ref をまとめて掃除するヘルパー。
   // handleCancelShot / selectHole / unmount / 15分タイムアウト等から呼ぶ。
@@ -2330,6 +2379,10 @@ function ScoreEntryCard({
 // ── Wind compass ──────────────────────────────────────────────────────
 
 const COMPASS_STORAGE_KEY = "golfCaddieWindCompass";
+
+// 無操作で Wake Lock をソフト解除するまでの時間（10分）。食事・組待ち中の
+// 発熱と電池消耗を止めるための値。
+const WAKE_LOCK_IDLE_MS = 10 * 60 * 1000;
 
 // Symbols point to where the wind is blowing TO (not where it comes from).
 // e.g. 北 (wind from north) → ↓ (blows south).

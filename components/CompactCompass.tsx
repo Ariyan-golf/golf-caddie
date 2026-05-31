@@ -84,7 +84,9 @@ export function CompactCompass({
   greenDirection, onSetGreenDirection,
   greenCenter = null,
 }: Props) {
-  const { heading, requestPermission, sensorState } = useDeviceOrientation();
+  // 風コンパス表示中（visible）だけセンサーを回す。非表示時はリスナーを外して
+  // 端末の方位センサーを止め、発熱・電池消耗を抑える。
+  const { heading, requestPermission, sensorState } = useDeviceOrientation(visible);
   const [pendingSet, setPendingSet] = useState(false);
 
   // Remaining-distance readout: ephemeral, auto-clears after 5s. Whatever
