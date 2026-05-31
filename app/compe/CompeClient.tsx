@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
+import { CompeJoinByCode } from "@/components/CompeJoinByCode";
 
 export interface CompeRow {
   id:         string;
@@ -160,6 +161,9 @@ export function CompeClient({ initialCompes }: { initialCompes: CompeRow[] }) {
           )}
         </div>
       )}
+
+      {/* ── 参加コードでコンペに参加 ── */}
+      <CompeJoinByCode />
 
       {/* ── 自分が作ったコンペ一覧 ── */}
       <div className="card">

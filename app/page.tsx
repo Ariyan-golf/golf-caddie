@@ -7,7 +7,6 @@ import { Navigation } from "@/components/Navigation";
 import { LogoutButton } from "@/components/LogoutButton";
 import { RoundBarGraph } from "@/components/RoundBarGraph";
 import { EventRankingSection, type EventRankingData } from "@/components/EventRankingSection";
-import { CompeJoinByCode } from "@/components/CompeJoinByCode";
 import { CLUB_LABELS, type Club } from "@/types";
 
 // v4: 無料体験は3ラウンドまで（app/(app)/round/new/page.tsx と同値）
@@ -283,9 +282,6 @@ export default async function HomePage() {
           </div>
         )}
 
-        {/* コンペに参加（参加コード入力・常設） */}
-        <CompeJoinByCode />
-
         {/* 平均スコア / GCAハンディ */}
         <div className="card space-y-3 text-center">
           {avgScore !== null ? (
@@ -466,6 +462,21 @@ export default async function HomePage() {
             </div>
           );
         })()}
+
+        {/* コンペ幹事への導線（ドラコン設定） */}
+        <Link
+          href="/compe"
+          className="card flex items-center gap-3 hover:border-green-300 transition-colors"
+        >
+          <span className="text-2xl flex-shrink-0">🏆</span>
+          <div className="flex-1">
+            <p className="font-semibold text-green-800 text-sm">あなたのコンペのドラコンを設定する</p>
+            <p className="text-xs text-green-500 mt-0.5">
+              コンペを作成して参加コードを共有しましょう
+            </p>
+          </div>
+          <span className="text-green-400 text-lg flex-shrink-0">→</span>
+        </Link>
 
         {/* 使い方ガイド */}
         <Link
