@@ -7,6 +7,7 @@ import { Navigation } from "@/components/Navigation";
 import { LogoutButton } from "@/components/LogoutButton";
 import { RoundBarGraph } from "@/components/RoundBarGraph";
 import { EventRankingSection, type EventRankingData } from "@/components/EventRankingSection";
+import { CLUB_LABELS, type Club } from "@/types";
 
 // v4: 無料体験は3ラウンドまで（app/(app)/round/new/page.tsx と同値）
 const FREE_ROUND_LIMIT = 3;
@@ -169,7 +170,7 @@ export default async function HomePage() {
     };
   });
 
-  const recentRounds = graphData.slice(0, 5);
+  const recentRounds = graphData.slice(0, 3);
 
   // 直近10ラウンドの平均スコア（total_score が null のラウンドは除外）
   const validScores = graphData
@@ -428,25 +429,30 @@ export default async function HomePage() {
           )}
         </div>
 
-        {/* Club averages */}
-        {clubStats && clubStats.length > 0 && (
-          <div className="card">
-            <h2 className="font-semibold text-green-800 mb-3">番手別平均飛距離</h2>
-            <div className="space-y-2">
-              {clubStats.map((stat) => (
-                <div key={stat.club} className="flex items-center justify-between">
-                  <span className="text-sm text-green-700">{stat.club}</span>
-                  <span className="text-sm font-semibold text-green-800">
-                    {Math.round(stat.average_distance_meters * 1.09361)}y
-                    <span className="text-xs text-green-400 font-normal ml-1">
-                      ({stat.shot_count}打)
-                    </span>
+        {/* Club averages（ドライバー1Wのみ表示。詳細は /swing） */}
+        {clubStats && clubStats.length > 0 && (() => {
+          // ドライバー(1W)を優先。無ければショット数最多(=clubStats先頭)をフォールバック表示。
+          const driverStat = clubStats.find((stat) => stat.club === "1w") ?? clubStats[0];
+          return (
+            <div className="card">
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="font-semibold text-green-800">番手別平均飛距離</h2>
+                <Link href="/swing" className="text-xs text-green-600 underline">
+                  もっと詳しく →
+                </Link>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-green-700">{CLUB_LABELS[driverStat.club as Club] ?? driverStat.club}</span>
+                <span className="text-sm font-semibold text-green-800">
+                  {Math.round(driverStat.average_distance_meters * 1.09361)}y
+                  <span className="text-xs text-green-400 font-normal ml-1">
+                    ({driverStat.shot_count}打)
                   </span>
-                </div>
-              ))}
+                </span>
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* 使い方ガイド */}
         <Link
