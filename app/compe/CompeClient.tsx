@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { QRCodeSVG } from "qrcode.react";
 
 export interface CompeRow {
   id:         string;
@@ -13,6 +14,11 @@ function formatDate(iso: string) {
   // start_date は "YYYY-MM-DD"。タイムゾーンずれを避けてパース。
   const d = new Date(iso + "T00:00:00");
   return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}`;
+}
+
+// 参加リンク用 URL。ドメインはハードコードせず実行中オリジンから組み立てる。
+function joinUrl(origin: string, code: string) {
+  return `${origin}/compe/join?code=${encodeURIComponent(code)}`;
 }
 
 export function CompeClient({ initialCompes }: { initialCompes: CompeRow[] }) {
@@ -28,6 +34,12 @@ export function CompeClient({ initialCompes }: { initialCompes: CompeRow[] }) {
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const [deletingId,   setDeletingId]   = useState<string | null>(null);
   const [deleted,      setDeleted]      = useState(false);
+
+  // QRに埋め込むオリジン。SSR では window が無いのでマウント後に取得する。
+  const [origin, setOrigin] = useState("");
+  useEffect(() => {
+    setOrigin(window.location.origin);
+  }, []);
 
   async function handleDelete(id: string) {
     setDeletingId(id);
@@ -134,10 +146,18 @@ export function CompeClient({ initialCompes }: { initialCompes: CompeRow[] }) {
       {createdCode && (
         <div className="card bg-green-50 border-green-300 space-y-2 text-center">
           <p className="text-sm font-semibold text-green-700">コンペを作成しました！</p>
-          <p className="text-xs text-green-600">参加者にこの参加コードを共有してください</p>
+          <p className="text-xs text-green-600">参加者にこの参加コードまたはQRを共有してください</p>
           <p className="text-4xl font-bold tracking-[0.3em] text-green-800 tabular-nums py-2">
             {createdCode}
           </p>
+          {origin && (
+            <div className="flex flex-col items-center gap-1.5 pt-1">
+              <div className="bg-white p-2 rounded-xl border border-green-200">
+                <QRCodeSVG value={joinUrl(origin, createdCode)} size={140} />
+              </div>
+              <p className="text-xs text-green-500">QRを読み取ると参加ページが開きます</p>
+            </div>
+          )}
         </div>
       )}
 
@@ -187,24 +207,37 @@ export function CompeClient({ initialCompes }: { initialCompes: CompeRow[] }) {
                   </div>
                 ) : (
                   /* ── 通常表示 ── */
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="font-medium text-green-800 text-sm truncate">{c.event_name}</p>
-                      <p className="text-xs text-green-500">{formatDate(c.start_date)}</p>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="font-medium text-green-800 text-sm truncate">{c.event_name}</p>
+                        <p className="text-xs text-green-500">{formatDate(c.start_date)}</p>
+                      </div>
+                      <div className="flex items-center gap-3 flex-shrink-0">
+                        <span className="font-mono font-bold tracking-widest text-green-700 text-sm">
+                          {c.event_code ?? "—"}
+                        </span>
+                        {/* 管理画面は次スライスで作成（今回はリンクを張らない） */}
+                        <span className="text-xs text-green-300">管理（準備中）</span>
+                        <button
+                          onClick={() => { setConfirmingId(c.id); setDeleted(false); }}
+                          className="text-xs text-red-400 hover:text-red-500 hover:underline"
+                        >
+                          削除
+                        </button>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-3 flex-shrink-0">
-                      <span className="font-mono font-bold tracking-widest text-green-700 text-sm">
-                        {c.event_code ?? "—"}
-                      </span>
-                      {/* 管理画面は次スライスで作成（今回はリンクを張らない） */}
-                      <span className="text-xs text-green-300">管理（準備中）</span>
-                      <button
-                        onClick={() => { setConfirmingId(c.id); setDeleted(false); }}
-                        className="text-xs text-red-400 hover:text-red-500 hover:underline"
-                      >
-                        削除
-                      </button>
-                    </div>
+                    {/* 参加用QR（コードあり＆オリジン取得後のみ） */}
+                    {origin && c.event_code && (
+                      <div className="flex items-center gap-2.5">
+                        <div className="bg-white p-1.5 rounded-lg border border-green-100 flex-shrink-0">
+                          <QRCodeSVG value={joinUrl(origin, c.event_code)} size={72} />
+                        </div>
+                        <p className="text-xs text-green-400 leading-relaxed">
+                          このQRを読み取ると参加ページが開きます
+                        </p>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
