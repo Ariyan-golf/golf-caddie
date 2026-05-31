@@ -93,3 +93,40 @@ export async function GET() {
   }
   return NextResponse.json({ compes: data ?? [] });
 }
+
+// 自分が作成したコンペの削除。
+// POST/GET と同じくユーザーセッションのクライアントで実行し、events の RLS
+// （Owners can delete own comp events: created_by = auth.uid()）で本人の comp のみ削除。
+// 他人のコンペ id を渡しても RLS で 0 件削除になり消えない。
+export async function DELETE(req: Request) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ error: "ログインが必要です" }, { status: 401 });
+  }
+
+  const { id } = (await req.json()) as { id?: string };
+  if (!id) {
+    return NextResponse.json({ error: "コンペIDは必須です" }, { status: 400 });
+  }
+
+  const { data, error } = await supabase
+    .from("events")
+    .delete()
+    .eq("id", id)
+    .eq("event_type", "comp")   // このAPIからは comp 以外（monthly/tobashikko）を消せない
+    .select("id");              // 削除できた行を返してもらい件数を判定
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+  // RLS で本人の comp 以外は対象にならず 0 件になる。
+  if (!data || data.length === 0) {
+    return NextResponse.json(
+      { error: "対象のコンペが見つからないか、削除する権限がありません" },
+      { status: 404 }
+    );
+  }
+
+  return NextResponse.json({ ok: true, deleted: data.length });
+}

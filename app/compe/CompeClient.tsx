@@ -24,6 +24,34 @@ export function CompeClient({ initialCompes }: { initialCompes: CompeRow[] }) {
   const [error,     setError]     = useState("");
   const [createdCode, setCreatedCode] = useState<string | null>(null);
 
+  // 削除：確認中の行 id・削除実行中の行 id・完了表示
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
+  const [deletingId,   setDeletingId]   = useState<string | null>(null);
+  const [deleted,      setDeleted]      = useState(false);
+
+  async function handleDelete(id: string) {
+    setDeletingId(id);
+    setError("");
+    const res = await fetch("/api/compe", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    });
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      setError(data.error ?? "削除に失敗しました");
+      setDeletingId(null);
+      setConfirmingId(null);
+      return;
+    }
+
+    setCompes((prev) => prev.filter((c) => c.id !== id));
+    setDeletingId(null);
+    setConfirmingId(null);
+    setDeleted(true);
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
@@ -116,6 +144,11 @@ export function CompeClient({ initialCompes }: { initialCompes: CompeRow[] }) {
       {/* ── 自分が作ったコンペ一覧 ── */}
       <div className="card">
         <h2 className="font-semibold text-green-800 mb-3">自分が作ったコンペ</h2>
+        {deleted && (
+          <div className="bg-green-50 border border-green-200 text-green-700 rounded-xl p-2.5 text-sm mb-3 text-center">
+            削除しました
+          </div>
+        )}
         {compes.length === 0 ? (
           <p className="text-sm text-green-400 text-center py-4">
             まだコンペがありません。
@@ -127,19 +160,53 @@ export function CompeClient({ initialCompes }: { initialCompes: CompeRow[] }) {
             {compes.map((c) => (
               <div
                 key={c.id}
-                className="flex items-center justify-between gap-3 py-2 border-b border-green-50 last:border-0"
+                className="py-2 border-b border-green-50 last:border-0"
               >
-                <div className="min-w-0">
-                  <p className="font-medium text-green-800 text-sm truncate">{c.event_name}</p>
-                  <p className="text-xs text-green-500">{formatDate(c.start_date)}</p>
-                </div>
-                <div className="flex items-center gap-3 flex-shrink-0">
-                  <span className="font-mono font-bold tracking-widest text-green-700 text-sm">
-                    {c.event_code ?? "—"}
-                  </span>
-                  {/* 管理画面は次スライスで作成（今回はリンクを張らない） */}
-                  <span className="text-xs text-green-300">管理（準備中）</span>
-                </div>
+                {confirmingId === c.id ? (
+                  /* ── インライン削除確認 ── */
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-sm text-red-600 font-medium min-w-0 truncate">
+                      「{c.event_name}」を削除しますか？
+                    </p>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <button
+                        onClick={() => handleDelete(c.id)}
+                        disabled={deletingId === c.id}
+                        className="bg-red-500 hover:bg-red-600 disabled:opacity-50 text-white px-3 py-1.5 rounded-lg text-xs font-semibold"
+                      >
+                        {deletingId === c.id ? "削除中…" : "削除する"}
+                      </button>
+                      <button
+                        onClick={() => setConfirmingId(null)}
+                        disabled={deletingId === c.id}
+                        className="text-xs text-green-500 underline disabled:opacity-50"
+                      >
+                        やめる
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  /* ── 通常表示 ── */
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="font-medium text-green-800 text-sm truncate">{c.event_name}</p>
+                      <p className="text-xs text-green-500">{formatDate(c.start_date)}</p>
+                    </div>
+                    <div className="flex items-center gap-3 flex-shrink-0">
+                      <span className="font-mono font-bold tracking-widest text-green-700 text-sm">
+                        {c.event_code ?? "—"}
+                      </span>
+                      {/* 管理画面は次スライスで作成（今回はリンクを張らない） */}
+                      <span className="text-xs text-green-300">管理（準備中）</span>
+                      <button
+                        onClick={() => { setConfirmingId(c.id); setDeleted(false); }}
+                        className="text-xs text-red-400 hover:text-red-500 hover:underline"
+                      >
+                        削除
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             ))}
           </div>
