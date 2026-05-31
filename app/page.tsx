@@ -7,6 +7,7 @@ import { Navigation } from "@/components/Navigation";
 import { LogoutButton } from "@/components/LogoutButton";
 import { RoundBarGraph } from "@/components/RoundBarGraph";
 import { EventRankingSection, type EventRankingData } from "@/components/EventRankingSection";
+import { CompeJoinByCode } from "@/components/CompeJoinByCode";
 import { CLUB_LABELS, type Club } from "@/types";
 
 // v4: 無料体験は3ラウンドまで（app/(app)/round/new/page.tsx と同値）
@@ -123,6 +124,15 @@ export default async function HomePage() {
       return { event, ranking, myRank, isParticipant };
     })
   );
+
+  // プライバシー絞り込み:
+  //   comp（プライベートコンペ）は「自分が作成した（created_by===自分）」または
+  //   「参加登録済み（isParticipant）」のものだけ表示。他人のコンペは出さない。
+  //   monthly 等（全国共通イベント）は従来どおり全員に表示。
+  const visibleEventRankings = eventRankings.filter(({ event, isParticipant }) => {
+    if (event.event_type !== "comp") return true;
+    return event.created_by === user.id || isParticipant;
+  });
   // ─────────────────────────────────────────────────────────────────────
 
   const [{ data: profile }, { data: roundsRaw }, { data: clubStats }, { data: handicapData }] =
@@ -266,12 +276,15 @@ export default async function HomePage() {
           </Link>
         )}
 
-        {/* 開催中イベント */}
-        {eventRankings.length > 0 && (
+        {/* 開催中イベント（comp は自分が作成 or 参加済みのみ表示） */}
+        {visibleEventRankings.length > 0 && (
           <div id="event-ranking">
-            <EventRankingSection events={eventRankings} />
+            <EventRankingSection events={visibleEventRankings} />
           </div>
         )}
+
+        {/* コンペに参加（参加コード入力・常設） */}
+        <CompeJoinByCode />
 
         {/* 平均スコア / GCAハンディ */}
         <div className="card space-y-3 text-center">

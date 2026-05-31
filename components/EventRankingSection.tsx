@@ -15,9 +15,10 @@ export interface EventRankingData {
     id: string;
     event_name: string;
     event_type: string;
-    hole_number: number;
+    hole_number: number | null;
     start_date: string;
     end_date: string;
+    created_by: string | null;
     golf_courses: { name: string } | null;
   };
   ranking: RankingRow[];
@@ -83,9 +84,16 @@ export function EventRankingSection({ events }: { events: EventRankingData[] }) 
                 {isComp ? "🏆 コンペ開催中" : "🎯 イベント開催中"}
               </span>
               <h3 className="font-bold text-amber-900 mt-1.5">{event.event_name}</h3>
-              <p className="text-xs text-amber-600">
-                {event.golf_courses?.name} / {event.hole_number}番ホール
-              </p>
+              {(event.golf_courses?.name || event.hole_number != null) && (
+                <p className="text-xs text-amber-600">
+                  {[
+                    event.golf_courses?.name ?? null,
+                    event.hole_number != null ? `${event.hole_number}番ホール` : null,
+                  ]
+                    .filter(Boolean)
+                    .join(" / ")}
+                </p>
+              )}
             </div>
 
             {/* コンペ参加登録エリア */}
