@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { QRCodeSVG } from "qrcode.react";
 import { CompeSettingsClient } from "./CompeSettingsClient";
+import { CompeHolesClient, type DraconHole } from "./CompeHolesClient";
 
 export interface CompeDetail {
   id:         string;
@@ -19,7 +20,13 @@ function joinUrl(origin: string, code: string) {
   return `${origin}/compe/join?code=${encodeURIComponent(code)}`;
 }
 
-export function CompeDetailClient({ compe }: { compe: CompeDetail }) {
+export function CompeDetailClient({
+  compe,
+  holes,
+}: {
+  compe: CompeDetail;
+  holes: DraconHole[];
+}) {
   // QRに埋め込むオリジン。SSR では window が無いのでマウント後に取得する。
   const [origin, setOrigin] = useState("");
   useEffect(() => {
@@ -62,6 +69,9 @@ export function CompeDetailClient({ compe }: { compe: CompeDetail }) {
         course_id={compe.course_id}
         start_date={compe.start_date}
       />
+
+      {/* ── ドラコン対象ホールの設定（2c） ── */}
+      <CompeHolesClient id={compe.id} holes={holes} />
     </div>
   );
 }

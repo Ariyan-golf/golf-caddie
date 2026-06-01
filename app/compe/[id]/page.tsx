@@ -28,6 +28,13 @@ export default async function CompeDetailPage({
     redirect("/compe");
   }
 
+  // ドラコン対象ホール（最大4・各ドラコン/逆ドラコン）。
+  const { data: draconHoles } = await supabase
+    .from("event_dracon_holes")
+    .select("hole_number, mode")
+    .eq("event_id", id)
+    .order("hole_number");
+
   const compe: CompeDetail = {
     id:         event.id,
     event_name: event.event_name,
@@ -40,7 +47,7 @@ export default async function CompeDetailPage({
   return (
     <div className="min-h-screen pb-20">
       <div className="max-w-lg mx-auto p-4 space-y-6">
-        <CompeDetailClient compe={compe} />
+        <CompeDetailClient compe={compe} holes={draconHoles ?? []} />
       </div>
     </div>
   );
