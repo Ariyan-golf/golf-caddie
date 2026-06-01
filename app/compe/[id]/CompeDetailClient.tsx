@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { QRCodeSVG } from "qrcode.react";
+import { CompeSettingsClient } from "./CompeSettingsClient";
 
 export interface CompeDetail {
   id:         string;
@@ -54,6 +55,13 @@ export function CompeDetailClient({ compe }: { compe: CompeDetail }) {
           </div>
         )}
       </div>
+
+      {/* ── ゴルフ場・開催日の設定（2b） ── */}
+      <CompeSettingsClient
+        id={compe.id}
+        course_id={compe.course_id}
+        start_date={compe.start_date}
+      />
     </div>
   );
 }
