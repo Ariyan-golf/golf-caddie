@@ -221,8 +221,12 @@ export function CompeClient({ initialCompes }: { initialCompes: CompeRow[] }) {
                         <span className="font-mono font-bold tracking-widest text-green-700 text-sm">
                           {c.event_code ?? "—"}
                         </span>
-                        {/* 管理画面は次スライスで作成（今回はリンクを張らない） */}
-                        <span className="text-xs text-green-300">管理（準備中）</span>
+                        <a
+                          href={`/compe/${c.id}`}
+                          className="text-xs text-green-600 hover:text-green-700 hover:underline font-medium"
+                        >
+                          管理する
+                        </a>
                         <button
                           onClick={() => { setConfirmingId(c.id); setDeleted(false); }}
                           className="text-xs text-red-400 hover:text-red-500 hover:underline"
