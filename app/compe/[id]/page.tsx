@@ -35,6 +35,17 @@ export default async function CompeDetailPage({
     .eq("event_id", id)
     .order("hole_number");
 
+  // コース名（course_id 指定時のみ。golf_courses は全認証ユーザー読み取り可）。
+  let courseName: string | null = null;
+  if (event.course_id) {
+    const { data: course } = await supabase
+      .from("golf_courses")
+      .select("name")
+      .eq("id", event.course_id)
+      .maybeSingle();
+    courseName = course?.name ?? null;
+  }
+
   const compe: CompeDetail = {
     id:         event.id,
     event_name: event.event_name,
@@ -47,7 +58,7 @@ export default async function CompeDetailPage({
   return (
     <div className="min-h-screen pb-20">
       <div className="max-w-lg mx-auto p-4 space-y-6">
-        <CompeDetailClient compe={compe} holes={draconHoles ?? []} />
+        <CompeDetailClient compe={compe} holes={draconHoles ?? []} courseName={courseName} />
       </div>
     </div>
   );
