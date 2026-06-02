@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Navigation } from "@/components/Navigation";
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
@@ -17,6 +18,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   return (
     <div className="min-h-screen pb-20">
       {children}
+      <footer className="text-center text-xs text-green-400 py-4">
+        <Link href="/terms" className="underline hover:text-green-600">利用規約</Link>
+        <span className="mx-2">·</span>
+        <Link href="/privacy" className="underline hover:text-green-600">プライバシーポリシー</Link>
+      </footer>
       <Navigation />
     </div>
   );
