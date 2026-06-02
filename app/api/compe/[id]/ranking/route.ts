@@ -63,7 +63,25 @@ export async function GET(
     .eq("id", id)
     .maybeSingle();
 
-  if (!event || event.event_type !== "comp" || event.created_by !== user.id) {
+  if (!event || event.event_type !== "comp") {
+    return NextResponse.json(
+      { error: "対象のコンペが見つからないか、閲覧する権限がありません" },
+      { status: 403 }
+    );
+  }
+
+  // 認可：作成者 OR その event の参加者（参加確認は service role で行う）。
+  let allowed = event.created_by === user.id;
+  if (!allowed) {
+    const { data: part } = await adminDb()
+      .from("event_participants")
+      .select("user_id")
+      .eq("event_id", id)
+      .eq("user_id", user.id)
+      .maybeSingle();
+    allowed = !!part;
+  }
+  if (!allowed) {
     return NextResponse.json(
       { error: "対象のコンペが見つからないか、閲覧する権限がありません" },
       { status: 403 }
