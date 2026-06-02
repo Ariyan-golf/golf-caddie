@@ -23,9 +23,13 @@ export function CompeSettingsClient({
   const [courses, setCourses] = useState<CourseRow[]>([]);
   const [selectedCourseId, setSelectedCourseId] = useState(course_id ?? "");
   const [date, setDate] = useState(start_date ?? "");
+  // 保存済みの内容（baseline）。現在の入力と比較して変更ありかを判定する。
+  const [savedCourseId, setSavedCourseId] = useState(course_id ?? "");
+  const [savedDate, setSavedDate] = useState(start_date ?? "");
   const [saving, setSaving] = useState(false);
-  const [justSaved, setJustSaved] = useState(false);
   const [message, setMessage] = useState<{ type: "ok" | "error"; text: string } | null>(null);
+
+  const isDirty = selectedCourseId !== savedCourseId || date !== savedDate;
 
   // 登録済みゴルフ場を初回ロード（round/new と同じ取得方法）。
   useEffect(() => {
@@ -60,8 +64,9 @@ export function CompeSettingsClient({
 
     setMessage({ type: "ok", text: "保存しました" });
     setSaving(false);
-    setJustSaved(true);
-    setTimeout(() => setJustSaved(false), 1800);
+    // baseline を現在値に更新 → isDirty=false（「✓ 保存済」表示）に戻る。
+    setSavedCourseId(selectedCourseId);
+    setSavedDate(date);
   }
 
   return (
@@ -108,10 +113,10 @@ export function CompeSettingsClient({
 
       <button
         onClick={handleSave}
-        className={`btn-primary w-full ${justSaved ? "bg-green-800" : ""}`}
-        disabled={saving}
+        className={`btn-primary w-full ${!isDirty ? "bg-green-100 text-green-700" : ""}`}
+        disabled={saving || !isDirty}
       >
-        {justSaved ? "✓ 保存しました" : saving ? "保存中..." : "保存"}
+        {saving ? "保存中..." : isDirty ? "保存" : "✓ 保存済"}
       </button>
     </div>
   );

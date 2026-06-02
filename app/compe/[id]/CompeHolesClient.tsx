@@ -20,9 +20,12 @@ export function CompeHolesClient({
   holes: DraconHole[];
 }) {
   const [holes, setHoles] = useState<DraconHole[]>(initialHoles);
+  // 保存済みの内容（baseline）。現在の holes と比較して変更ありかを判定する。
+  const [savedHoles, setSavedHoles] = useState<DraconHole[]>(initialHoles);
   const [saving, setSaving] = useState(false);
-  const [justSaved, setJustSaved] = useState(false);
   const [message, setMessage] = useState<{ type: "ok" | "error"; text: string } | null>(null);
+
+  const isDirty = JSON.stringify(holes) !== JSON.stringify(savedHoles);
 
   // 既に他行で選択済みのホール番号（重複防止に使う）。
   const usedNumbers = new Set(holes.map((h) => h.hole_number));
@@ -68,12 +71,13 @@ export function CompeHolesClient({
       return;
     }
 
-    // 保存後の正規化済みデータで置き換える。
-    if (Array.isArray(data.holes)) setHoles(data.holes as DraconHole[]);
+    // 保存後の正規化済みデータ（無ければ送信した holes）で置き換える。
+    const savedNow = Array.isArray(data.holes) ? (data.holes as DraconHole[]) : holes;
+    setHoles(savedNow);
     setMessage({ type: "ok", text: "保存しました" });
     setSaving(false);
-    setJustSaved(true);
-    setTimeout(() => setJustSaved(false), 1800);
+    // baseline を更新 → isDirty=false（「✓ 保存済」表示）に戻る。
+    setSavedHoles(savedNow);
   }
 
   return (
@@ -148,10 +152,10 @@ export function CompeHolesClient({
 
       <button
         onClick={handleSave}
-        className={`btn-primary w-full ${justSaved ? "bg-green-800" : ""}`}
-        disabled={saving}
+        className={`btn-primary w-full ${!isDirty ? "bg-green-100 text-green-700" : ""}`}
+        disabled={saving || !isDirty}
       >
-        {justSaved ? "✓ 保存しました" : saving ? "保存中..." : "保存"}
+        {saving ? "保存中..." : isDirty ? "保存" : "✓ 保存済"}
       </button>
     </div>
   );
