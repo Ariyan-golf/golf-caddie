@@ -21,6 +21,7 @@ export function CompeHolesClient({
 }) {
   const [holes, setHoles] = useState<DraconHole[]>(initialHoles);
   const [saving, setSaving] = useState(false);
+  const [justSaved, setJustSaved] = useState(false);
   const [message, setMessage] = useState<{ type: "ok" | "error"; text: string } | null>(null);
 
   // 既に他行で選択済みのホール番号（重複防止に使う）。
@@ -71,6 +72,8 @@ export function CompeHolesClient({
     if (Array.isArray(data.holes)) setHoles(data.holes as DraconHole[]);
     setMessage({ type: "ok", text: "保存しました" });
     setSaving(false);
+    setJustSaved(true);
+    setTimeout(() => setJustSaved(false), 1800);
   }
 
   return (
@@ -143,8 +146,12 @@ export function CompeHolesClient({
         ホールを追加
       </button>
 
-      <button onClick={handleSave} className="btn-primary w-full" disabled={saving}>
-        {saving ? "保存中..." : "保存"}
+      <button
+        onClick={handleSave}
+        className={`btn-primary w-full ${justSaved ? "bg-green-800" : ""}`}
+        disabled={saving}
+      >
+        {justSaved ? "✓ 保存しました" : saving ? "保存中..." : "保存"}
       </button>
     </div>
   );

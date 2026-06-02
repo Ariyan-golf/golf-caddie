@@ -104,7 +104,14 @@ export async function GET(
     .select("user_id")
     .eq("event_id", id);
 
-  const participantIds = (parts ?? []).map((p: { user_id: string }) => p.user_id);
+  // 母数には参加者に加えて作成者(owner)を必ず含める。作成者がプレーしていなければ
+  // 該当ショットが無いだけで害はない（重複は Set で排除）。
+  const participantIds = Array.from(
+    new Set([
+      ...(parts ?? []).map((p: { user_id: string }) => p.user_id),
+      event.created_by as string,
+    ])
+  );
   if (participantIds.length === 0) {
     return NextResponse.json({ ok: true, event: eventInfo, holes: emptyHoles });
   }

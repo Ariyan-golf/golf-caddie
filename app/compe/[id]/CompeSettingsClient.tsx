@@ -24,6 +24,7 @@ export function CompeSettingsClient({
   const [selectedCourseId, setSelectedCourseId] = useState(course_id ?? "");
   const [date, setDate] = useState(start_date ?? "");
   const [saving, setSaving] = useState(false);
+  const [justSaved, setJustSaved] = useState(false);
   const [message, setMessage] = useState<{ type: "ok" | "error"; text: string } | null>(null);
 
   // 登録済みゴルフ場を初回ロード（round/new と同じ取得方法）。
@@ -59,6 +60,8 @@ export function CompeSettingsClient({
 
     setMessage({ type: "ok", text: "保存しました" });
     setSaving(false);
+    setJustSaved(true);
+    setTimeout(() => setJustSaved(false), 1800);
   }
 
   return (
@@ -103,8 +106,12 @@ export function CompeSettingsClient({
         />
       </div>
 
-      <button onClick={handleSave} className="btn-primary w-full" disabled={saving}>
-        {saving ? "保存中..." : "保存"}
+      <button
+        onClick={handleSave}
+        className={`btn-primary w-full ${justSaved ? "bg-green-800" : ""}`}
+        disabled={saving}
+      >
+        {justSaved ? "✓ 保存しました" : saving ? "保存中..." : "保存"}
       </button>
     </div>
   );
