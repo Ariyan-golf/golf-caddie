@@ -2,6 +2,8 @@ import Link from "next/link";
 import { Navigation } from "@/components/Navigation";
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
+import ConsentGate from "@/components/ConsentGate";
+import { getNeedsConsent } from "@/lib/consent";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient();
@@ -15,8 +17,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   if (!user) redirect("/login");
 
+  const needsConsent = await getNeedsConsent();
+
   return (
     <div className="min-h-screen pb-20">
+      <ConsentGate needsConsent={needsConsent} />
       {children}
       <footer className="text-center text-xs text-green-400 py-4">
         <Link href="/terms" className="underline hover:text-green-600">利用規約</Link>

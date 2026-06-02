@@ -7,6 +7,8 @@ import { Navigation } from "@/components/Navigation";
 import { LogoutButton } from "@/components/LogoutButton";
 import { RoundBarGraph } from "@/components/RoundBarGraph";
 import { EventRankingSection, type EventRankingData } from "@/components/EventRankingSection";
+import ConsentGate from "@/components/ConsentGate";
+import { getNeedsConsent } from "@/lib/consent";
 import { CLUB_LABELS, type Club } from "@/types";
 
 // v4: 無料体験は3ラウンドまで（app/(app)/round/new/page.tsx と同値）
@@ -25,6 +27,8 @@ export default async function HomePage() {
   const user = session?.user ?? null;
 
   if (!user) redirect("/login");
+
+  const needsConsent = await getNeedsConsent();
 
   // ── 開催中イベントランキング ──────────────────────────────────────────
   const adminDb = createAdminClient(
@@ -215,6 +219,7 @@ export default async function HomePage() {
 
   return (
     <div className="min-h-screen pb-20">
+      <ConsentGate needsConsent={needsConsent} />
       <div className="max-w-lg mx-auto p-4 space-y-6">
         {/* Header */}
         <div className="pt-4 flex items-center justify-between">
