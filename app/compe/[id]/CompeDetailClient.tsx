@@ -30,10 +30,12 @@ export function CompeDetailClient({
   compe,
   holes: initialHoles,
   courseName: initialCourseName,
+  currentUserId,
 }: {
   compe: CompeDetail;
   holes: DraconHole[];
   courseName?: string | null;
+  currentUserId: string;
 }) {
   // 概要カード・ランキングは保存操作で即更新できるよう親で state を持つ。
   const [holes, setHoles] = useState<DraconHole[]>(initialHoles);
@@ -127,7 +129,7 @@ export function CompeDetailClient({
       </div>
 
       {/* ── ランキング表示（3b） ── */}
-      <CompeRankingClient id={compe.id} refreshKey={refreshKey} />
+      <CompeRankingClient id={compe.id} refreshKey={refreshKey} currentUserId={currentUserId} />
 
       {/* ── ゴルフ場・開催日の設定（2b） ── */}
       <CompeSettingsClient

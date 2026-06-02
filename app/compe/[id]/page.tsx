@@ -58,7 +58,7 @@ export default async function CompeDetailPage({
   return (
     <div className="min-h-screen pb-20">
       <div className="max-w-lg mx-auto p-4 space-y-6">
-        <CompeDetailClient compe={compe} holes={draconHoles ?? []} courseName={courseName} />
+        <CompeDetailClient compe={compe} holes={draconHoles ?? []} courseName={courseName} currentUserId={user.id} />
       </div>
     </div>
   );

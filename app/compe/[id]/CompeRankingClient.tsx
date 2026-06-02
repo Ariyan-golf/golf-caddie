@@ -80,7 +80,15 @@ const MODE_LABEL: Record<Mode, string> = {
   reverse: "逆ドラコン（最短）",
 };
 
-export function CompeRankingClient({ id, refreshKey }: { id: string; refreshKey?: number }) {
+export function CompeRankingClient({
+  id,
+  refreshKey,
+  currentUserId,
+}: {
+  id: string;
+  refreshKey?: number;
+  currentUserId: string;
+}) {
   const [holes, setHoles]     = useState<HoleRanking[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState<string | null>(null);
@@ -159,7 +167,37 @@ export function CompeRankingClient({ id, refreshKey }: { id: string; refreshKey?
       ) : (
         <div className="space-y-4">
           {holes.map((hole) => {
-            const records = filterRecords(hole.records);
+            // サーバ順（モード別ソート済み）を保持したフィルタ後配列。
+            const sorted = filterRecords(hole.records);
+            const top3 = sorted.slice(0, 3);
+            // 3位の距離（=越えるべきボーダー）。3人未満なら末尾の距離。空なら未定義。
+            const border =
+              sorted.length >= 3 ? sorted[2].distance_yards : sorted[sorted.length - 1]?.distance_yards;
+            const myIndex = sorted.findIndex((r) => r.user_id === currentUserId);
+            const me = myIndex >= 0 ? sorted[myIndex] : undefined;
+            const myRank = myIndex + 1;
+
+            // 「あなた」行の文言。
+            let youText: string;
+            if (!me) {
+              youText = "あなた：記録なし";
+            } else if (myRank <= 3) {
+              youText = `あなた：${me.distance_yards}y（${myRank}位）・ランクイン中！`;
+            } else {
+              // 3位までの差。dracon は伸ばす差、reverse は縮める差。
+              const gap =
+                border == null
+                  ? null
+                  : hole.mode === "dracon"
+                  ? border - me.distance_yards
+                  : me.distance_yards - border;
+              const gapText =
+                gap != null && gap > 0
+                  ? `3位まであと${gap}y${hole.mode === "reverse" ? "（短く）" : ""}`
+                  : "あと—y";
+              youText = `あなた：${me.distance_yards}y（${myRank}位）・${gapText}`;
+            }
+
             return (
               <div key={hole.hole_number} className="space-y-2">
                 <div className="flex items-center gap-2">
@@ -175,18 +213,21 @@ export function CompeRankingClient({ id, refreshKey }: { id: string; refreshKey?
                   </span>
                 </div>
 
-                {records.length === 0 ? (
+                {sorted.length === 0 ? (
                   <p className="text-xs text-green-400 text-center py-3">
                     まだ記録がありません
                   </p>
                 ) : (
                   <div className="space-y-1">
-                    {records.map((r, i) => {
+                    {/* 上位3名（越えるべき旗） */}
+                    {top3.map((r, i) => {
                       const rank = i + 1;
+                      const isMe = r.user_id === currentUserId;
                       return (
                         <div
                           key={r.user_id}
                           className={`flex items-center gap-3 py-1.5 border-b border-green-50 last:border-0 ${
+                            isMe ? "bg-green-50 ring-1 ring-green-300 -mx-2 px-2 rounded" :
                             rank === 1 ? "bg-yellow-50/40 -mx-2 px-2 rounded" :
                             rank === 2 ? "bg-gray-50/60  -mx-2 px-2 rounded" :
                             rank === 3 ? "bg-orange-50/40 -mx-2 px-2 rounded" : ""
@@ -197,6 +238,9 @@ export function CompeRankingClient({ id, refreshKey }: { id: string; refreshKey?
                           </div>
                           <p className="flex-1 min-w-0 font-semibold text-green-900 truncate">
                             {r.display_name}
+                            {isMe && (
+                              <span className="text-xs font-normal text-green-500 ml-1">（あなた）</span>
+                            )}
                           </p>
                           <p className="text-right flex-shrink-0 text-lg font-bold text-amber-800 tabular-nums">
                             {r.distance_yards}
@@ -205,6 +249,11 @@ export function CompeRankingClient({ id, refreshKey }: { id: string; refreshKey?
                         </div>
                       );
                     })}
+
+                    {/* あなた行（上位3の下に常に1行） */}
+                    <div className="flex items-center pt-1.5 mt-1 border-t border-green-100 text-sm font-semibold text-green-700">
+                      {youText}
+                    </div>
                   </div>
                 )}
               </div>
