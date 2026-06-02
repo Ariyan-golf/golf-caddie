@@ -80,6 +80,117 @@ const MODE_LABEL: Record<Mode, string> = {
   reverse: "逆ドラコン（最短）",
 };
 
+// 距離 → メーター充填率(0〜100)。dracon は大きいほど満ち、reverse は小さいほど満ちる。
+// fullValue は 1位の距離（dracon=最大 / reverse=最短）。0除算・範囲外はクランプ。
+function pctOf(mode: Mode, v: number, fullValue: number): number {
+  if (!fullValue || !v) return 0;
+  const raw = mode === "dracon" ? (v / fullValue) * 100 : (fullValue / v) * 100;
+  return Math.max(0, Math.min(100, raw));
+}
+
+// 「あなた」メーター（旗ライン付き）＋距離カウントアップ。表示演出のみ。
+function HoleMeter({
+  mode,
+  me,
+  myRank,
+  border,
+  fullValue,
+  showFlag,
+  animKey,
+}: {
+  mode:      Mode;
+  me:        RankingRecord | undefined;
+  myRank:    number;
+  border:    number | undefined;
+  fullValue: number | undefined;
+  showFlag:  boolean;
+  animKey:   string;
+}) {
+  // 距離を 0→実測値へカウントアップ（ease-out / 約700ms）。
+  const target = me?.distance_yards ?? 0;
+  const [animatedYards, setAnimatedYards] = useState(0);
+  useEffect(() => {
+    let raf = 0;
+    let startTs = 0;
+    const duration = 700;
+    const step = (ts: number) => {
+      if (!startTs) startTs = ts;
+      const t = Math.min(1, (ts - startTs) / duration);
+      const eased = 1 - Math.pow(1 - t, 3); // ease-out cubic
+      setAnimatedYards(Math.round(target * eased));
+      if (t < 1) {
+        raf = requestAnimationFrame(step);
+      } else {
+        setAnimatedYards(target); // 最終値は必ず実測値で確定
+      }
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [target, animKey]);
+
+  const mePct   = me && fullValue ? pctOf(mode, me.distance_yards, fullValue) : 0;
+  const flagPct =
+    showFlag && border != null && fullValue ? pctOf(mode, border, fullValue) : null;
+
+  // 状況テキスト（数字はカウントアップで別表示するため、ここには含めない）。
+  let statusText: string;
+  if (!me) {
+    statusText = "記録なし";
+  } else if (myRank <= 3) {
+    statusText = `（${myRank}位）・ランクイン中！`;
+  } else {
+    const gap =
+      border == null
+        ? null
+        : mode === "dracon"
+        ? border - me.distance_yards
+        : me.distance_yards - border;
+    const gapText =
+      gap != null && gap > 0
+        ? `3位まであと${gap}y${mode === "reverse" ? "（短く）" : ""}`
+        : "あと—y";
+    statusText = `（${myRank}位）・${gapText}`;
+  }
+
+  return (
+    <div className="pt-1.5 mt-1 border-t border-green-100 space-y-1">
+      {/* メーター（トラック＋自分のバー＋3位の旗ライン） */}
+      <div className="relative">
+        <div className="h-2 bg-green-100 rounded-full overflow-hidden">
+          {me && (
+            <div
+              className="h-full bg-green-500 rounded-full transition-all duration-700"
+              style={{ width: `${mePct}%` }}
+            />
+          )}
+        </div>
+        {flagPct != null && (
+          <div
+            className="absolute -top-0.5 h-3 w-0.5 bg-amber-500 -translate-x-1/2"
+            style={{ left: `${flagPct}%` }}
+            aria-hidden
+          />
+        )}
+      </div>
+
+      {showFlag && border != null && (
+        <p className="text-[10px] text-amber-600">🚩 3位ライン {border}y</p>
+      )}
+
+      <p className="text-sm font-semibold text-green-700">
+        {me ? (
+          <>
+            あなた：<span className="tabular-nums">{animatedYards}</span>y {statusText}
+          </>
+        ) : (
+          "あなた：記録なし"
+        )}
+      </p>
+    </div>
+  );
+}
+
 export function CompeRankingClient({
   id,
   refreshKey,
@@ -176,27 +287,10 @@ export function CompeRankingClient({
             const myIndex = sorted.findIndex((r) => r.user_id === currentUserId);
             const me = myIndex >= 0 ? sorted[myIndex] : undefined;
             const myRank = myIndex + 1;
-
-            // 「あなた」行の文言。
-            let youText: string;
-            if (!me) {
-              youText = "あなた：記録なし";
-            } else if (myRank <= 3) {
-              youText = `あなた：${me.distance_yards}y（${myRank}位）・ランクイン中！`;
-            } else {
-              // 3位までの差。dracon は伸ばす差、reverse は縮める差。
-              const gap =
-                border == null
-                  ? null
-                  : hole.mode === "dracon"
-                  ? border - me.distance_yards
-                  : me.distance_yards - border;
-              const gapText =
-                gap != null && gap > 0
-                  ? `3位まであと${gap}y${hole.mode === "reverse" ? "（短く）" : ""}`
-                  : "あと—y";
-              youText = `あなた：${me.distance_yards}y（${myRank}位）・${gapText}`;
-            }
+            // メーター満タン基準＝1位の距離（dracon=最大 / reverse=最短）。
+            const fullValue = sorted[0]?.distance_yards;
+            // 3人以上いるときだけ「3位ライン」を表示（未満は全員ランクイン中扱い）。
+            const showFlag = sorted.length >= 3;
 
             return (
               <div key={hole.hole_number} className="space-y-2">
@@ -250,10 +344,16 @@ export function CompeRankingClient({
                       );
                     })}
 
-                    {/* あなた行（上位3の下に常に1行） */}
-                    <div className="flex items-center pt-1.5 mt-1 border-t border-green-100 text-sm font-semibold text-green-700">
-                      {youText}
-                    </div>
+                    {/* あなた：メーター＋旗ライン＋距離カウントアップ（上位3の下に常に1行） */}
+                    <HoleMeter
+                      mode={hole.mode}
+                      me={me}
+                      myRank={myRank}
+                      border={border}
+                      fullValue={fullValue}
+                      showFlag={showFlag}
+                      animKey={`${refreshKey ?? 0}-${genderFilter}-${ageFilter}`}
+                    />
                   </div>
                 )}
               </div>
