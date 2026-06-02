@@ -269,6 +269,9 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
   // 15分タイムアウト発火時に表示するトースト。3秒で自動消滅。
   const [shotTimeoutToast, setShotTimeoutToast] = useState<string | null>(null);
 
+  // ラウンド中フィードバック：1W記録直後の暫定順位トースト（複数コンペ対応で配列）。5秒で自動消滅。
+  const [draconRankToasts, setDraconRankToasts] = useState<string[]>([]);
+
   // Wind compass visibility — persisted to localStorage
   const [windVisible, setWindVisible] = useState(true);
   useEffect(() => {
@@ -396,6 +399,13 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
     const t = setTimeout(() => setShotTimeoutToast(null), 3000);
     return () => clearTimeout(t);
   }, [shotTimeoutToast]);
+
+  // 暫定順位トーストを5秒で自動消去（文言が長めのため少し長く表示）。
+  useEffect(() => {
+    if (draconRankToasts.length === 0) return;
+    const t = setTimeout(() => setDraconRankToasts([]), 5000);
+    return () => clearTimeout(t);
+  }, [draconRankToasts]);
 
   // ── Actions ─────────────────────────────────────────────────────────
 
@@ -569,6 +579,43 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
       ...h, shots: h.shots.map((s) => s.id === shotId ? { ...s, club } : s),
     })));
     setEditing(null);
+
+    // 追加の副作用：1W タグ付け時だけ暫定順位を取得して小トースト表示。
+    // 記録（上記 update）の後段で fire-and-forget。記録の成否・UIはブロックしない。
+    if (club === "1w") {
+      const holeNumber = holes.find((h) => h.shots.some((s) => s.id === shotId))?.hole_number;
+      if (holeNumber != null) void notifyDraconRank(holeNumber);
+    }
+  }
+
+  // ラウンド中フィードバック：1W記録直後に暫定順位 API を叩いて小トースト表示。
+  // あらゆる例外・失敗（HTTPエラー / ok:false / items:[]）時は何も表示しない（流れを止めない）。
+  async function notifyDraconRank(hole: number) {
+    try {
+      const res = await fetch(`/api/compe/in-round?round_id=${roundId}&hole=${hole}`);
+      if (!res.ok) return;
+      const body = await res.json().catch(() => null);
+      if (!body || body.ok !== true || !Array.isArray(body.items) || body.items.length === 0) {
+        return;
+      }
+      const messages = (body.items as {
+        eventName: string; holeNumber: number; mode: "dracon" | "reverse";
+        rank: number; total: number; gapYards: number;
+      }[]).map((item) => {
+        const base = `🏁 ${item.eventName} ${item.holeNumber}番：`;
+        if (item.mode === "dracon") {
+          return item.rank === 1
+            ? `${base}暫定1位！（トップ）`
+            : `${base}暫定${item.rank}位・トップまであと${item.gapYards}y`;
+        }
+        return item.rank === 1
+          ? `${base}暫定1位！（最短）`
+          : `${base}暫定${item.rank}位・最短まであと${item.gapYards}y`;
+      });
+      setDraconRankToasts(messages);
+    } catch {
+      // 無表示（記録を止めない）
+    }
   }
 
   async function updateLie(shotId: string, lie: string) {
@@ -1180,6 +1227,18 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
                      bg-amber-600 text-white text-lg font-semibold shadow-lg"
         >
           ⏱ {shotTimeoutToast}
+        </div>
+      )}
+
+      {draconRankToasts.length > 0 && (
+        <div
+          role="status"
+          className="fixed bottom-24 left-1/2 -translate-x-1/2 z-50 px-4 py-3 rounded-xl
+                     bg-green-700 text-white text-sm font-semibold shadow-lg space-y-1 max-w-[90vw] text-center"
+        >
+          {draconRankToasts.map((m, i) => (
+            <p key={i}>{m}</p>
+          ))}
         </div>
       )}
 
