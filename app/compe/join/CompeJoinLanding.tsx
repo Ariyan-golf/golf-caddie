@@ -1,7 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { createClient } from "@/lib/supabase/client";
+import { TERMS_VERSION, PRIVACY_VERSION } from "@/lib/legal";
 
 type JoinState =
   | { status: "idle" }
@@ -19,6 +22,45 @@ export function CompeJoinLanding({
   const [state, setState] = useState<JoinState>({ status: "idle" });
   // React Strict Mode などで二重発火しないようガード
   const startedRef = useRef(false);
+
+  // ゲスト参加（未ログイン分岐用）。同意チェック・処理中・エラー。
+  const router = useRouter();
+  const [agreed, setAgreed] = useState(false);
+  const [guestBusy, setGuestBusy] = useState(false);
+  const [guestError, setGuestError] = useState<string | null>(null);
+
+  // ゲスト参加：匿名サインイン → 同意記録（ベストエフォート） → 再描画で
+  // 既存のログイン後フロー（useEffect が /api/compe/join を自動実行）に委譲する。
+  // 失敗時は短いエラーを出すだけで画面は壊さない。
+  async function handleGuestJoin() {
+    setGuestError(null);
+    setGuestBusy(true);
+    try {
+      const supabase = createClient();
+      const { data, error } = await supabase.auth.signInAnonymously();
+      if (error || !data?.user) {
+        setGuestError("ただいまゲスト参加を準備中です。お手数ですが新規登録からご参加ください。");
+        setGuestBusy(false);
+        return;
+      }
+      // 同意記録（本人セッション・RLSで可）。失敗しても参加は続行する。
+      const nowIso = new Date().toISOString();
+      await supabase
+        .from("profiles")
+        .update({
+          terms_version:     TERMS_VERSION,
+          privacy_version:   PRIVACY_VERSION,
+          terms_agreed_at:   nowIso,
+          privacy_agreed_at: nowIso,
+        })
+        .eq("id", data.user.id);
+      // 匿名セッション確立後に再描画 → isLoggedIn=true となり、既存の自動参加が走る。
+      router.refresh();
+    } catch {
+      setGuestError("ゲスト参加に失敗しました。お手数ですが新規登録からご参加ください。");
+      setGuestBusy(false);
+    }
+  }
 
   useEffect(() => {
     if (!isLoggedIn) return;
@@ -61,6 +103,47 @@ export function CompeJoinLanding({
         <Link href="/login" className="btn-primary w-full block text-center">
           ログイン／新規登録して参加する
         </Link>
+
+        {/* ── または：ゲスト参加（メール登録なし・匿名サインイン） ── */}
+        <div className="flex items-center gap-3 my-1">
+          <hr className="flex-1 border-green-200" />
+          <span className="text-xs text-green-500">または</span>
+          <hr className="flex-1 border-green-200" />
+        </div>
+
+        <div className="card space-y-3">
+          <label className="flex items-start gap-2 text-sm text-green-700">
+            <input
+              type="checkbox"
+              className="mt-0.5 flex-shrink-0"
+              checked={agreed}
+              onChange={(e) => setAgreed(e.target.checked)}
+            />
+            <span>
+              <Link href="/terms" target="_blank" rel="noopener" className="text-green-700 underline">利用規約</Link>
+              ・
+              <Link href="/privacy" target="_blank" rel="noopener" className="text-green-700 underline">プライバシーポリシー</Link>
+              に同意する
+            </span>
+          </label>
+
+          <button
+            type="button"
+            onClick={handleGuestJoin}
+            disabled={!agreed || guestBusy}
+            className="btn-primary w-full disabled:opacity-50"
+          >
+            {guestBusy ? "準備中…" : "ゲストで参加（メール登録なし）"}
+          </button>
+
+          {guestError && (
+            <p className="text-xs text-red-500 text-center">{guestError}</p>
+          )}
+
+          <p className="text-[11px] text-green-400 leading-relaxed">
+            メール登録なしですぐ参加できます。記録はこの端末に紐づきます。あとで登録すると記録を引き継げます。
+          </p>
+        </div>
 
         <p className="text-xs text-green-500 leading-relaxed text-center">
           ログイン後、もう一度この参加リンクを開くと自動で参加できます。
