@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import { TERMS_VERSION, PRIVACY_VERSION } from "@/lib/legal";
 import LineLoginButton from "@/components/LineLoginButton";
 
 const INVITE_CODE_MAP: Record<string, { graduation_year: number }> = {
@@ -36,6 +37,7 @@ export default function RegisterPage() {
   const [category, setCategory] = useState<Category | "">("");
   const [birthDate, setBirthDate] = useState("");
   const [gender, setGender] = useState<Gender | "">("");
+  const [agreed, setAgreed] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -62,6 +64,10 @@ export default function RegisterPage() {
       setError("性別を選択してください");
       return;
     }
+    if (!agreed) {
+      setError("利用規約とプライバシーポリシーへの同意が必要です");
+      return;
+    }
 
     setLoading(true);
 
@@ -76,6 +82,8 @@ export default function RegisterPage() {
           category,
           birth_date: birthDate,
           gender,
+          terms_version: TERMS_VERSION,
+          privacy_version: PRIVACY_VERSION,
           ...(normalizedCode ? { invite_code: normalizedCode } : {}),
         },
       },
@@ -255,7 +263,23 @@ export default function RegisterPage() {
               </p>
             </div>
 
-            <button type="submit" className="btn-primary" disabled={loading}>
+            {/* 利用規約・プライバシーポリシーへの同意（必須） */}
+            <label className="flex items-start gap-2 text-sm text-green-700">
+              <input
+                type="checkbox"
+                className="mt-0.5 flex-shrink-0"
+                checked={agreed}
+                onChange={(e) => setAgreed(e.target.checked)}
+              />
+              <span>
+                <Link href="/terms" target="_blank" rel="noopener" className="text-green-700 underline">利用規約</Link>
+                ・
+                <Link href="/privacy" target="_blank" rel="noopener" className="text-green-700 underline">プライバシーポリシー</Link>
+                に同意します
+              </span>
+            </label>
+
+            <button type="submit" className="btn-primary" disabled={loading || !agreed}>
               {loading ? "登録中..." : "アカウント作成"}
             </button>
           </form>

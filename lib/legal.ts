@@ -144,3 +144,7 @@ Golf Caddie AI プライバシーポリシー
 
 13. お問い合わせ窓口
 有限会社健考社　Golf Caddie AI 担当　info@kenkousya.net`;
+
+// 同意記録に使う版。文面（上記）を改定したらこの版も更新する。
+export const TERMS_VERSION = "2026-06-02";
+export const PRIVACY_VERSION = "2026-06-02";
