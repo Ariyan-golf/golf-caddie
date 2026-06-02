@@ -80,7 +80,7 @@ const MODE_LABEL: Record<Mode, string> = {
   reverse: "逆ドラコン（最短）",
 };
 
-export function CompeRankingClient({ id }: { id: string }) {
+export function CompeRankingClient({ id, refreshKey }: { id: string; refreshKey?: number }) {
   const [holes, setHoles]     = useState<HoleRanking[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState<string | null>(null);
@@ -108,9 +108,11 @@ export function CompeRankingClient({ id }: { id: string }) {
     }
   }, [id]);
 
+  // 初回マウント時と refreshKey 変化時（設定保存後）に再取得する。
   useEffect(() => {
     load();
-  }, [load]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, refreshKey]);
 
   // サーバ順（mode 順にソート済み）を保持したままフィルタする。
   function filterRecords(records: RankingRecord[]): RankingRecord[] {

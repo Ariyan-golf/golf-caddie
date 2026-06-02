@@ -15,10 +15,12 @@ export function CompeSettingsClient({
   id,
   course_id,
   start_date,
+  onSaved,
 }: {
   id:         string;
   course_id:  string | null;
   start_date: string;
+  onSaved?: (info: { courseName: string | null; date: string }) => void;
 }) {
   const [courses, setCourses] = useState<CourseRow[]>([]);
   const [selectedCourseId, setSelectedCourseId] = useState(course_id ?? "");
@@ -67,6 +69,11 @@ export function CompeSettingsClient({
     // baseline を現在値に更新 → isDirty=false（「✓ 保存済」表示）に戻る。
     setSavedCourseId(selectedCourseId);
     setSavedDate(date);
+    // 親（概要カード・ランキング）へ保存後のコース名・開催日を通知。
+    const courseName = selectedCourseId
+      ? courses.find((c) => c.id === selectedCourseId)?.name ?? null
+      : null;
+    onSaved?.({ courseName, date });
   }
 
   return (

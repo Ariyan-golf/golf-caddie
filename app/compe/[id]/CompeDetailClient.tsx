@@ -28,13 +28,32 @@ function formatDate(iso: string) {
 
 export function CompeDetailClient({
   compe,
-  holes,
-  courseName,
+  holes: initialHoles,
+  courseName: initialCourseName,
 }: {
   compe: CompeDetail;
   holes: DraconHole[];
   courseName?: string | null;
 }) {
+  // 概要カード・ランキングは保存操作で即更新できるよう親で state を持つ。
+  const [holes, setHoles] = useState<DraconHole[]>(initialHoles);
+  const [courseName, setCourseName] = useState<string | null>(initialCourseName ?? null);
+  const [startDate, setStartDate] = useState<string>(compe.start_date);
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  // 対象ホール保存後：概要カードを更新しランキングを再取得。
+  function handleHolesSaved(newHoles: DraconHole[]) {
+    setHoles(newHoles);
+    setRefreshKey((k) => k + 1);
+  }
+
+  // ゴルフ場・開催日保存後：概要カードを更新しランキングを再取得。
+  function handleSettingsSaved({ courseName, date }: { courseName: string | null; date: string }) {
+    setCourseName(courseName);
+    setStartDate(date);
+    setRefreshKey((k) => k + 1);
+  }
+
   // QRに埋め込むオリジン。SSR では window が無いのでマウント後に取得する。
   const [origin, setOrigin] = useState("");
   useEffect(() => {
@@ -68,7 +87,7 @@ export function CompeDetailClient({
           </div>
           <div className="flex gap-2">
             <dt className="text-green-500 w-20 flex-shrink-0">開催日</dt>
-            <dd className="text-green-800 min-w-0">{formatDate(compe.start_date)}</dd>
+            <dd className="text-green-800 min-w-0">{formatDate(startDate)}</dd>
           </div>
           <div className="flex gap-2">
             <dt className="text-green-500 w-20 flex-shrink-0">対象ホール</dt>
@@ -108,17 +127,18 @@ export function CompeDetailClient({
       </div>
 
       {/* ── ランキング表示（3b） ── */}
-      <CompeRankingClient id={compe.id} />
+      <CompeRankingClient id={compe.id} refreshKey={refreshKey} />
 
       {/* ── ゴルフ場・開催日の設定（2b） ── */}
       <CompeSettingsClient
         id={compe.id}
         course_id={compe.course_id}
         start_date={compe.start_date}
+        onSaved={handleSettingsSaved}
       />
 
       {/* ── ドラコン対象ホールの設定（2c） ── */}
-      <CompeHolesClient id={compe.id} holes={holes} />
+      <CompeHolesClient id={compe.id} holes={initialHoles} onSaved={handleHolesSaved} />
     </div>
   );
 }

@@ -15,9 +15,11 @@ const HOLE_NUMBERS = Array.from({ length: 18 }, (_, i) => i + 1);
 export function CompeHolesClient({
   id,
   holes: initialHoles,
+  onSaved,
 }: {
   id:    string;
   holes: DraconHole[];
+  onSaved?: (holes: DraconHole[]) => void;
 }) {
   const [holes, setHoles] = useState<DraconHole[]>(initialHoles);
   // 保存済みの内容（baseline）。現在の holes と比較して変更ありかを判定する。
@@ -78,6 +80,8 @@ export function CompeHolesClient({
     setSaving(false);
     // baseline を更新 → isDirty=false（「✓ 保存済」表示）に戻る。
     setSavedHoles(savedNow);
+    // 親（概要カード・ランキング）へ保存後の holes を通知。
+    onSaved?.(savedNow);
   }
 
   return (
