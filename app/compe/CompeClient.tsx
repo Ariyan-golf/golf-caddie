@@ -106,65 +106,6 @@ export function CompeClient({ initialCompes }: { initialCompes: CompeRow[] }) {
 
   return (
     <div className="space-y-6">
-      {/* ── 新しいコンペを作る ── */}
-      <form onSubmit={handleSubmit} className="card space-y-4">
-        <h2 className="font-semibold text-green-800">新しいコンペを作る</h2>
-
-        {error && (
-          <div className="bg-red-50 border border-red-200 text-red-600 rounded-xl p-3 text-sm">
-            {error}
-          </div>
-        )}
-
-        <div>
-          <label className="label">コンペ名</label>
-          <input
-            type="text"
-            className="input"
-            placeholder="例: 〇〇カップ ドラコン大会"
-            value={eventName}
-            onChange={(e) => setEventName(e.target.value)}
-            maxLength={40}
-          />
-        </div>
-
-        <div>
-          <label className="label">開催日</label>
-          <input
-            type="date"
-            className="input"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-          />
-        </div>
-
-        <button type="submit" className="btn-primary w-full" disabled={loading}>
-          {loading ? "作成中..." : "作成"}
-        </button>
-      </form>
-
-      {/* ── 生成された参加コード（共有用） ── */}
-      {createdCode && (
-        <div className="card bg-green-50 border-green-300 space-y-2 text-center">
-          <p className="text-sm font-semibold text-green-700">コンペを作成しました！</p>
-          <p className="text-xs text-green-600">参加者にこの参加コードまたはQRを共有してください</p>
-          <p className="text-4xl font-bold tracking-[0.3em] text-green-800 tabular-nums py-2">
-            {createdCode}
-          </p>
-          {origin && (
-            <div className="flex flex-col items-center gap-1.5 pt-1">
-              <div className="bg-white p-2 rounded-xl border border-green-200">
-                <QRCodeSVG value={joinUrl(origin, createdCode)} size={140} />
-              </div>
-              <p className="text-xs text-green-500">QRを読み取ると参加ページが開きます</p>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ── 参加コードでコンペに参加 ── */}
-      <CompeJoinByCode />
-
       {/* ── 自分が作ったコンペ一覧 ── */}
       <div className="card">
         <h2 className="font-semibold text-green-800 mb-3">自分が作ったコンペ</h2>
@@ -177,7 +118,7 @@ export function CompeClient({ initialCompes }: { initialCompes: CompeRow[] }) {
           <p className="text-sm text-green-400 text-center py-4">
             まだコンペがありません。
             <br />
-            上のフォームから作成しましょう！
+            下のフォームから作成しましょう！
           </p>
         ) : (
           <div className="space-y-2">
@@ -253,6 +194,65 @@ export function CompeClient({ initialCompes }: { initialCompes: CompeRow[] }) {
           </div>
         )}
       </div>
+
+      {/* ── 新しいコンペを作る ── */}
+      <form onSubmit={handleSubmit} className="card space-y-4">
+        <h2 className="font-semibold text-green-800">新しいコンペを作る</h2>
+
+        {error && (
+          <div className="bg-red-50 border border-red-200 text-red-600 rounded-xl p-3 text-sm">
+            {error}
+          </div>
+        )}
+
+        <div>
+          <label className="label">コンペ名</label>
+          <input
+            type="text"
+            className="input"
+            placeholder="例: 〇〇カップ ドラコン大会"
+            value={eventName}
+            onChange={(e) => setEventName(e.target.value)}
+            maxLength={40}
+          />
+        </div>
+
+        <div>
+          <label className="label">開催日</label>
+          <input
+            type="date"
+            className="input"
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+          />
+        </div>
+
+        <button type="submit" className="btn-primary w-full" disabled={loading}>
+          {loading ? "作成中..." : "作成"}
+        </button>
+      </form>
+
+      {/* ── 生成された参加コード（共有用） ── */}
+      {createdCode && (
+        <div className="card bg-green-50 border-green-300 space-y-2 text-center">
+          <p className="text-sm font-semibold text-green-700">コンペを作成しました！</p>
+          <p className="text-xs text-green-600">参加者にこの参加コードまたはQRを共有してください</p>
+          <p className="text-4xl font-bold tracking-[0.3em] text-green-800 tabular-nums py-2">
+            {createdCode}
+          </p>
+          {origin && (
+            <div className="flex flex-col items-center gap-1.5 pt-1">
+              <div className="bg-white p-2 rounded-xl border border-green-200">
+                <QRCodeSVG value={joinUrl(origin, createdCode)} size={140} />
+              </div>
+              <p className="text-xs text-green-500">QRを読み取ると参加ページが開きます</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── 参加コードでコンペに参加 ── */}
+      <CompeJoinByCode />
     </div>
   );
 }

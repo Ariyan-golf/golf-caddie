@@ -152,7 +152,7 @@ export function CompeRankingClient({ id }: { id: string }) {
         <p className="text-sm text-green-400 text-center py-4">
           対象ホールが未設定です。
           <br />
-          上の「ドラコン対象ホール」で設定してください。
+          下の「ドラコン対象ホール」で設定してください。
         </p>
       ) : (
         <div className="space-y-4">

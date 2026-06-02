@@ -64,6 +64,9 @@ export function CompeDetailClient({
         )}
       </div>
 
+      {/* ── ランキング表示（3b） ── */}
+      <CompeRankingClient id={compe.id} />
+
       {/* ── ゴルフ場・開催日の設定（2b） ── */}
       <CompeSettingsClient
         id={compe.id}
@@ -73,9 +76,6 @@ export function CompeDetailClient({
 
       {/* ── ドラコン対象ホールの設定（2c） ── */}
       <CompeHolesClient id={compe.id} holes={holes} />
-
-      {/* ── ランキング表示（3b） ── */}
-      <CompeRankingClient id={compe.id} />
     </div>
   );
 }
