@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { REGION_PREFECTURES } from "@/lib/region-prefectures";
 
 interface CourseRow {
   id:         string;
@@ -24,6 +25,9 @@ export function CompeSettingsClient({
 }) {
   const [courses, setCourses] = useState<CourseRow[]>([]);
   const [selectedCourseId, setSelectedCourseId] = useState(course_id ?? "");
+  // 地域・県は保存対象ではなくゴルフ場を絞り込むためのナビゲーション用 state。
+  const [selectedRegion, setSelectedRegion] = useState("");
+  const [selectedPrefecture, setSelectedPrefecture] = useState("");
   const [date, setDate] = useState(start_date ?? "");
   // 保存済みの内容（baseline）。現在の入力と比較して変更ありかを判定する。
   const [savedCourseId, setSavedCourseId] = useState(course_id ?? "");
@@ -40,8 +44,21 @@ export function CompeSettingsClient({
       .from("golf_courses")
       .select("id, name, region, prefecture, name_kana")
       .order("name_kana", { nullsFirst: false })
-      .then(({ data }) => setCourses(data ?? []));
-  }, []);
+      .then(({ data }) => {
+        const list = data ?? [];
+        setCourses(list);
+        // 保存済み course_id があれば地域・県を復元。無ければ「未登録」状態を初期選択。
+        if (course_id) {
+          const c = list.find((x) => x.id === course_id);
+          if (c) {
+            setSelectedRegion(c.region ?? "");
+            setSelectedPrefecture(c.prefecture ?? "");
+          }
+        } else {
+          setSelectedRegion("__none__");
+        }
+      });
+  }, [course_id]);
 
   async function handleSave() {
     setMessage(null);
@@ -92,20 +109,79 @@ export function CompeSettingsClient({
         </div>
       )}
 
-      <div>
-        <label className="label">ゴルフ場</label>
-        <select
-          className="input"
-          value={selectedCourseId}
-          onChange={(e) => setSelectedCourseId(e.target.value)}
-        >
-          <option value="">コースを指定しない（未登録コース）</option>
-          {courses.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
-          ))}
-        </select>
+      <div className="space-y-3">
+        {/* 地域（先頭は「指定しない＝未登録コース」） */}
+        <div>
+          <label className="label">地域</label>
+          <select
+            className="input"
+            value={selectedRegion}
+            onChange={(e) => {
+              setSelectedRegion(e.target.value);
+              setSelectedPrefecture("");
+              setSelectedCourseId("");
+            }}
+          >
+            <option value="__none__">コースを指定しない（未登録コース）</option>
+            {REGION_PREFECTURES.map((r) => (
+              <option key={r.region} value={r.region}>
+                {r.region}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {selectedRegion === "__none__" && (
+          <p className="text-xs text-green-500">未登録コースとして進めます</p>
+        )}
+
+        {/* 県（地域選択時のみ） */}
+        {selectedRegion && selectedRegion !== "__none__" && (
+          <div>
+            <label className="label">県</label>
+            <select
+              className="input"
+              value={selectedPrefecture}
+              onChange={(e) => {
+                setSelectedPrefecture(e.target.value);
+                setSelectedCourseId("");
+              }}
+            >
+              <option value="">県を選択</option>
+              {REGION_PREFECTURES.find((r) => r.region === selectedRegion)?.prefectures.map((p) => (
+                <option key={p} value={p}>
+                  {p}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {/* ゴルフ場（県選択時のみ） */}
+        {selectedRegion && selectedRegion !== "__none__" && selectedPrefecture && (() => {
+          const filtered = courses.filter((c) => c.prefecture === selectedPrefecture);
+          return (
+            <div>
+              <label className="label">ゴルフ場</label>
+              {filtered.length === 0 ? (
+                <p className="text-sm text-green-500">この県のゴルフ場は準備中です</p>
+              ) : (
+                <select
+                  className="input"
+                  value={selectedCourseId}
+                  onChange={(e) => setSelectedCourseId(e.target.value)}
+                >
+                  <option value="">ゴルフ場を選択</option>
+                  {filtered.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+          );
+        })()}
       </div>
 
       <div>
