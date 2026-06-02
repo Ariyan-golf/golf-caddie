@@ -5,6 +5,7 @@ import Link from "next/link";
 import { QRCodeSVG } from "qrcode.react";
 import { CompeSettingsClient } from "./CompeSettingsClient";
 import { CompeHolesClient, type DraconHole } from "./CompeHolesClient";
+import { CompeRankingClient } from "./CompeRankingClient";
 
 export interface CompeDetail {
   id:         string;
@@ -72,6 +73,9 @@ export function CompeDetailClient({
 
       {/* ── ドラコン対象ホールの設定（2c） ── */}
       <CompeHolesClient id={compe.id} holes={holes} />
+
+      {/* ── ランキング表示（3b） ── */}
+      <CompeRankingClient id={compe.id} />
     </div>
   );
 }
