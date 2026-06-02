@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
-import { CompeClient, type CompeRow } from "./CompeClient";
+import { CompeClient, type CompeRow, type JoinedCompe } from "./CompeClient";
 
 export const dynamic = "force-dynamic";
 
@@ -25,6 +25,29 @@ export default async function CompePage() {
     start_date: c.start_date,
   }));
 
+  // 自分が参加した（作成者でない）comp を取得（ユーザーセッションのまま・RLSで読める）。
+  const { data: parts } = await supabase
+    .from("event_participants")
+    .select("event_id")
+    .eq("user_id", user.id);
+  const eventIds = (parts ?? []).map((p) => p.event_id);
+
+  let joinedCompes: JoinedCompe[] = [];
+  if (eventIds.length > 0) {
+    const { data: joined } = await supabase
+      .from("events")
+      .select("id, event_name, start_date")
+      .in("id", eventIds)
+      .eq("event_type", "comp")
+      .neq("created_by", user.id)
+      .order("start_date", { ascending: false });
+    joinedCompes = (joined ?? []).map((c) => ({
+      id:         c.id,
+      event_name: c.event_name,
+      start_date: c.start_date,
+    }));
+  }
+
   return (
     <div className="min-h-screen pb-20">
       <div className="max-w-lg mx-auto p-4 space-y-6">
@@ -38,7 +61,7 @@ export default async function CompePage() {
           </p>
         </div>
 
-        <CompeClient initialCompes={initialCompes} />
+        <CompeClient initialCompes={initialCompes} joinedCompes={joinedCompes} />
       </div>
     </div>
   );

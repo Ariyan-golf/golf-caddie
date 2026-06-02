@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { QRCodeSVG } from "qrcode.react";
 import { CompeJoinByCode } from "@/components/CompeJoinByCode";
 
@@ -8,6 +9,13 @@ export interface CompeRow {
   id:         string;
   event_name: string;
   event_code: string | null;
+  start_date: string;
+}
+
+// 参加したコンペ（読み取り専用入口）。参加コード等は不要。
+export interface JoinedCompe {
+  id:         string;
+  event_name: string;
   start_date: string;
 }
 
@@ -22,7 +30,13 @@ function joinUrl(origin: string, code: string) {
   return `${origin}/compe/join?code=${encodeURIComponent(code)}`;
 }
 
-export function CompeClient({ initialCompes }: { initialCompes: CompeRow[] }) {
+export function CompeClient({
+  initialCompes,
+  joinedCompes,
+}: {
+  initialCompes: CompeRow[];
+  joinedCompes:  JoinedCompe[];
+}) {
   const [compes, setCompes] = useState<CompeRow[]>(initialCompes);
 
   const [eventName, setEventName] = useState("");
@@ -194,6 +208,32 @@ export function CompeClient({ initialCompes }: { initialCompes: CompeRow[] }) {
           </div>
         )}
       </div>
+
+      {/* ── 参加したコンペ（読み取り専用の入口） ── */}
+      {joinedCompes.length > 0 && (
+        <div className="card">
+          <h2 className="font-semibold text-green-800 mb-3">参加したコンペ</h2>
+          <div className="space-y-2">
+            {joinedCompes.map((c) => (
+              <div
+                key={c.id}
+                className="flex items-center justify-between gap-3 py-2 border-b border-green-50 last:border-0"
+              >
+                <div className="min-w-0">
+                  <p className="font-medium text-green-800 text-sm truncate">{c.event_name}</p>
+                  <p className="text-xs text-green-500">{formatDate(c.start_date)}</p>
+                </div>
+                <Link
+                  href={`/compe/${c.id}/result`}
+                  className="text-xs text-green-600 hover:text-green-700 hover:underline font-medium flex-shrink-0"
+                >
+                  ランキングを見る
+                </Link>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* ── 新しいコンペを作る ── */}
       <form onSubmit={handleSubmit} className="card space-y-4">
