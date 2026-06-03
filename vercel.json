@@ -1,5 +1,4 @@
 {
-  "public": true,
   "crons": [
     {
       "path": "/api/cleanup-cancelled",
