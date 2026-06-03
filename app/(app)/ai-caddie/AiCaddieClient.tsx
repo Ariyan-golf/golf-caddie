@@ -360,13 +360,13 @@ export function AiCaddieClient({ clubAverages, hasAccess, initialContext = null 
         </button>
       </div>
 
-      {/* Camera feature - Coming Soon */}
-      <button
+      {/* Camera feature - Coming Soon（将来公開時に復活させる。現状は非表示） */}
+      {/* <button
         disabled
         className="w-full py-3 px-6 rounded-xl text-sm font-semibold bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed"
       >
         📷 スイング撮影・AI分析（近日公開）
-      </button>
+      </button> */}
 
       {/* Stage 1: speech bubble */}
       {quickText && (

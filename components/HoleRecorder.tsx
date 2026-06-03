@@ -3039,7 +3039,14 @@ function RoundComplete({
         ) : (
           <ScoreColumn label="OUT" slice={holes} pSum={outPar} sSum={out} ptSum={outPutts} shSum={outShots} />
         )}
-        <p className="text-xs text-gray-600 text-center mt-2">○＝パー、□＝ボギー</p>
+        <p className="text-[11px] text-gray-600 text-center mt-2 leading-relaxed">
+          「計」の数字の色：
+          <span style={{ color: "#FFD700" }} className="font-bold">■</span>イーグル以上 ·{" "}
+          <span style={{ color: "#E53935" }} className="font-bold">■</span>バーディー ·{" "}
+          <span style={{ color: "#000000" }} className="font-bold">■</span>パー ·{" "}
+          <span style={{ color: "#1E88E5" }} className="font-bold">■</span>ボギー ·{" "}
+          <span style={{ color: "#1A237E" }} className="font-bold">■</span>ダブルボギー以上
+        </p>
       </div>
     </div>
   );
