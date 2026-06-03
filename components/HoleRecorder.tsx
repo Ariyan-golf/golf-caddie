@@ -7,7 +7,7 @@ import { ShotRecorder } from "./ShotRecorder";
 import type { Club } from "@/types";
 import { CLUBS, CLUB_LABELS } from "@/types";
 import { calculateDistance, metersToYards } from "@/lib/distance";
-import { stopGpsTracking, getBestShotPosition, startShotWatch, stopShotWatch, awaitHighAccuracyFix, type GpsPoint } from "@/lib/gps";
+import { stopGpsTracking, getBestShotPosition, startShotWatch, stopShotWatch, awaitHighAccuracyFix, getShotWatchTimeoutMs, type GpsPoint } from "@/lib/gps";
 import { acquireWakeLock, releaseWakeLock, softReleaseWakeLock } from "@/lib/wakeLock";
 import { isBetaMode } from "@/lib/betaMode";
 import Link from "next/link";
@@ -221,6 +221,13 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
   const [shotMode, setShotMode] = useState<"idle" | "recording">("idle");
   const [lastShot, setLastShot] = useState<LastShotMemo | null>(null);
 
+  // B/C: shotMode を ref に追従させ、idle タイマーや visibilitychange の
+  // コールバックから「今計測中か」を最新値で参照できるようにする（クロージャ陳腐化回避）。
+  const shotModeRef = useRef<"idle" | "recording">("idle");
+  useEffect(() => {
+    shotModeRef.current = shotMode;
+  }, [shotMode]);
+
   // 「打つ前」押下後2秒間はGPS精度安定化のために startPosition を確定させない
   // GPS精度±14mの状態で startPosition を記録すると、その後の位置取得との
   // 直線距離計算で 8〜14m の誤差が初期値として出てしまうため
@@ -332,6 +339,61 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // A: バックグラウンドでページが破棄→再読込されたとき、保存済みの計測途中状態
+  // （始点・shotMode）を復元する。今読み込んでいる round / hole が一致し、かつ
+  // startedAt から15分以内（既存 resolveShotTimeoutMs と同じ猶予）のときだけ復元。
+  // 条件に合わなければ（別round / 別hole / 期限切れ）キーを削除して復元しない。
+  // マウント時に一度だけ実行。
+  useEffect(() => {
+    const inflight = readDmInflight();
+    if (!inflight) return;
+
+    const sameRound = inflight.roundId === roundId;
+    const sameHole = inflight.holeNumber === currentHoleNumber;
+    const withinWindow = Date.now() - inflight.startedAt <= getShotWatchTimeoutMs();
+
+    if (!sameRound || !sameHole || !withinWindow) {
+      clearDmInflight();
+      return;
+    }
+
+    // 始点確定済みの状態に戻す（復元後は2秒猶予は不要なので startReadyRef を立てる）。
+    startPositionRef.current = inflight.start;
+    startReadyRef.current = true;
+    latestShotPositionRef.current = null;
+    setDmStart(inflight.start);
+    setDmEnd(null);
+    setDmDistance({ yards: 0, meters: 0 });
+    setShotNextAction("after");
+    setShotMode("recording");
+
+    // 計測を続けられるよう GPS監視と Wake Lock を張り直す。
+    // 二重 watch は startShotWatch 内の再入ガード、Wake Lock 二重取得は
+    // lib/wakeLock の tryAcquire ガードが防ぐ。
+    beginShotWatch();
+    void acquireWakeLock();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // C: 画面が再表示されたとき、計測中ならバックグラウンドで止まっている可能性の
+  // ある GPS監視を張り直し、Wake Lock を取り直して計測を継続できる状態にする。
+  // ページ自体の再読込は A の復元が担当。ここは「ページは生存しているが
+  // バックグラウンドで watch が止まった」取りこぼしを拾う。
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const onVisible = () => {
+      if (document.visibilityState !== "visible") return;
+      if (shotModeRef.current !== "recording") return;
+      if (!startReadyRef.current || !startPositionRef.current) return;
+      // startShotWatch 内の再入ガードで重複 watch にはならない。
+      beginShotWatch();
+      void acquireWakeLock();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // ── Wake Lock 無操作オートオフ（発熱・電池消耗対策）──────────────────
   // ラウンド画面で WAKE_LOCK_IDLE_MS 無操作になったら Wake Lock を「ソフト解除」
   // して画面スリープを許可（食事・組待ち中の発熱と電池消耗を止める）。
@@ -348,6 +410,12 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
     const armTimer = () => {
       if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
       idleTimerRef.current = setTimeout(() => {
+        // B: 計測中（始点記録〜終点待ち）は画面を保つ。ソフト解除せず再アームし、
+        // ポケット内で無操作のまま画面が消える→ページ破棄を誘発するのを防ぐ。
+        if (shotModeRef.current === "recording") {
+          armTimer();
+          return;
+        }
         // 無操作タイムアウト → sentinel だけ release（requested は維持）。
         wakeSoftReleasedRef.current = true;
         void softReleaseWakeLock();
@@ -728,6 +796,7 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
     // ホール切替時に watch / 2秒待機タイマーが走っていれば停止（測定中の切替を許す）。
     clearShotStartGraceTimer();
     stopShotWatch();
+    clearDmInflight();
     setDmStart(null);
     setDmEnd(null);
     setDmDistance(null);
@@ -755,6 +824,7 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
     // ペア未完了でキャンセルされたケースに備え watch / 2秒待機タイマーを必ず停止。
     clearShotStartGraceTimer();
     stopShotWatch();
+    clearDmInflight();
     setDmStart(null);
     setDmEnd(null);
     setDmDistance(null);
@@ -763,22 +833,13 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
     setDmLoading("idle");
   }
 
-  async function handleShotStart() {
-    // 「打つ前」押下後2秒間はGPS精度安定化のために startPosition を確定させない
-    // GPS精度±14mの状態で startPosition を記録すると、その後の位置取得との
-    // 直線距離計算で 8〜14m の誤差が初期値として出てしまうため
-    // 2秒待機して GPS が安定した位置を起点とすることで、正確な飛距離を測定する
-    clearShotStartGraceTimer();
-    setDmLoading("start");
-    setDmStart(null);
-    setDmEnd(null);
-    setDmDistance({ yards: 0, meters: 0 });
-    setShotNextAction("after");
-
-    // pair-scoped watchPosition を即時起動。OS から fresh fix が届くたびに
-    // latestShotPositionRef を更新し、startReadyRef が立っていれば
-    // start からの直線距離を再計算して表示を更新する。
-    const watchStarted = startShotWatch({
+  // pair-scoped watchPosition を標準ハンドラで開く共通処理。
+  // 新規計測（handleShotStart）・再読込からの復元（マウント時）・visibilitychange
+  // からの再開で同一ロジックを使うために切り出した（挙動は従来の inline と同じ。
+  // onTimeout に clearDmInflight を追加した点のみ新規＝計測破棄時の保存も消す）。
+  // startShotWatch 内に再入ガードがあるため、既に watch が走っていれば張り直す。
+  function beginShotWatch(): boolean {
+    return startShotWatch({
       onUpdate: (p) => {
         latestShotPositionRef.current = p;
         if (!startReadyRef.current) {
@@ -800,6 +861,7 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
         // 15分経過 → 押し忘れと判定して計測を破棄。
         // 15分カウントは「打つ前」押下時刻が起点（2秒待機含む）。
         clearShotStartGraceTimer();
+        clearDmInflight();
         setDmStart(null);
         setDmEnd(null);
         setDmDistance(null);
@@ -809,6 +871,25 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
         setShotTimeoutToast("15分経過したので計測をリセットしました");
       },
     });
+  }
+
+  async function handleShotStart() {
+    // 「打つ前」押下後2秒間はGPS精度安定化のために startPosition を確定させない
+    // GPS精度±14mの状態で startPosition を記録すると、その後の位置取得との
+    // 直線距離計算で 8〜14m の誤差が初期値として出てしまうため
+    // 2秒待機して GPS が安定した位置を起点とすることで、正確な飛距離を測定する
+    clearShotStartGraceTimer();
+    clearDmInflight();
+    setDmLoading("start");
+    setDmStart(null);
+    setDmEnd(null);
+    setDmDistance({ yards: 0, meters: 0 });
+    setShotNextAction("after");
+
+    // pair-scoped watchPosition を即時起動。OS から fresh fix が届くたびに
+    // latestShotPositionRef を更新し、startReadyRef が立っていれば
+    // start からの直線距離を再計算して表示を更新する。
+    const watchStarted = beginShotWatch();
 
     if (!watchStarted) {
       // watch 起動失敗（geolocation 利用不可など）→ 計測中断
@@ -839,6 +920,18 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
       startReadyRef.current = true;
       setDmStart(start);
       setDmLoading("idle");
+      // A: 始点確定 → 端末に保存。ポケットで画面が消える→ページ破棄→再読込で
+      // 揮発する始点を、復帰時にこのキーから復元して計測を再開する。
+      if (currentHole) {
+        saveDmInflight({
+          roundId,
+          holeId: currentHole.id,
+          holeNumber: currentHole.hole_number,
+          start,
+          startedAt: Date.now(),
+          shotMode: "recording",
+        });
+      }
     }, 2000);
   }
 
@@ -866,6 +959,8 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
       // 10秒待っても達しなければショットペアを破棄して再計測を促す。
       const fix = await awaitHighAccuracyFix();
       if (!fix) {
+        // ペア破棄 → 保存済み始点も消す（復帰で陳腐な計測を復元しないため）。
+        clearDmInflight();
         setDmStart(null);
         setDmEnd(null);
         setDmDistance(null);
@@ -943,8 +1038,10 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
       }
       // ALWAYS unwind to idle so the user is never stuck on the panel.
       // 念のため watch / 2秒待機 ref を再度クリア（handleShotEnd で既に止めているはず）。
+      // 計測完了（成功・失敗いずれも）→ 保存済み始点を消す。
       clearShotStartGraceTimer();
       stopShotWatch();
+      clearDmInflight();
       setDmStart(null);
       setDmEnd(null);
       setDmDistance(null);
@@ -2432,6 +2529,50 @@ const COMPASS_STORAGE_KEY = "golfCaddieWindCompass";
 // 無操作で Wake Lock をソフト解除するまでの時間（10分）。食事・組待ち中の
 // 発熱と電池消耗を止めるための値。
 const WAKE_LOCK_IDLE_MS = 10 * 60 * 1000;
+
+// ── 計測途中状態の永続化（A）──────────────────────────────────────────
+// ポケットで画面が消える→バックグラウンドでページ破棄→再読込、で揮発する
+// React state（始点・shotMode）を端末に退避し、復帰時に計測を再開するためのキー。
+// 既存の UNFINISHED_ROUND_FLAG（lib/gps.ts）とは別物。beforeunload では消さない。
+const DM_INFLIGHT_KEY = "golf_caddie_dm_inflight";
+
+type DmInflight = {
+  roundId: string;
+  holeId: string;
+  holeNumber: number;
+  start: { lat: number; lng: number };
+  startedAt: number; // ミリ秒（Date.now()）
+  shotMode: "recording";
+};
+
+function saveDmInflight(data: DmInflight): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(DM_INFLIGHT_KEY, JSON.stringify(data));
+  } catch {
+    // ignore storage failures
+  }
+}
+
+function readDmInflight(): DmInflight | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(DM_INFLIGHT_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as DmInflight;
+  } catch {
+    return null;
+  }
+}
+
+function clearDmInflight(): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.removeItem(DM_INFLIGHT_KEY);
+  } catch {
+    // ignore storage failures
+  }
+}
 
 // Symbols point to where the wind is blowing TO (not where it comes from).
 // e.g. 北 (wind from north) → ↓ (blows south).
