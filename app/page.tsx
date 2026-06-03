@@ -9,6 +9,7 @@ import { RoundBarGraph } from "@/components/RoundBarGraph";
 import { EventRankingSection, type EventRankingData } from "@/components/EventRankingSection";
 import ConsentGate from "@/components/ConsentGate";
 import { getNeedsConsent } from "@/lib/consent";
+import { isBetaMode } from "@/lib/betaMode";
 import { CLUB_LABELS, type Club } from "@/types";
 
 // v4: 無料体験は3ラウンドまで（app/(app)/round/new/page.tsx と同値）
@@ -169,6 +170,8 @@ export default async function HomePage() {
   const isSubscriber = profile?.plan === "premium" || profile?.plan === "premium_paid" || profile?.plan === "standard";
   const roundCount = profile?.round_count ?? 0;
   const remainingFree = Math.max(FREE_ROUND_LIMIT - roundCount, 0);
+  // ベータ中（プレオープン）は回数無制限・cronも停止のため、残りN/3や「1日後削除」は表示しない。
+  const beta = isBetaMode();
 
   // ドライバー(1W)平均飛距離（生 shots を本人分で集計）。距離は distance_yards をそのまま使用。
   const driverShotRows = (driverShots ?? []) as Array<{ distance_yards: number }>;
@@ -401,9 +404,15 @@ export default async function HomePage() {
             <div className="flex items-start gap-3">
               <span className="text-2xl flex-shrink-0">⛳</span>
               <div className="flex-1">
-                <p className="font-semibold text-amber-800 text-sm">無料体験中</p>
+                <p className="font-semibold text-amber-800 text-sm">{beta ? "プレオープン中" : "無料体験中"}</p>
                 <p className="text-xs text-amber-700 mt-0.5 leading-relaxed">
-                  残り <span className="font-bold">{remainingFree}</span> / {FREE_ROUND_LIMIT} ラウンド・データは1日後に削除されます
+                  {beta ? (
+                    "無制限でお試しいただけます"
+                  ) : (
+                    <>
+                      残り <span className="font-bold">{remainingFree}</span> / {FREE_ROUND_LIMIT} ラウンド・データは1日後に削除されます
+                    </>
+                  )}
                 </p>
               </div>
             </div>

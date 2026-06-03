@@ -129,7 +129,7 @@ export default async function PlanPage({ searchParams }: Props) {
         </div>
       )}
 
-      {currentPlan === "free" && roundCount >= 3 && (
+      {!beta && currentPlan === "free" && roundCount >= 3 && (
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-center gap-2 text-sm">
           <span>🔒</span>
           <p className="text-amber-700">

@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { hasActiveDayPass } from "@/lib/day-pass";
+import { isBetaMode } from "@/lib/betaMode";
 import Link from "next/link";
 import { NewRoundForm } from "./NewRoundForm";
 import { StickyHeader } from "./StickyHeader";
@@ -28,7 +29,8 @@ export default async function NewRoundPage({ searchParams }: PageProps) {
   const roundCount = profile?.round_count ?? 0;
   const dayPassActive = hasActiveDayPass(profile?.day_pass_date);
   // pro ロール / day_pass有効 はラウンド上限なし・支払い不要
-  const isBlocked = plan === "free" && roundCount >= FREE_ROUND_LIMIT && role !== "pro" && !dayPassActive;
+  // ベータ中（プレオープン）は回数無制限。リリース時に NEXT_PUBLIC_BETA_MODE=false で3回制限が復活する。
+  const isBlocked = !isBetaMode() && plan === "free" && roundCount >= FREE_ROUND_LIMIT && role !== "pro" && !dayPassActive;
 
   return (
     <div className="max-w-lg mx-auto px-4 pb-4 space-y-4">
