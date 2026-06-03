@@ -204,6 +204,13 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
   // 連打ガード：再レンダ前の同フレーム連打で二重決済リクエストが飛ばないよう、
   // 同期的に判定できる ref を使う。
   const payProcessingRef = useRef(false);
+  // 二重請求防止トークン：決済モーダルが開くたびに1つ生成し、閉じたら破棄する。
+  // 同じ試行のやり直し（連打・決済画面から戻っての再押下）では同じトークンを使い回し、
+  // API 側で冪等キーになる。再度モーダルを開けば新しいトークンになり別ラウンドの支払いは通る。
+  const paymentTokenRef = useRef<string>("");
+  useEffect(() => {
+    paymentTokenRef.current = showPaymentModal ? crypto.randomUUID() : "";
+  }, [showPaymentModal]);
   const [confirmEarlyEnd, setConfirmEarlyEnd] = useState(false);
   const [endedEarly, setEndedEarly] = useState(false);
   const [showBetaModal, setShowBetaModal] = useState(false);
@@ -1114,7 +1121,7 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
       const res = await fetch("/api/stripe/checkout-once", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ golf_course: golfCourseName }),
+        body: JSON.stringify({ golf_course: golfCourseName, payment_token: paymentTokenRef.current }),
       });
       const data = await res.json();
       if (data.url) {

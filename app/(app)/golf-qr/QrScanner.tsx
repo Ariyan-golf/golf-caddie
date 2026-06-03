@@ -13,6 +13,10 @@ export function QrScanner({ initialCourse }: { initialCourse?: string }) {
   // 連打ガード：再レンダ(phase切替)前の同フレーム連打で二重決済リクエストが
   // 飛ばないよう、同期的に判定できる ref を併用する。
   const payProcessingRef = useRef(false);
+  // 二重請求防止トークン：QR読取〜支払い確認に進む1試行ごとに1つ生成する。
+  // 同じ試行のやり直し（連打・戻り後の再押下）では同じトークンを使い回し、API側で
+  // 冪等キーになる。読み取り直す(reset→再scan)と新しくなり、別ラウンドの支払いは通る。
+  const paymentTokenRef = useRef<string>(initialCourse ? crypto.randomUUID() : "");
 
   useEffect(() => {
     return () => {
@@ -38,6 +42,7 @@ export function QrScanner({ initialCourse }: { initialCourse?: string }) {
           }
           if (course) {
             setCourseName(course);
+            paymentTokenRef.current = crypto.randomUUID();
             setPhase("confirm");
           } else {
             setErrorMsg("courseパラメータが見つかりません。提携ゴルフ場のQRコードをスキャンしてください。");
@@ -60,7 +65,7 @@ export function QrScanner({ initialCourse }: { initialCourse?: string }) {
       const res = await fetch("/api/stripe/checkout-once", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ golf_course: courseName }),
+        body: JSON.stringify({ golf_course: courseName, payment_token: paymentTokenRef.current }),
       });
       const data = await res.json();
       if (data.url) {
@@ -81,6 +86,7 @@ export function QrScanner({ initialCourse }: { initialCourse?: string }) {
     const el = document.getElementById("qr-reader");
     if (el) el.innerHTML = "";
     scannerRef.current = null;
+    paymentTokenRef.current = "";
     setCourseName("");
     setErrorMsg("");
     setPhase("idle");
