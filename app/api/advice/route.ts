@@ -1,5 +1,6 @@
 import { anthropic, GOLF_SYSTEM_PROMPT } from "@/lib/anthropic";
 import { createClient } from "@/lib/supabase/server";
+import { getClubAverages } from "@/lib/club-averages";
 import { NextResponse } from "next/server";
 import type { ClubAdviceRequest } from "@/types";
 import { CLUB_LABELS } from "@/types";
@@ -11,11 +12,8 @@ export async function POST(request: Request) {
 
   const body: ClubAdviceRequest = await request.json();
 
-  // Fetch user's club averages for personalization
-  const { data: clubAverages } = await supabase
-    .from("club_averages")
-    .select("club, average_distance_meters, shot_count")
-    .eq("user_id", user.id);
+  // Fetch user's club averages for personalization（生 shots から都度集計）
+  const clubAverages = await getClubAverages(supabase, user.id);
 
   const userStatsText = clubAverages?.length
     ? `\n\nこのユーザーの実績データ:\n` +

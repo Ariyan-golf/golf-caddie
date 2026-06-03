@@ -1,6 +1,8 @@
 import { createClient } from "@/lib/supabase/server";
 import { hasFullAccess } from "@/lib/day-pass";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
+import { getClubAverages } from "@/lib/club-averages";
+import type { ClubAverage } from "@/types";
 import { AiCaddieClient, type InitialContext } from "./AiCaddieClient";
 
 interface PageProps {
@@ -28,7 +30,7 @@ export default async function AiCaddiePage({ searchParams }: PageProps) {
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
 
-  const [{ data: profile }, todayPayment, { data: clubAverages }] = await Promise.all([
+  const [{ data: profile }, todayPayment, clubAverages] = await Promise.all([
     admin.from("profiles").select("plan, day_pass_date").eq("id", user!.id).single(),
     (async () => {
       const nowMs = Date.now();
@@ -45,7 +47,8 @@ export default async function AiCaddiePage({ searchParams }: PageProps) {
         .maybeSingle();
       return data;
     })(),
-    admin.from("club_averages").select("*").eq("user_id", user!.id),
+    // 旧 club_averages テーブルを使わず、生 shots から都度集計（本人 user.id で絞り込み）。
+    getClubAverages(admin, user!.id),
   ]);
 
   const hasAccess = hasFullAccess(profile ?? {}) || !!todayPayment;
@@ -118,7 +121,7 @@ export default async function AiCaddiePage({ searchParams }: PageProps) {
         </p>
       </div>
       <AiCaddieClient
-        clubAverages={clubAverages ?? []}
+        clubAverages={clubAverages as ClubAverage[]}
         hasAccess={hasAccess}
         initialContext={initialContext}
       />
