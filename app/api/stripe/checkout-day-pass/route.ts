@@ -79,22 +79,27 @@ export async function POST(request: Request) {
   const cancelQuery = new URLSearchParams();
   if (courseId) cancelQuery.set("course_id", courseId);
 
-  const session = await stripe.checkout.sessions.create({
-    mode: "payment",
-    payment_method_types: ["card"],
-    line_items: [{ price: priceId, quantity: 1 }],
-    success_url: `${BASE_URL}/pay/success?${successQuery.toString()}`,
-    cancel_url: `${BASE_URL}/pay/cancel?${cancelQuery.toString()}`,
-    client_reference_id: user.id,
-    metadata: {
-      user_id: user.id,
-      course_id: courseId,
-      kind: "day_pass",
-      plan_at_purchase: profile?.plan ?? "free",
-      is_subscriber: String(isSubscriber),
-      referrer_id: referrerId ?? "",
-      agent_user_id: agentUserId ?? "",
+  const session = await stripe.checkout.sessions.create(
+    {
+      mode: "payment",
+      payment_method_types: ["card"],
+      line_items: [{ price: priceId, quantity: 1 }],
+      success_url: `${BASE_URL}/pay/success?${successQuery.toString()}`,
+      cancel_url: `${BASE_URL}/pay/cancel?${cancelQuery.toString()}`,
+      client_reference_id: user.id,
+      metadata: {
+        user_id: user.id,
+        course_id: courseId,
+        kind: "day_pass",
+        plan_at_purchase: profile?.plan ?? "free",
+        is_subscriber: String(isSubscriber),
+        referrer_id: referrerId ?? "",
+        agent_user_id: agentUserId ?? "",
+      },
     },
-  });
+    // A1: 二重請求防止。デイパスは1日1枚なので user×JST日付で一意。
+    // 同じ注文（同日同一ユーザー）の連打では Stripe が新規請求を作らず同じセッションを返す。
+    { idempotencyKey: `daypass:${user.id}:${todayJST()}` }
+  );
 
   return NextResponse.json({ url: session.url }); }

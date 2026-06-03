@@ -16,19 +16,37 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "無効なプランです" }, { status: 400 });
   }
 
-  const session = await stripe.checkout.sessions.create({
-    mode: "subscription",
-    line_items: [{ price: PLANS[plan].priceId, quantity: 1 }],
-    client_reference_id: user.id,
-    customer_email: user.email,
-    metadata: { user_id: user.id, plan },
-    success_url: `${BASE_URL}/plan?success=1&plan=${plan}`,
-    cancel_url: `${BASE_URL}/plan?canceled=1`,
-    locale: "ja",
-    subscription_data: {
+  // A2: 作成前ガード。既に premium 会員ならセッションを作らず弾く（二重サブスク防止）。
+  // 判定: profiles.plan カラム
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("plan")
+    .eq("id", user.id)
+    .single();
+  if (profile?.plan === "premium") {
+    return NextResponse.json(
+      { error: "すでにプレミアム会員です" },
+      { status: 409 }
+    );
+  }
+
+  const session = await stripe.checkout.sessions.create(
+    {
+      mode: "subscription",
+      line_items: [{ price: PLANS[plan].priceId, quantity: 1 }],
+      client_reference_id: user.id,
+      customer_email: user.email,
       metadata: { user_id: user.id, plan },
+      success_url: `${BASE_URL}/plan?success=1&plan=${plan}`,
+      cancel_url: `${BASE_URL}/plan?canceled=1`,
+      locale: "ja",
+      subscription_data: {
+        metadata: { user_id: user.id, plan },
+      },
     },
-  });
+    // A1: 二重請求防止。サブスクは user×premium で一意。
+    { idempotencyKey: `sub:${user.id}:premium` }
+  );
 
   return NextResponse.json({ url: session.url });
 }
