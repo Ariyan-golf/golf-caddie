@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { CLUB_LABELS } from "@/types";
+import { CLUBS, CLUB_LABELS } from "@/types";
 import type { Club } from "@/types";
 
 export const UNASSIGNED_KEY = "__unassigned__";
@@ -27,6 +27,19 @@ function formatDate(iso: string) {
     month: "numeric",
     day: "numeric",
   });
+}
+
+// 番手の平均・本数の再計算（削除・付け替えで共通利用）。距離は distance_meters のメートル平均（小数1桁）。
+function recalcStat(stat: ClubStat, shots: ShotRecord[]): ClubStat {
+  const totalMeters = shots.reduce((sum, sh) => sum + sh.distance_meters, 0);
+  return {
+    ...stat,
+    shots,
+    shot_count: shots.length,
+    average_distance_meters: shots.length
+      ? parseFloat((totalMeters / shots.length).toFixed(1))
+      : 0,
+  };
 }
 
 // shots 由来は削除API、shot_distances 由来は本人RLSで直接 DELETE。
@@ -63,11 +76,16 @@ function SourceTag({ source }: { source: "shot" | "distance" }) {
 function ShotList({
   stat,
   onShotDeleted,
+  onClubChange,
 }: {
   stat: ClubStat;
   onShotDeleted: (club: string, shotId: string) => void;
+  // ラウンド分(source==='shot')の番手付け替え。未分類行などでは未指定＝付け替え不可。
+  onClubChange?: (fromClub: string, shot: ShotRecord, newClub: string) => Promise<boolean>;
 }) {
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [savingId, setSavingId] = useState<string | null>(null);
+  const [errorId, setErrorId] = useState<string | null>(null);
 
   async function handleDeleteShot(shot: ShotRecord) {
     if (!confirm("このショットデータを削除しますか？")) return;
@@ -83,37 +101,71 @@ function ShotList({
     }
   }
 
+  async function handleClubSelect(shot: ShotRecord, newClub: string) {
+    if (!onClubChange || newClub === stat.club) return;
+    setSavingId(shot.id);
+    setErrorId(null);
+    const ok = await onClubChange(stat.club, shot, newClub);
+    setSavingId(null);
+    if (!ok) setErrorId(shot.id);
+  }
+
   if (stat.shots.length === 0) {
     return <p className="text-xs text-green-300 py-1">ショットデータなし</p>;
   }
 
   return (
     <>
-      {stat.shots.map((shot) => (
-        <div
-          key={shot.id}
-          className="flex items-center justify-between gap-2 py-1 border-b border-green-50 last:border-0"
-        >
-          <span className="text-xs text-green-400 tabular-nums w-10 shrink-0">
-            {formatDate(shot.created_at)}
-          </span>
-          <SourceTag source={shot.source} />
-          <span className="text-xs font-semibold text-green-700 flex-1 tabular-nums">
-            {shot.distance_yards}y
-            <span className="text-green-400 font-normal ml-1">
-              ({Math.round(shot.distance_meters)}m)
-            </span>
-          </span>
-          <button
-            onClick={() => handleDeleteShot(shot)}
-            disabled={deletingId === shot.id}
-            className="shrink-0 text-xs px-2 py-0.5 rounded border border-red-200 text-red-400
-                       hover:bg-red-50 hover:text-red-600 transition-colors disabled:opacity-40"
+      {stat.shots.map((shot) => {
+        // 付け替えselectはラウンド分(source==='shot')かつ付け替え可の番手行のみ。
+        const canChangeClub = !!onClubChange && shot.source === "shot";
+        return (
+          <div
+            key={shot.id}
+            className="flex items-center gap-2 py-1 border-b border-green-50 last:border-0"
           >
-            {deletingId === shot.id ? "削除中" : "削除"}
-          </button>
-        </div>
-      ))}
+            <span className="text-xs text-green-400 tabular-nums w-10 shrink-0">
+              {formatDate(shot.created_at)}
+            </span>
+            <SourceTag source={shot.source} />
+            <span className="text-xs font-semibold text-green-700 shrink-0 tabular-nums">
+              {shot.distance_yards}y
+              <span className="text-green-400 font-normal ml-1">
+                ({Math.round(shot.distance_meters)}m)
+              </span>
+            </span>
+            {canChangeClub ? (
+              <select
+                value={stat.club}
+                onChange={(e) => handleClubSelect(shot, e.target.value)}
+                disabled={savingId === shot.id}
+                className={`flex-1 min-w-0 text-xs px-1.5 py-1 rounded-lg border bg-white text-green-800
+                            disabled:opacity-60 ${errorId === shot.id ? "border-red-300" : "border-green-200"}`}
+              >
+                {CLUBS.map((c) => (
+                  <option key={c} value={c}>{CLUB_LABELS[c]}</option>
+                ))}
+              </select>
+            ) : (
+              <span className="flex-1" />
+            )}
+            {savingId === shot.id && (
+              <span className="text-xs text-green-400 shrink-0">保存中</span>
+            )}
+            {errorId === shot.id && savingId !== shot.id && (
+              <span className="text-xs text-red-500 shrink-0">失敗</span>
+            )}
+            <button
+              onClick={() => handleDeleteShot(shot)}
+              disabled={deletingId === shot.id}
+              className="shrink-0 text-xs px-2 py-0.5 rounded border border-red-200 text-red-400
+                         hover:bg-red-50 hover:text-red-600 transition-colors disabled:opacity-40"
+            >
+              {deletingId === shot.id ? "削除中" : "削除"}
+            </button>
+          </div>
+        );
+      })}
     </>
   );
 }
@@ -122,10 +174,12 @@ function ClubRow({
   stat,
   maxYards,
   onShotDeleted,
+  onClubChange,
 }: {
   stat: ClubStat;
   maxYards: number;
   onShotDeleted: (club: string, shotId: string) => void;
+  onClubChange: (fromClub: string, shot: ShotRecord, newClub: string) => Promise<boolean>;
 }) {
   const [expanded, setExpanded] = useState(false);
   const label = CLUB_LABELS[stat.club as Club] ?? stat.club;
@@ -174,7 +228,7 @@ function ClubRow({
       {/* ── 個別記録一覧（展開時） ── */}
       {expanded && (
         <div className="mt-2 ml-10 space-y-1 border-l-2 border-green-100 pl-3">
-          <ShotList stat={stat} onShotDeleted={onShotDeleted} />
+          <ShotList stat={stat} onShotDeleted={onShotDeleted} onClubChange={onClubChange} />
         </div>
       )}
     </div>
@@ -247,19 +301,50 @@ export function ClubAveragesSection({ initialStats }: { initialStats: ClubStat[]
           const remaining = s.shots.filter((sh) => sh.id !== shotId);
           // 未分類は0件になったら行ごと消す（既存挙動を維持）。
           if (s.club === UNASSIGNED_KEY && remaining.length === 0) return null;
-          const totalMeters = remaining.reduce((sum, sh) => sum + sh.distance_meters, 0);
           // 番手は0件でも行は残し「まだ記録なし」表示に戻す。
-          return {
-            ...s,
-            shots: remaining,
-            shot_count: remaining.length,
-            average_distance_meters: remaining.length
-              ? parseFloat((totalMeters / remaining.length).toFixed(1))
-              : 0,
-          };
+          return recalcStat(s, remaining);
         })
         .filter((s): s is ClubStat => s !== null)
     );
+  }
+
+  // ラウンド分(source==='shot')の番手付け替え。楽観更新＋失敗時ロールバック。
+  async function handleClubChange(
+    fromClub: string,
+    shot: ShotRecord,
+    newClub: string
+  ): Promise<boolean> {
+    if (newClub === fromClub) return true;
+    const snapshot = stats;
+
+    // 楽観更新：元番手から外し、新番手へ移し、両番手を再計算。
+    setStats((prev) =>
+      prev.map((s) => {
+        if (s.club === fromClub) {
+          return recalcStat(s, s.shots.filter((sh) => sh.id !== shot.id));
+        }
+        if (s.club === newClub) {
+          const merged = [{ ...shot }, ...s.shots].sort((a, b) =>
+            b.created_at.localeCompare(a.created_at)
+          );
+          return recalcStat(s, merged);
+        }
+        return s;
+      })
+    );
+
+    const supabase = createClient();
+    const { error } = await supabase
+      .from("shots")
+      .update({ club: newClub, club_input_at: "事後" })
+      .eq("id", shot.id);
+
+    if (error) {
+      console.error("[stats] club change error:", error.message);
+      setStats(snapshot);
+      return false;
+    }
+    return true;
   }
 
   return (
@@ -285,6 +370,7 @@ export function ClubAveragesSection({ initialStats }: { initialStats: ClubStat[]
               stat={stat}
               maxYards={maxYards}
               onShotDeleted={handleShotDeleted}
+              onClubChange={handleClubChange}
             />
           )
         )}
