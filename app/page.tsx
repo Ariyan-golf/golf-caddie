@@ -138,7 +138,7 @@ export default async function HomePage() {
   });
   // ─────────────────────────────────────────────────────────────────────
 
-  const [{ data: profile }, { data: roundsRaw }, { data: clubStats }, { data: handicapData }] =
+  const [{ data: profile }, { data: roundsRaw }, { data: driverShots }, { data: handicapData }] =
     await Promise.all([
       supabase.from("profiles").select("display_name, plan, round_count, nickname, age_group").eq("id", user.id).single(),
       supabase
@@ -147,12 +147,14 @@ export default async function HomePage() {
         .eq("user_id", user.id)
         .order("date", { ascending: false })
         .limit(10),
+      // ドライバー(1W)平均は集計テーブル club_averages（削除/再割当てで減算されず過大になる）を
+      // 使わず、球筋ページ app/(app)/swing/page.tsx と同じく生 shots から本人分を直接集計する。
       supabase
-        .from("club_averages")
-        .select("club, average_distance_meters, shot_count")
-        .eq("user_id", user.id)
-        .order("shot_count", { ascending: false })
-        .limit(5),
+        .from("shots")
+        .select("distance_yards, holes!inner(rounds!inner(user_id))")
+        .eq("holes.rounds.user_id", user.id)
+        .eq("club", "1w")
+        .not("distance_yards", "is", null),
       supabase
         .from("rounds")
         .select("handicap_differential")
@@ -167,6 +169,16 @@ export default async function HomePage() {
   const isSubscriber = profile?.plan === "premium" || profile?.plan === "premium_paid" || profile?.plan === "standard";
   const roundCount = profile?.round_count ?? 0;
   const remainingFree = Math.max(FREE_ROUND_LIMIT - roundCount, 0);
+
+  // ドライバー(1W)平均飛距離（生 shots を本人分で集計）。距離は distance_yards をそのまま使用。
+  const driverShotRows = (driverShots ?? []) as Array<{ distance_yards: number }>;
+  const driverShotCount = driverShotRows.length;
+  const driverAvgYards =
+    driverShotCount > 0
+      ? Math.round(
+          driverShotRows.reduce((s, r) => s + Number(r.distance_yards), 0) / driverShotCount
+        )
+      : null;
 
   const tobashikkoConfigured = !!profile?.nickname && !!profile?.age_group;
 
@@ -443,30 +455,26 @@ export default async function HomePage() {
           )}
         </div>
 
-        {/* Club averages（ドライバー1Wのみ表示。詳細は /swing） */}
-        {clubStats && clubStats.length > 0 && (() => {
-          // ドライバー(1W)を優先。無ければショット数最多(=clubStats先頭)をフォールバック表示。
-          const driverStat = clubStats.find((stat) => stat.club === "1w") ?? clubStats[0];
-          return (
-            <div className="card">
-              <div className="flex items-center justify-between mb-3">
-                <h2 className="font-semibold text-green-800">番手別平均飛距離</h2>
-                <Link href="/swing" className="text-xs text-green-600 underline">
-                  もっと詳しく →
-                </Link>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-green-700">{CLUB_LABELS[driverStat.club as Club] ?? driverStat.club}</span>
-                <span className="text-sm font-semibold text-green-800">
-                  {Math.round(driverStat.average_distance_meters * 1.09361)}y
-                  <span className="text-xs text-green-400 font-normal ml-1">
-                    ({driverStat.shot_count}打)
-                  </span>
-                </span>
-              </div>
+        {/* Club averages（ドライバー1Wのみ表示。生 shots から本人分を直接集計。詳細は /swing） */}
+        {driverAvgYards !== null && (
+          <div className="card">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="font-semibold text-green-800">番手別平均飛距離</h2>
+              <Link href="/swing" className="text-xs text-green-600 underline">
+                もっと詳しく →
+              </Link>
             </div>
-          );
-        })()}
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-green-700">{CLUB_LABELS["1w" as Club] ?? "1W"}</span>
+              <span className="text-sm font-semibold text-green-800">
+                {driverAvgYards}y
+                <span className="text-xs text-green-400 font-normal ml-1">
+                  ({driverShotCount}打)
+                </span>
+              </span>
+            </div>
+          </div>
+        )}
 
         {/* コンペ幹事への導線（ドラコン設定） */}
         <Link
