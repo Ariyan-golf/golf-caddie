@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { createClient } from "@/lib/supabase/client";
 import { CLUB_LABELS } from "@/types";
 import type { Club } from "@/types";
 
@@ -11,6 +12,7 @@ interface ShotRecord {
   distance_yards: number;
   distance_meters: number;
   created_at: string;
+  source: "shot" | "distance";
 }
 
 interface ClubStat {
@@ -27,6 +29,7 @@ function formatDate(iso: string) {
   });
 }
 
+// shots 由来は削除API、shot_distances 由来は本人RLSで直接 DELETE。
 async function deleteShot(shotId: string): Promise<boolean> {
   const res = await fetch("/api/stats/delete-shot", {
     method: "DELETE",
@@ -34,6 +37,27 @@ async function deleteShot(shotId: string): Promise<boolean> {
     body: JSON.stringify({ shotId }),
   });
   return res.ok;
+}
+
+async function deleteDistance(id: string): Promise<boolean> {
+  const supabase = createClient();
+  const { error } = await supabase.from("shot_distances").delete().eq("id", id);
+  return !error;
+}
+
+function SourceTag({ source }: { source: "shot" | "distance" }) {
+  const isDistance = source === "distance";
+  return (
+    <span
+      className={`text-[10px] shrink-0 px-1.5 py-0.5 rounded-full font-medium ${
+        isDistance
+          ? "bg-sky-100 text-sky-600"
+          : "bg-green-100 text-green-600"
+      }`}
+    >
+      {isDistance ? "計測" : "ラウンド"}
+    </span>
+  );
 }
 
 function ShotList({
@@ -45,12 +69,15 @@ function ShotList({
 }) {
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  async function handleDeleteShot(shotId: string) {
+  async function handleDeleteShot(shot: ShotRecord) {
     if (!confirm("このショットデータを削除しますか？")) return;
-    setDeletingId(shotId);
+    setDeletingId(shot.id);
     try {
-      const ok = await deleteShot(shotId);
-      if (ok) onShotDeleted(stat.club, shotId);
+      const ok =
+        shot.source === "distance"
+          ? await deleteDistance(shot.id)
+          : await deleteShot(shot.id);
+      if (ok) onShotDeleted(stat.club, shot.id);
     } finally {
       setDeletingId(null);
     }
@@ -67,9 +94,10 @@ function ShotList({
           key={shot.id}
           className="flex items-center justify-between gap-2 py-1 border-b border-green-50 last:border-0"
         >
-          <span className="text-xs text-green-400 tabular-nums w-12 shrink-0">
+          <span className="text-xs text-green-400 tabular-nums w-10 shrink-0">
             {formatDate(shot.created_at)}
           </span>
+          <SourceTag source={shot.source} />
           <span className="text-xs font-semibold text-green-700 flex-1 tabular-nums">
             {shot.distance_yards}y
             <span className="text-green-400 font-normal ml-1">
@@ -77,7 +105,7 @@ function ShotList({
             </span>
           </span>
           <button
-            onClick={() => handleDeleteShot(shot.id)}
+            onClick={() => handleDeleteShot(shot)}
             disabled={deletingId === shot.id}
             className="shrink-0 text-xs px-2 py-0.5 rounded border border-red-200 text-red-400
                        hover:bg-red-50 hover:text-red-600 transition-colors disabled:opacity-40"
@@ -100,10 +128,20 @@ function ClubRow({
   onShotDeleted: (club: string, shotId: string) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const label = CLUB_LABELS[stat.club as Club] ?? stat.club;
+
+  // 記録ゼロの番手：薄く「まだ記録なし」（棒グラフ・展開なし）。
+  if (stat.shot_count === 0) {
+    return (
+      <div className="flex justify-between items-center text-sm gap-2 opacity-50">
+        <span className="text-green-700 font-bold w-10 shrink-0">{label}</span>
+        <span className="text-green-400 flex-1 text-xs">まだ記録なし</span>
+      </div>
+    );
+  }
 
   const yards = Math.round(stat.average_distance_meters * 1.09361);
   const pct = Math.round((yards / maxYards) * 100);
-  const label = CLUB_LABELS[stat.club as Club] ?? stat.club;
 
   return (
     <div>
@@ -133,7 +171,7 @@ function ClubRow({
         </div>
       </button>
 
-      {/* ── 個別ショット一覧（展開時） ── */}
+      {/* ── 個別記録一覧（展開時） ── */}
       {expanded && (
         <div className="mt-2 ml-10 space-y-1 border-l-2 border-green-100 pl-3">
           <ShotList stat={stat} onShotDeleted={onShotDeleted} />
@@ -177,7 +215,7 @@ function UnassignedRow({
         </p>
       </button>
 
-      {/* ── 個別ショット一覧（展開時） ── */}
+      {/* ── 個別記録一覧（展開時） ── */}
       {expanded && (
         <div className="mt-2 ml-2 space-y-1 border-l-2 border-green-100 pl-3">
           <ShotList stat={stat} onShotDeleted={onShotDeleted} />
@@ -190,10 +228,15 @@ function UnassignedRow({
 export function ClubAveragesSection({ initialStats }: { initialStats: ClubStat[] }) {
   const [stats, setStats] = useState<ClubStat[]>(initialStats);
 
-  // 棒グラフのスケールは番手付きショットの最大値で正規化（未分類は除外）。
+  // 番手（未分類を除く全24本）。進捗・棒グラフ正規化に使用。
   const classifiedStats = stats.filter((s) => s.club !== UNASSIGNED_KEY);
-  const maxYards = classifiedStats.length
-    ? Math.round(Math.max(...classifiedStats.map((s) => s.average_distance_meters)) * 1.09361)
+  const totalClubs = classifiedStats.length;
+  const recordedCount = classifiedStats.filter((s) => s.shot_count > 0).length;
+
+  // 棒グラフのスケールはデータのある番手の最大平均で正規化。
+  const withData = classifiedStats.filter((s) => s.shot_count > 0);
+  const maxYards = withData.length
+    ? Math.round(Math.max(...withData.map((s) => s.average_distance_meters)) * 1.09361)
     : 1;
 
   function handleShotDeleted(club: string, shotId: string) {
@@ -202,32 +245,32 @@ export function ClubAveragesSection({ initialStats }: { initialStats: ClubStat[]
         .map((s) => {
           if (s.club !== club) return s;
           const remaining = s.shots.filter((sh) => sh.id !== shotId);
-          if (remaining.length === 0) return null;
+          // 未分類は0件になったら行ごと消す（既存挙動を維持）。
+          if (s.club === UNASSIGNED_KEY && remaining.length === 0) return null;
           const totalMeters = remaining.reduce((sum, sh) => sum + sh.distance_meters, 0);
+          // 番手は0件でも行は残し「まだ記録なし」表示に戻す。
           return {
             ...s,
             shots: remaining,
             shot_count: remaining.length,
-            average_distance_meters: totalMeters / remaining.length,
+            average_distance_meters: remaining.length
+              ? parseFloat((totalMeters / remaining.length).toFixed(1))
+              : 0,
           };
         })
         .filter((s): s is ClubStat => s !== null)
     );
   }
 
-  if (stats.length === 0) {
-    return (
-      <div className="card text-center py-10">
-        <p className="text-green-400">まだショットデータがありません</p>
-        <p className="text-sm text-green-400 mt-1">ショットを記録すると統計が表示されます</p>
-      </div>
-    );
-  }
-
   return (
     <div className="card">
-      <h2 className="font-semibold text-green-800 mb-1">番手別平均飛距離</h2>
-      <p className="text-xs text-green-400 mb-3">番手をタップすると個別ショット一覧が開きます</p>
+      <div className="flex items-center justify-between mb-1">
+        <h2 className="font-semibold text-green-800">番手別平均飛距離</h2>
+        <span className="text-xs text-green-500 tabular-nums">
+          {recordedCount} / {totalClubs} 番手 記録済み
+        </span>
+      </div>
+      <p className="text-xs text-green-400 mb-3">番手をタップすると個別記録が開きます</p>
       <div className="space-y-3">
         {stats.map((stat) =>
           stat.club === UNASSIGNED_KEY ? (
@@ -246,6 +289,9 @@ export function ClubAveragesSection({ initialStats }: { initialStats: ClubStat[]
           )
         )}
       </div>
+      <p className="text-[11px] text-green-400 mt-3">
+        ラウンド中の距離計測で番手ごとの飛距離が貯まります
+      </p>
     </div>
   );
 }

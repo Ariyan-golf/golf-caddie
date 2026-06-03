@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
-import { CLUB_LABELS, CLUBS } from "@/types";
+import { CLUB_LABELS } from "@/types";
 import type { Club } from "@/types";
+import { getClubStats } from "@/lib/club-averages";
 import { ClubAveragesSection, UNASSIGNED_KEY } from "@/components/ClubAveragesSection";
 import { UnfilledShotsSection, type UnfilledShot } from "@/components/UnfilledShotsSection";
 
@@ -10,55 +11,45 @@ export default async function HistoryPage() {
   const { data: { session } } = await supabase.auth.getSession();
   const user = session?.user ?? null;
 
-  // ID・日付付きで全件取得（展開表示と個別削除に使用）
-  // shots テーブルから直接集計。RLS が holes→rounds.user_id 経由で所有権を強制する。
-  // club が NULL のショットは「未分類」グループにまとめる（post_round 入力モードで番手後付けのケース）。
-  const { data: shotRows } = await supabase
+  // 全番手(CLUBS 24本) × 両ソース(shots / shot_distances) 合算を取得。
+  // 記録ゼロの番手も含む（CLUBS順）。
+  const clubStats = await getClubStats(supabase, user!.id);
+
+  // 未分類（club=null）の距離付きラウンドショットは従来どおり別グループで表示。
+  // RLS が holes→rounds.user_id 経由で所有権を強制する。
+  const { data: unassignedRows } = await supabase
     .from("shots")
     .select(`
-      id, club, distance_yards, distance_meters, created_at,
+      id, distance_yards, distance_meters, created_at,
       holes!inner(rounds!inner(user_id))
     `)
     .eq("holes.rounds.user_id", user!.id)
+    .is("club", null)
     .not("distance_meters", "is", null)
     .order("created_at", { ascending: false });
 
-  // クラブ別に集計しつつ個別ショットも保持。club === null は UNASSIGNED_KEY にまとめる。
-  const clubMap = new Map<string, {
-    totalMeters: number;
-    shots: { id: string; distance_yards: number; distance_meters: number; created_at: string }[];
-  }>();
+  const unassignedShots = (unassignedRows ?? []).map((r) => ({
+    id: r.id as string,
+    distance_yards: (r.distance_yards as number | null) ?? 0,
+    distance_meters: Number(r.distance_meters),
+    created_at: r.created_at as string,
+    source: "shot" as const,
+  }));
 
-  for (const shot of shotRows ?? []) {
-    if (shot.distance_meters == null) continue;
-    const key = shot.club ?? UNASSIGNED_KEY;
-    const prev = clubMap.get(key) ?? { totalMeters: 0, shots: [] };
-    clubMap.set(key, {
-      totalMeters: prev.totalMeters + Number(shot.distance_meters),
-      shots: [...prev.shots, {
-        id: shot.id,
-        distance_yards: shot.distance_yards,
-        distance_meters: Number(shot.distance_meters),
-        created_at: shot.created_at,
-      }],
-    });
-  }
-
-  // 並び順: CLUBS 配列の順（1W → 3W → … → ウェッジ）、未分類は最後。
-  const clubOrder = new Map<string, number>(CLUBS.map((c, i) => [c, i]));
-  const orderIndex = (club: string) =>
-    club === UNASSIGNED_KEY
-      ? Number.MAX_SAFE_INTEGER
-      : clubOrder.get(club) ?? Number.MAX_SAFE_INTEGER - 1;
-
-  const clubStats = Array.from(clubMap.entries())
-    .map(([club, { totalMeters, shots }]) => ({
-      club,
-      average_distance_meters: totalMeters / shots.length,
-      shot_count: shots.length,
-      shots,
-    }))
-    .sort((a, b) => orderIndex(a.club) - orderIndex(b.club));
+  // 未分類は記録がある場合のみ末尾に追加（既存 UnassignedRow の挙動を維持）。
+  const statsForSection = unassignedShots.length
+    ? [
+        ...clubStats,
+        {
+          club: UNASSIGNED_KEY,
+          average_distance_meters: parseFloat(
+            (unassignedShots.reduce((s, x) => s + x.distance_meters, 0) / unassignedShots.length).toFixed(1)
+          ),
+          shot_count: unassignedShots.length,
+          shots: unassignedShots,
+        },
+      ]
+    : clubStats;
 
   const { data: recentShots } = await supabase
     .from("shots")
@@ -115,7 +106,7 @@ export default async function HistoryPage() {
         <h1 className="text-xl font-bold text-green-800">スタッツ</h1>
       </div>
 
-      <ClubAveragesSection initialStats={clubStats} />
+      <ClubAveragesSection initialStats={statsForSection} />
 
       <UnfilledShotsSection initialShots={unfilledShots} />
 
