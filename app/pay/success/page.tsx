@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { todayJST } from "@/lib/day-pass";
 import { redirect } from "next/navigation";
 import Link from "next/link";
+import { PollUntilPaid } from "./PollUntilPaid";
 
 export default async function PaySuccessPage({
   searchParams,
@@ -28,6 +29,8 @@ export default async function PaySuccessPage({
 
   return (
     <div className="min-h-screen p-4 max-w-md mx-auto flex flex-col justify-center space-y-6">
+      {/* webhook 反映前に着地したときだけ自動更新（反映後は何もしない）。 */}
+      <PollUntilPaid paid={isPaidToday} />
       <div className="text-center space-y-3">
         <div className="text-5xl">{isPaidToday ? "✅" : "⏳"}</div>
         <h1 className="text-2xl font-bold text-green-800">

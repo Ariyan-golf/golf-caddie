@@ -1,12 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 
 export function RoundPaymentButton() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // 連打ガード：再レンダ前の同フレーム連打で二重決済リクエストが飛ばないよう、
+  // 同期的に判定できる ref を併用する。
+  const processingRef = useRef(false);
 
   async function handleClick() {
+    if (processingRef.current) return;
+    processingRef.current = true;
     setLoading(true);
     setError(null);
     try {
@@ -35,6 +40,8 @@ export function RoundPaymentButton() {
     } catch {
       setError("通信エラーが発生しました。インターネット接続を確認してください。");
       setLoading(false);
+    } finally {
+      processingRef.current = false;
     }
   }
 

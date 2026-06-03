@@ -4,7 +4,9 @@ import Link from "next/link";
 import { CheckoutButton } from "./CheckoutButton";
 import { RoundPaymentButton } from "@/components/RoundPaymentButton";
 import { CancelButton } from "./CancelButton";
+import { ReflectionGate } from "./ReflectionGate";
 import { isBetaMode } from "@/lib/betaMode";
+import { todayJST } from "@/lib/day-pass";
 
 // v4: 月額サブスク330円1本に統一。
 // - free: 3回ラウンドの無料体験、データは1日後削除
@@ -69,7 +71,7 @@ export default async function PlanPage({ searchParams }: Props) {
   );
   const { data: profile } = await admin
     .from("profiles")
-    .select("plan, round_count, cancelled_at")
+    .select("plan, round_count, cancelled_at, day_pass_date")
     .eq("id", user!.id)
     .single();
 
@@ -81,6 +83,12 @@ export default async function PlanPage({ searchParams }: Props) {
   const isSubscriber = currentPlan === "premium" || currentPlan === "standard";
 
   const beta = isBetaMode();
+
+  // 決済から戻った直後（?success / ?golf_success）、webhook が DB に反映するまでの間は
+  // 決済ボタンを隠して「反映中…」を出し、再押下による二重決済を防ぐ。
+  // 反映済み（サブスク=plan / 単発=day_pass_date が当日）なら通常表示に戻す。
+  const reflectingSub = !!params.success && !isSubscriber;
+  const reflectingGolf = !!params.golf_success && profile?.day_pass_date !== todayJST();
 
   return (
     <div className="max-w-lg mx-auto p-4 space-y-6 pb-24">
@@ -185,10 +193,12 @@ export default async function PlanPage({ searchParams }: Props) {
                   ダウングレード不可
                 </div>
               ) : (
-                <CheckoutButton
-                  plan="premium"
-                  label={`月額サブスクに登録（${plan.price}${plan.period}）`}
-                />
+                <ReflectionGate pending={reflectingSub}>
+                  <CheckoutButton
+                    plan="premium"
+                    label={`月額サブスクに登録（${plan.price}${plan.period}）`}
+                  />
+                </ReflectionGate>
               )}
             </div>
           );
@@ -200,7 +210,9 @@ export default async function PlanPage({ searchParams }: Props) {
           <p className="font-semibold text-blue-800">⛳ 提携ゴルフ場でのご利用</p>
           <p>通常220円、サブスク会員は280円となります。</p>
           <p>サブスクとは別料金です。当日1回のみ有効です。</p>
-          <RoundPaymentButton />
+          <ReflectionGate pending={reflectingGolf}>
+            <RoundPaymentButton />
+          </ReflectionGate>
         </div>
       )}
 

@@ -201,6 +201,9 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [payLoading, setPayLoading] = useState(false);
   const [payError, setPayError] = useState("");
+  // 連打ガード：再レンダ前の同フレーム連打で二重決済リクエストが飛ばないよう、
+  // 同期的に判定できる ref を使う。
+  const payProcessingRef = useRef(false);
   const [confirmEarlyEnd, setConfirmEarlyEnd] = useState(false);
   const [endedEarly, setEndedEarly] = useState(false);
   const [showBetaModal, setShowBetaModal] = useState(false);
@@ -1103,6 +1106,8 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
   }
 
   async function handlePayNow() {
+    if (payProcessingRef.current) return;
+    payProcessingRef.current = true;
     setPayLoading(true);
     setPayError("");
     try {
@@ -1120,6 +1125,8 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
     } catch {
       setPayError("決済の開始に失敗しました。もう一度お試しください。");
       setPayLoading(false);
+    } finally {
+      payProcessingRef.current = false;
     }
   }
 

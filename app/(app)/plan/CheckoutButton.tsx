@@ -1,11 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 
 export function CheckoutButton({ plan, label }: { plan: "premium"; label: string }) {
   const [loading, setLoading] = useState(false);
+  // 連打ガード：state(loading) の反映＝再レンダ前の同フレーム連打を取りこぼさないよう、
+  // 同期的に判定できる ref を使う（二重に Checkout セッションを作らせない）。
+  const processingRef = useRef(false);
 
   async function handleClick() {
+    if (processingRef.current) return;
+    processingRef.current = true;
     setLoading(true);
     try {
       const res = await fetch("/api/stripe/checkout", {
@@ -19,6 +24,8 @@ export function CheckoutButton({ plan, label }: { plan: "premium"; label: string
       }
     } catch {
       setLoading(false);
+    } finally {
+      processingRef.current = false;
     }
   }
 

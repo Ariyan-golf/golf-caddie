@@ -10,6 +10,9 @@ export function QrScanner({ initialCourse }: { initialCourse?: string }) {
   const [phase, setPhase] = useState<Phase>(initialCourse ? "confirm" : "idle");
   const [courseName, setCourseName] = useState(initialCourse ?? "");
   const [errorMsg, setErrorMsg] = useState("");
+  // 連打ガード：再レンダ(phase切替)前の同フレーム連打で二重決済リクエストが
+  // 飛ばないよう、同期的に判定できる ref を併用する。
+  const payProcessingRef = useRef(false);
 
   useEffect(() => {
     return () => {
@@ -50,6 +53,8 @@ export function QrScanner({ initialCourse }: { initialCourse?: string }) {
   }
 
   async function handlePay() {
+    if (payProcessingRef.current) return;
+    payProcessingRef.current = true;
     setPhase("loading");
     try {
       const res = await fetch("/api/stripe/checkout-once", {
@@ -66,6 +71,8 @@ export function QrScanner({ initialCourse }: { initialCourse?: string }) {
     } catch {
       setErrorMsg("決済の開始に失敗しました。もう一度お試しください。");
       setPhase("error");
+    } finally {
+      payProcessingRef.current = false;
     }
   }
 
