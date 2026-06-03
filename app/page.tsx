@@ -455,12 +455,12 @@ export default async function HomePage() {
           )}
         </div>
 
-        {/* Club averages（ドライバー1Wのみ表示。生 shots から本人分を直接集計。詳細は /swing） */}
+        {/* Club averages（ドライバー1Wのみ表示。生 shots から本人分を直接集計。詳細は /history） */}
         {driverAvgYards !== null && (
           <div className="card">
             <div className="flex items-center justify-between mb-3">
               <h2 className="font-semibold text-green-800">番手別平均飛距離</h2>
-              <Link href="/swing" className="text-xs text-green-600 underline">
+              <Link href="/history" className="text-xs text-green-600 underline">
                 もっと詳しく →
               </Link>
             </div>

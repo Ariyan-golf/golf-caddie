@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { ShotRecorder } from "./ShotRecorder";
 import type { Club } from "@/types";
-import { CLUB_LABELS } from "@/types";
+import { CLUBS, CLUB_LABELS } from "@/types";
 import { calculateDistance, metersToYards } from "@/lib/distance";
 import { stopGpsTracking, getBestShotPosition, startShotWatch, stopShotWatch, awaitHighAccuracyFix, type GpsPoint } from "@/lib/gps";
 import { acquireWakeLock, releaseWakeLock, softReleaseWakeLock } from "@/lib/wakeLock";
@@ -2088,21 +2088,11 @@ function LiePicker({
 }
 
 // ── Distance measurement clubs ────────────────────────────────────────
-const DM_CLUBS = [
-  { value: "1w",     label: "ドライバー（1W）" },
-  { value: "3w",     label: "3W" },
-  { value: "5w",     label: "5W" },
-  { value: "4i",     label: "4I" },
-  { value: "5i",     label: "5I" },
-  { value: "6i",     label: "6I" },
-  { value: "7i",     label: "7I" },
-  { value: "8i",     label: "8I" },
-  { value: "9i",     label: "9I" },
-  { value: "pw",     label: "PW" },
-  { value: "aw",     label: "AW" },
-  { value: "sw",     label: "SW" },
-  { value: "putter", label: "パター" },
-] as const;
+// スタッツ(番手別集計)の対象に合わせ、types の CLUBS 全24本（putter は対象外）。
+const DM_CLUBS: { value: string; label: string }[] = CLUBS.map((c) => ({
+  value: c,
+  label: c === "1w" ? "1W（ドライバー）" : CLUB_LABELS[c],
+}));
 
 // ── ScoreEntryCard: score mode hole completion ────────────────────────
 
@@ -3209,7 +3199,7 @@ function IdleShotSection({
         ⛳ 飛距離を測る
       </button>
       <p className="text-center text-base text-gray-500 mt-2">
-        使ったクラブは「球筋」画面で後から記録できます
+        使ったクラブは「スタッツ」画面で後から記録できます
       </p>
     </div>
   );

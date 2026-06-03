@@ -16,7 +16,6 @@ const navItems: NavItem[] = [
   { href: "/round",      label: "ラウンド",  icon: "⛳" },
   { href: "/ai-manager", label: "ルール",    icon: "🤖" },
   { href: "/ai-caddie",  label: "AIキャディ", imgSrc: "/characters/ai.png" },
-  { href: "/swing",      label: "球筋",      icon: "📊" },
   { href: "/history",    label: "スタッツ",  icon: "🗂️" },
 ];
 
