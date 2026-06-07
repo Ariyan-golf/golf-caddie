@@ -133,7 +133,7 @@ export const ShareCard = forwardRef<HTMLDivElement, ShareCardProps>(function Sha
           position: "absolute",
           left: 0,
           right: 0,
-          bottom: 178,
+          bottom: 210,
           textAlign: "center",
           fontSize: 30,
           fontWeight: 700,
