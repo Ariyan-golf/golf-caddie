@@ -31,8 +31,7 @@ export interface ShareCardButtonProps {
   rank:          number;
   total:         number;
   categoryLabel: string;
-  year:          number;
-  month:         number;
+  eventPeriodLabel: string;
   courseName:    string;
   holeNumber:    number;
   roundDate:     string;   // YYYY-MM-DD
@@ -88,8 +87,7 @@ export function ShareCardButton({
   rank,
   total,
   categoryLabel,
-  year,
-  month,
+  eventPeriodLabel,
   courseName,
   holeNumber,
   roundDate,
@@ -269,8 +267,7 @@ export function ShareCardButton({
                     rank={rank}
                     total={total}
                     categoryLabel={categoryLabel}
-                    year={year}
-                    month={month}
+                    eventPeriodLabel={eventPeriodLabel}
                     courseName={courseName}
                     holeLabel={`${holeNumber}番ホール`}
                     dateLabel={fmtDate(roundDate)}

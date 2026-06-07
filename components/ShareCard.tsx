@@ -16,8 +16,7 @@ export interface ShareCardProps {
   rank:          number;
   total:         number;
   categoryLabel: string;
-  year:          number;
-  month:         number;
+  eventPeriodLabel: string;
   courseName:    string;
   holeLabel:     string;   // 例: "5番ホール"
   dateLabel:     string;   // 例: "2026/6/7"
@@ -31,7 +30,7 @@ const GREEN_DARK = "#265E34";
 const GREY = "#787878";
 
 export const ShareCard = forwardRef<HTMLDivElement, ShareCardProps>(function ShareCard(
-  { distanceYards, rank, total, categoryLabel, year, month, courseName, holeLabel, dateLabel },
+  { distanceYards, rank, total, categoryLabel, eventPeriodLabel, courseName, holeLabel, dateLabel },
   ref,
 ) {
   return (
@@ -71,7 +70,7 @@ export const ShareCard = forwardRef<HTMLDivElement, ShareCardProps>(function Sha
           whiteSpace: "nowrap",
         }}
       >
-        飛ばしっこGO {year}年{month}度
+        飛ばしっこGO {eventPeriodLabel}
       </div>
 
       {/* 白い角丸パネル */}

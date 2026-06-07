@@ -149,10 +149,19 @@ export default async function PublicTobashikkoRankingPage({
     activeAgeKey ? AGE_TABS.find((t) => t.key === activeAgeKey)?.label : "",
   ].filter(Boolean).join("・");
 
-  // 自慢カードのピル表記用（開催イベントの開始日基準で {年}年{月}度）。
+  // 自慢カードのイベントバッジ表記（イベント期間の開始月〜終了月から組み立て）。
   const eventStart = new Date(event.start_date);
-  const eventYear = eventStart.getFullYear();
-  const eventMonth = eventStart.getMonth() + 1;
+  const eventEnd = new Date(event.end_date);
+  const startYear = eventStart.getFullYear();
+  const startMonth = eventStart.getMonth() + 1;
+  const endYear = eventEnd.getFullYear();
+  const endMonth = eventEnd.getMonth() + 1;
+  const eventPeriodLabel =
+    startYear !== endYear
+      ? `${startYear}年${startMonth}月-${endYear}年${endMonth}月`
+      : startMonth === endMonth
+        ? `${startYear}年 ${startMonth}月`
+        : `${startYear}年 ${startMonth}-${endMonth}月`;
 
   return (
     <PageShell>
@@ -187,8 +196,7 @@ export default async function PublicTobashikkoRankingPage({
           myRank={myRank}
           nicknameConfigured={nicknameConfigured}
           filterLabel={filterLabel}
-          year={eventYear}
-          month={eventMonth}
+          eventPeriodLabel={eventPeriodLabel}
           cardCategoryLabel={filterLabel || "全体"}
         />
       )}
@@ -284,15 +292,13 @@ function MyRankCard({
   myRank,
   nicknameConfigured,
   filterLabel,
-  year,
-  month,
+  eventPeriodLabel,
   cardCategoryLabel,
 }: {
   myRank: TobashikkoMyRank | null;
   nicknameConfigured: boolean;
   filterLabel: string;
-  year: number;
-  month: number;
+  eventPeriodLabel: string;
   cardCategoryLabel: string;
 }) {
   if (!nicknameConfigured) {
@@ -341,8 +347,7 @@ function MyRankCard({
         rank={myRank.rank}
         total={myRank.total}
         categoryLabel={cardCategoryLabel}
-        year={year}
-        month={month}
+        eventPeriodLabel={eventPeriodLabel}
         courseName={myRank.course_name}
         holeNumber={myRank.hole_number}
         roundDate={myRank.round_date}
