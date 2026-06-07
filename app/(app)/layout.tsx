@@ -3,6 +3,7 @@ import { Navigation } from "@/components/Navigation";
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import ConsentGate from "@/components/ConsentGate";
+import { OnboardingNotice } from "@/components/OnboardingNotice";
 import { getNeedsConsent } from "@/lib/consent";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
@@ -22,6 +23,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   return (
     <div className="min-h-screen pb-20">
       <ConsentGate needsConsent={needsConsent} />
+      <OnboardingNotice />
       {children}
       <footer className="text-center text-xs text-green-400 py-4">
         <Link href="/terms" className="underline hover:text-green-600">利用規約</Link>

@@ -345,6 +345,10 @@ export function NewRoundForm({ linkedCourseId }: { linkedCourseId?: string }) {
   return (
     <>
     <form onSubmit={handleSubmit} className="card space-y-5">
+      <p className="text-xs text-gray-400 leading-relaxed">
+        📵 ラウンド中は「おやすみモード」推奨。着信が鳴らず、計測はそのまま使えます。
+      </p>
+
       {error && (
         <div className="bg-red-50 border border-red-200 text-red-600 rounded-xl p-3 text-sm">
           {error}
