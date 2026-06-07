@@ -165,7 +165,7 @@ export const ShareCard = forwardRef<HTMLDivElement, ShareCardProps>(function Sha
         }}
       >
         <div style={{ fontSize: 46, fontWeight: 900, color: "#ffffff" }}>
-          あなたの一発、全国で何位？
+          次のラウンドが、もっと楽しくなる。
         </div>
         <div style={{ fontSize: 26, fontWeight: 700, color: "#ffffff", opacity: 0.95, marginTop: 12 }}>
           #GolfCaddieAI&nbsp;&nbsp;#飛ばしっこGO&nbsp;&nbsp;@golfcaddie_ai2026

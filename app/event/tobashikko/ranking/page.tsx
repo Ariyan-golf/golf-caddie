@@ -333,6 +333,9 @@ function MyRankCard({
         <span className="text-sm font-normal text-amber-500 ml-0.5">yd</span>
       </p>
 
+      <p className="text-xs font-semibold text-amber-700 mt-4">
+        あなたの一発、全国で何位？
+      </p>
       <ShareCardButton
         distanceYards={myRank.distance_yards}
         rank={myRank.rank}
