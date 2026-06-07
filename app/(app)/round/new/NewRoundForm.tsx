@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { Fragment, useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { fetchWeather } from "@/lib/weather";
@@ -192,6 +192,27 @@ export function NewRoundForm({ linkedCourseId }: { linkedCourseId?: string }) {
     return label;
   }
 
+  // name_kana の先頭文字を五十音の「行」ラベルへ変換（カタカナ→ひらがな、濁点・半濁点も同じ行）。
+  function kanaRow(kana: string | null): string {
+    if (!kana) return "その他";
+    let c = kana.trim().charAt(0);
+    const code = c.charCodeAt(0);
+    if (code >= 0x30A1 && code <= 0x30F6) c = String.fromCharCode(code - 0x60);
+    const map: Record<string, string> = {
+      "あ":"あ行","い":"あ行","う":"あ行","え":"あ行","お":"あ行","ぁ":"あ行","ぃ":"あ行","ぅ":"あ行","ぇ":"あ行","ぉ":"あ行","ゔ":"あ行",
+      "か":"か行","き":"か行","く":"か行","け":"か行","こ":"か行","が":"か行","ぎ":"か行","ぐ":"か行","げ":"か行","ご":"か行","ヶ":"か行","ヵ":"か行",
+      "さ":"さ行","し":"さ行","す":"さ行","せ":"さ行","そ":"さ行","ざ":"さ行","じ":"さ行","ず":"さ行","ぜ":"さ行","ぞ":"さ行",
+      "た":"た行","ち":"た行","つ":"た行","て":"た行","と":"た行","だ":"た行","ぢ":"た行","づ":"た行","で":"た行","ど":"た行","っ":"た行",
+      "な":"な行","に":"な行","ぬ":"な行","ね":"な行","の":"な行",
+      "は":"は行","ひ":"は行","ふ":"は行","へ":"は行","ほ":"は行","ば":"は行","び":"は行","ぶ":"は行","べ":"は行","ぼ":"は行","ぱ":"は行","ぴ":"は行","ぷ":"は行","ぺ":"は行","ぽ":"は行",
+      "ま":"ま行","み":"ま行","む":"ま行","め":"ま行","も":"ま行",
+      "や":"や行","ゆ":"や行","よ":"や行","ゃ":"や行","ゅ":"や行","ょ":"や行",
+      "ら":"ら行","り":"ら行","る":"ら行","れ":"ら行","ろ":"ら行",
+      "わ":"わ行","を":"わ行","ん":"わ行","ゎ":"わ行"
+    };
+    return map[c] || "その他";
+  }
+
   async function handleAutoWeather() {
     console.log("[weather] start fetch");
     if (!navigator.geolocation) {
@@ -365,7 +386,7 @@ export function NewRoundForm({ linkedCourseId }: { linkedCourseId?: string }) {
             type="button"
             className="w-full py-3 px-4 rounded-xl border-2 border-dashed border-green-300 bg-white text-sm font-bold text-green-600
                        hover:bg-green-50 transition-colors active:scale-[0.98]"
-            onClick={() => setIsCourseModalOpen(true)}
+            onClick={() => { setSelectedPrefecture(""); setIsCourseModalOpen(true); }}
           >
             ゴルフ場を選ぶ
           </button>
@@ -378,7 +399,7 @@ export function NewRoundForm({ linkedCourseId }: { linkedCourseId?: string }) {
             <button
               type="button"
               className="text-xs text-green-600 underline"
-              onClick={() => { setSelectedCourseId(""); setCourseName(""); setIsCourseModalOpen(true); }}
+              onClick={() => { setSelectedCourseId(""); setCourseName(""); setSelectedPrefecture(""); setIsCourseModalOpen(true); }}
             >
               変更
             </button>
@@ -747,17 +768,28 @@ export function NewRoundForm({ linkedCourseId }: { linkedCourseId?: string }) {
                     <p className="text-sm text-green-500">この県のゴルフ場は準備中です</p>
                   ) : (
                     <div className="flex flex-col gap-2">
-                      {filtered.map((c) => (
-                        <button
-                          key={c.id}
-                          type="button"
-                          className="w-full py-3 px-4 rounded-xl border-2 border-gray-200 bg-white text-sm font-bold text-gray-700
-                                     hover:border-green-300 transition-colors active:scale-[0.98] text-left"
-                          onClick={() => { setSelectedCourseId(c.id); setCourseName(c.name); setIsCourseModalOpen(false); }}
-                        >
-                          {c.name}
-                        </button>
-                      ))}
+                      {filtered.map((c, i) => {
+                        // filtered は name_kana 昇順。行が前の項目から変わったら見出しを差し込む。
+                        const row = kanaRow(c.name_kana);
+                        const showHeader = i === 0 || kanaRow(filtered[i - 1].name_kana) !== row;
+                        return (
+                          <Fragment key={c.id}>
+                            {showHeader && (
+                              <div className="px-2 py-1 mt-1 first:mt-0 rounded-md bg-green-50 text-xs font-bold text-green-700">
+                                {row}
+                              </div>
+                            )}
+                            <button
+                              type="button"
+                              className="w-full py-3 px-4 rounded-xl border-2 border-gray-200 bg-white text-sm font-bold text-gray-700
+                                         hover:border-green-300 transition-colors active:scale-[0.98] text-left"
+                              onClick={() => { setSelectedCourseId(c.id); setCourseName(c.name); setIsCourseModalOpen(false); }}
+                            >
+                              {c.name}
+                            </button>
+                          </Fragment>
+                        );
+                      })}
                     </div>
                   )}
                 </>
