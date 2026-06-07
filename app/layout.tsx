@@ -6,6 +6,15 @@ export const metadata: Metadata = {
   title: "Golf Caddie AI",
   description: "AIゴルフキャディ - GPS飛距離記録・番手アドバイス・スイング分析",
   manifest: "/manifest.json",
+  icons: {
+    icon: "/icon-192.png",
+    apple: "/apple-touch-icon.png",
+  },
+  appleWebApp: {
+    capable: true,
+    title: "Golf Caddie AI",
+    statusBarStyle: "default",
+  },
 };
 
 export const viewport: Viewport = {
