@@ -31,6 +31,9 @@ export interface TobashikkoMyRank {
   total:           number;
   nickname:        string;
   distance_yards:  number;
+  course_name:     string;
+  hole_number:     number;
+  round_date:      string;          // YYYY-MM-DD
 }
 
 export interface TobashikkoRankingFilter {
@@ -210,6 +213,9 @@ export async function fetchTobashikkoRanking(
         total:          sorted.length,
         nickname:       profMap.get(currentUserId)?.nickname?.trim() || "ゴルファー",
         distance_yards: sorted[idx].distance_yards,
+        course_name:    sorted[idx].course_name,
+        hole_number:    sorted[idx].hole_number,
+        round_date:     sorted[idx].round_date,
       };
     }
   }

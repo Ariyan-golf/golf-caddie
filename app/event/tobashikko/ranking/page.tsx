@@ -2,6 +2,7 @@ import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
 import { fetchTobashikkoRanking, joinBrandModel, type TobashikkoRankingRow, type TobashikkoMyRank, type TobashikkoRankingFilter } from "@/lib/tobashikko/ranking";
+import { ShareCardButton } from "@/components/ShareCardButton";
 
 export const dynamic = "force-dynamic";
 
@@ -148,6 +149,11 @@ export default async function PublicTobashikkoRankingPage({
     activeAgeKey ? AGE_TABS.find((t) => t.key === activeAgeKey)?.label : "",
   ].filter(Boolean).join("・");
 
+  // 自慢カードのピル表記用（開催イベントの開始日基準で {年}年{月}度）。
+  const eventStart = new Date(event.start_date);
+  const eventYear = eventStart.getFullYear();
+  const eventMonth = eventStart.getMonth() + 1;
+
   return (
     <PageShell>
       {/* 開催中イベント情報 */}
@@ -177,7 +183,14 @@ export default async function PublicTobashikkoRankingPage({
 
       {/* 本人ハイライト（ログイン時 & 自分が含まれるフィルタ） */}
       {user && showHighlight && (
-        <MyRankCard myRank={myRank} nicknameConfigured={nicknameConfigured} filterLabel={filterLabel} />
+        <MyRankCard
+          myRank={myRank}
+          nicknameConfigured={nicknameConfigured}
+          filterLabel={filterLabel}
+          year={eventYear}
+          month={eventMonth}
+          cardCategoryLabel={filterLabel || "全体"}
+        />
       )}
 
       {/* ランキング */}
@@ -271,10 +284,16 @@ function MyRankCard({
   myRank,
   nicknameConfigured,
   filterLabel,
+  year,
+  month,
+  cardCategoryLabel,
 }: {
   myRank: TobashikkoMyRank | null;
   nicknameConfigured: boolean;
   filterLabel: string;
+  year: number;
+  month: number;
+  cardCategoryLabel: string;
 }) {
   if (!nicknameConfigured) {
     return (
@@ -313,6 +332,18 @@ function MyRankCard({
         {myRank.distance_yards}
         <span className="text-sm font-normal text-amber-500 ml-0.5">yd</span>
       </p>
+
+      <ShareCardButton
+        distanceYards={myRank.distance_yards}
+        rank={myRank.rank}
+        total={myRank.total}
+        categoryLabel={cardCategoryLabel}
+        year={year}
+        month={month}
+        courseName={myRank.course_name}
+        holeNumber={myRank.hole_number}
+        roundDate={myRank.round_date}
+      />
     </div>
   );
 }
