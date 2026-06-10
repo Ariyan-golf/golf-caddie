@@ -71,6 +71,7 @@ export function SoloMeasure() {
 
         <div className="card text-center py-6 border-2 border-amber-300 bg-gradient-to-r from-amber-50 to-orange-50">
           <p className="text-amber-800 font-semibold">記録を残して、番手アドバイスも受けよう</p>
+          <p className="text-xs text-amber-700 mt-1">登録すると3ラウンド無料でお試し</p>
           <Link
             href="/register"
             className="inline-block mt-3 bg-green-600 hover:bg-green-700 active:bg-green-800 text-white font-bold py-3 px-6 rounded-xl transition-colors"
@@ -101,6 +102,7 @@ export function SoloMeasure() {
 
       <div className="card text-center py-6 border-2 border-amber-300 bg-gradient-to-r from-amber-50 to-orange-50">
         <p className="text-amber-800 font-semibold">記録の保存・履歴・番手アドバイスは会員機能です</p>
+        <p className="text-xs text-amber-700 mt-1">登録すると3ラウンド無料でお試し</p>
         <Link
           href="/register"
           className="inline-block mt-3 text-sm font-bold text-amber-700 underline"
