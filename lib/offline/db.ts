@@ -18,7 +18,6 @@ export interface PendingHole {
   round_id: string;
   hole_number: number;
   par: number;
-  created_at: string;
 }
 
 export interface PendingShot {
