@@ -32,7 +32,7 @@ export async function updateSession(request: NextRequest) {
   const publicPaths = ["/login", "/register", "/auth/callback", "/auth/line", "/lp.html"];
   // ログイン状態に関わらず両対応するページ（middlewareでリダイレクトしない）
   // /compe/join: コンペ参加ランディング。未ログインでもコードを表示しログインへ誘導するため公開。
-  const openPaths = ["/pay", "/round/start", "/event/tobashikko/ranking", "/compe/join", "/terms", "/privacy"];
+  const openPaths = ["/pay", "/round/start", "/event/tobashikko/ranking", "/compe/join", "/terms", "/privacy", "/try"];
   const isPublic = publicPaths.some((p) => pathname.startsWith(p));
   const isOpen = openPaths.some((p) => pathname === p || pathname.startsWith(`${p}/`));
 
