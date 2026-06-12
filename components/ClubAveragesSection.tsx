@@ -281,6 +281,8 @@ function UnassignedRow({
 
 export function ClubAveragesSection({ initialStats }: { initialStats: ClubStat[] }) {
   const [stats, setStats] = useState<ClubStat[]>(initialStats);
+  // 未記録番手の折りたたみ（ページ内ローカルstateのみ・保存不要）。
+  const [showUnrecorded, setShowUnrecorded] = useState(false);
 
   // 番手（未分類を除く全24本）。進捗・棒グラフ正規化に使用。
   const classifiedStats = stats.filter((s) => s.club !== UNASSIGNED_KEY);
@@ -347,6 +349,33 @@ export function ClubAveragesSection({ initialStats }: { initialStats: ClubStat[]
     return true;
   }
 
+  const renderRow = (stat: ClubStat) =>
+    stat.club === UNASSIGNED_KEY ? (
+      <UnassignedRow
+        key={stat.club}
+        stat={stat}
+        onShotDeleted={handleShotDeleted}
+      />
+    ) : (
+      <ClubRow
+        key={stat.club}
+        stat={stat}
+        maxYards={maxYards}
+        onShotDeleted={handleShotDeleted}
+        onClubChange={handleClubChange}
+      />
+    );
+
+  // 記録済みが0件のときだけ従来どおり全番手を最初から表示（空カード回避）。
+  const showAllFromStart = recordedCount === 0;
+  // 表示順は現状維持。未分類(常時表示)＋記録のある番手を上に、未記録番手は末尾に折りたたむ。
+  const recordedRows = showAllFromStart
+    ? stats
+    : stats.filter((s) => s.club === UNASSIGNED_KEY || s.shot_count > 0);
+  const unrecordedRows = showAllFromStart
+    ? []
+    : stats.filter((s) => s.club !== UNASSIGNED_KEY && s.shot_count === 0);
+
   return (
     <div className="card">
       <div className="flex items-center justify-between mb-1">
@@ -357,22 +386,18 @@ export function ClubAveragesSection({ initialStats }: { initialStats: ClubStat[]
       </div>
       <p className="text-xs text-green-400 mb-3">番手をタップすると個別記録が開きます</p>
       <div className="space-y-3">
-        {stats.map((stat) =>
-          stat.club === UNASSIGNED_KEY ? (
-            <UnassignedRow
-              key={stat.club}
-              stat={stat}
-              onShotDeleted={handleShotDeleted}
-            />
-          ) : (
-            <ClubRow
-              key={stat.club}
-              stat={stat}
-              maxYards={maxYards}
-              onShotDeleted={handleShotDeleted}
-              onClubChange={handleClubChange}
-            />
-          )
+        {recordedRows.map(renderRow)}
+        {unrecordedRows.length > 0 && (
+          <>
+            <button
+              type="button"
+              onClick={() => setShowUnrecorded((v) => !v)}
+              className="w-full text-center text-xs text-green-500 hover:text-green-700 py-1 transition-colors"
+            >
+              {showUnrecorded ? "未記録の番手を隠す ▲" : "未記録の番手を表示 ▼"}
+            </button>
+            {showUnrecorded && unrecordedRows.map(renderRow)}
+          </>
         )}
       </div>
       <p className="text-[11px] text-green-400 mt-3">
