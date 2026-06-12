@@ -9,9 +9,10 @@
 // 主キーは uuid_generate_v4 default なので、id 指定 insert/upsert が成立する）。
 
 const DB_NAME = "gca_offline";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const STORE_HOLES = "pending_holes";
 const STORE_SHOTS = "pending_shots";
+const STORE_SCORES = "pending_score_updates";
 
 export interface PendingHole {
   id: string;
@@ -33,6 +34,14 @@ export interface PendingShot {
   distance_yards: number | null;
   club_input_at: string | null;
   created_at: string;
+}
+
+export interface PendingScoreUpdate {
+  hole_id: string;
+  round_id: string;
+  score?: number | null;
+  putts?: number | null;
+  penalties?: number;
 }
 
 // SSR / 非対応環境でも import だけで落ちないよう、利用時にガードする。
@@ -58,6 +67,9 @@ function openDb(): Promise<IDBDatabase | null> {
       }
       if (!db.objectStoreNames.contains(STORE_SHOTS)) {
         db.createObjectStore(STORE_SHOTS, { keyPath: "id" });
+      }
+      if (!db.objectStoreNames.contains(STORE_SCORES)) {
+        db.createObjectStore(STORE_SCORES, { keyPath: "hole_id" });
       }
     };
     req.onsuccess = () => resolve(req.result);
@@ -180,4 +192,20 @@ export function deleteHole(id: string): Promise<void> {
 
 export function deleteShot(id: string): Promise<void> {
   return del(STORE_SHOTS, id);
+}
+
+// 同一 hole_id の既存レコードがあれば部分更新でマージしてから put
+// （score だけ / putts だけ を別々に保存しても他フィールドを消さないため）。
+export async function putScoreUpdate(rec: PendingScoreUpdate): Promise<void> {
+  const existing = (await getAllScoreUpdates()).find((s) => s.hole_id === rec.hole_id);
+  const merged: PendingScoreUpdate = existing ? { ...existing, ...rec } : rec;
+  return put(STORE_SCORES, merged);
+}
+
+export function getAllScoreUpdates(): Promise<PendingScoreUpdate[]> {
+  return getAll<PendingScoreUpdate>(STORE_SCORES);
+}
+
+export function deleteScoreUpdate(hole_id: string): Promise<void> {
+  return del(STORE_SCORES, hole_id);
 }

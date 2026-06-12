@@ -14,6 +14,8 @@ import {
   getAllShots,
   deleteHole,
   deleteShot,
+  getAllScoreUpdates,
+  deleteScoreUpdate,
 } from "@/lib/offline/db";
 
 type SupabaseClient = ReturnType<typeof createClient>;
@@ -51,6 +53,52 @@ export async function flush(supabase: SupabaseClient): Promise<void> {
         await deleteShot(shot.id);
       } catch (err) {
         console.warn("[offline-sync] shot upsert threw, keep for retry", shot.id, err);
+      }
+    }
+
+    // ── スコア更新を最後に（ホール本体が同期済みであることを期待） ────────
+    const scoreUpdates = await getAllScoreUpdates();
+    const syncedRoundIds = new Set<string>();
+    for (const su of scoreUpdates) {
+      try {
+        // undefined のフィールドは触らない。null は「明示クリア」の有効値として送る。
+        const payload: { score?: number | null; putts?: number | null; penalties?: number } = {};
+        if (su.score !== undefined) payload.score = su.score;
+        if (su.putts !== undefined) payload.putts = su.putts;
+        if (su.penalties !== undefined) payload.penalties = su.penalties;
+
+        const { data, error } = await supabase
+          .from("holes")
+          .update(payload)
+          .eq("id", su.hole_id)
+          .select("id");
+        if (error || !data || data.length === 0) {
+          // ホール本体が未同期だと 0 件＝後で再送するため残す。
+          if (error) {
+            console.warn("[offline-sync] score update failed, keep for retry", su.hole_id, error.message);
+          }
+          continue;
+        }
+        await deleteScoreUpdate(su.hole_id);
+        syncedRoundIds.add(su.round_id);
+      } catch (err) {
+        console.warn("[offline-sync] score update threw, keep for retry", su.hole_id, err);
+      }
+    }
+
+    // ── 同期できたラウンドの total_score を再計算（best-effort） ──────────
+    for (const roundId of syncedRoundIds) {
+      try {
+        const { data, error } = await supabase
+          .from("holes")
+          .select("score")
+          .eq("round_id", roundId);
+        if (error || !data) continue;
+        const total = data.reduce((sum, h) => sum + (h.score ?? 0), 0);
+        await supabase.from("rounds").update({ total_score: total }).eq("id", roundId);
+      } catch (err) {
+        // total_score の再計算失敗はスコア保存自体を妨げない。
+        console.warn("[offline-sync] total_score recompute failed", roundId, err);
       }
     }
   } catch (err) {
