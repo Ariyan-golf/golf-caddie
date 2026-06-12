@@ -7,9 +7,15 @@ import { calculateDistance, metersToYards } from "@/lib/distance";
 interface GpsTrackerProps {
   onShotRecorded: (distMeters: number, start: Location, end: Location) => void;
   onCancel: () => void;
+  // 計測確定ボタンの文言（既定は本体アプリ向け）。/try では「②ボール地点で計測」を渡す。
+  recordLabel?: string;
 }
 
-export function GpsTracker({ onShotRecorded, onCancel }: GpsTrackerProps) {
+export function GpsTracker({
+  onShotRecorded,
+  onCancel,
+  recordLabel = "着地点を記録",
+}: GpsTrackerProps) {
   const [startLocation, setStartLocation] = useState<Location | null>(null);
   const [currentLocation, setCurrentLocation] = useState<Location | null>(null);
   const [liveDistance, setLiveDistance] = useState<number | null>(null);
@@ -115,7 +121,7 @@ export function GpsTracker({ onShotRecorded, onCancel }: GpsTrackerProps) {
       </div>
       <div className="flex gap-2">
         <button onClick={recordLanding} className="btn-primary">
-          着地点を記録
+          {recordLabel}
         </button>
         <button
           onClick={onCancel}

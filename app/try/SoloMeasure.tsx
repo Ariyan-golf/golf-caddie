@@ -6,6 +6,8 @@ import { Share2, Download, Copy, Check, X } from "lucide-react";
 import { GpsTracker } from "@/components/GpsTracker";
 import { SoloShareCard } from "@/components/SoloShareCard";
 import { metersToYards } from "@/lib/distance";
+import { CLUBS, CLUB_LABELS } from "@/types";
+import type { Club } from "@/types";
 
 /**
  * 登録不要のソロ飛距離計測 UI。
@@ -20,14 +22,103 @@ type State = "idle" | "measuring" | "result";
 
 interface Result {
   distanceMeters: number;
+  yards: number;
+  club: Club | null;
+  isNewBest: boolean;
+}
+
+// ── localStorage（DB保存なし・端末内のみ） ───────────────────────────────
+// 自己ベスト1件と直近履歴（最大10件）だけを保持する。失敗しても計測体験は継続。
+
+const BEST_KEY = "golf_caddie_try_best";
+const HISTORY_KEY = "golf_caddie_try_history";
+const HISTORY_MAX = 10;
+
+interface TryRecord {
+  yards: number;
+  meters: number;
+  club: Club | null;
+  date: string; // ISO 8601
+}
+
+function loadBest(): TryRecord | null {
+  try {
+    const raw = localStorage.getItem(BEST_KEY);
+    return raw ? (JSON.parse(raw) as TryRecord) : null;
+  } catch {
+    return null;
+  }
+}
+
+function loadHistory(): TryRecord[] {
+  try {
+    const raw = localStorage.getItem(HISTORY_KEY);
+    return raw ? (JSON.parse(raw) as TryRecord[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function clubLabel(club: Club | null): string {
+  return club ? CLUB_LABELS[club] : "番手未選択";
+}
+
+function fmtRecordDate(iso: string): string {
+  try {
+    return new Date(iso).toLocaleDateString("ja-JP", {
+      month: "numeric",
+      day: "numeric",
+    });
+  } catch {
+    return "";
+  }
 }
 
 export function SoloMeasure() {
   const [state, setState] = useState<State>("idle");
   const [result, setResult] = useState<Result | null>(null);
+  const [selectedClub, setSelectedClub] = useState<Club | "">("");
+  const [best, setBest] = useState<TryRecord | null>(null);
+  const [history, setHistory] = useState<TryRecord[]>([]);
+
+  // localStorage はクライアントのみ。初回マウントで読み込む。
+  useEffect(() => {
+    setBest(loadBest());
+    setHistory(loadHistory());
+  }, []);
 
   function handleRecorded(distMeters: number) {
-    setResult({ distanceMeters: distMeters });
+    const yards = metersToYards(distMeters);
+    const meters = Math.round(distMeters);
+    const club: Club | null = selectedClub === "" ? null : selectedClub;
+    const record: TryRecord = {
+      yards,
+      meters,
+      club,
+      date: new Date().toISOString(),
+    };
+
+    // 履歴：先頭に追加し最大10件で打ち切り。
+    const nextHistory = [record, ...history].slice(0, HISTORY_MAX);
+    setHistory(nextHistory);
+    try {
+      localStorage.setItem(HISTORY_KEY, JSON.stringify(nextHistory));
+    } catch {
+      /* 保存失敗時も計測体験は継続 */
+    }
+
+    // 自己ベスト判定（ヤードで比較）。初回 or 更新時のみ保存。
+    const isNewBest = !best || yards > best.yards;
+    if (isNewBest) {
+      setBest(record);
+      try {
+        localStorage.setItem(BEST_KEY, JSON.stringify(record));
+      } catch {
+        /* 同上 */
+      }
+    }
+
+    setResult({ distanceMeters: distMeters, yards, club, isNewBest });
     setState("result");
   }
 
@@ -36,33 +127,88 @@ export function SoloMeasure() {
     setState("idle");
   }
 
+  // 自己ベスト常時表示バナー（記録があるときだけ）。
+  const bestBanner = best ? (
+    <div className="card flex items-center justify-between py-3">
+      <span className="text-sm font-semibold text-green-700">🏆 自己ベスト</span>
+      <span className="text-green-700">
+        <span className="text-2xl font-bold tabular-nums">{best.yards}</span>
+        <span className="text-sm font-bold">y</span>
+        <span className="text-green-400 text-xs ml-2">
+          {clubLabel(best.club)}・{fmtRecordDate(best.date)}
+        </span>
+      </span>
+    </div>
+  ) : null;
+
+  // 直近の計測履歴リスト（最大10件）。
+  const historyList =
+    history.length > 0 ? (
+      <div className="card">
+        <h2 className="font-semibold text-green-800 mb-2 text-sm">直近の計測</h2>
+        <ul className="space-y-1">
+          {history.map((h, i) => (
+            <li
+              key={`${h.date}-${i}`}
+              className="flex items-center gap-2 text-sm py-1 border-b border-green-50 last:border-0"
+            >
+              <span className="text-xs text-green-400 tabular-nums w-10 shrink-0">
+                {fmtRecordDate(h.date)}
+              </span>
+              <span className="text-green-700 font-bold tabular-nums shrink-0">
+                {h.yards}y
+              </span>
+              <span className="text-green-400 text-xs">({h.meters}m)</span>
+              <span className="text-green-600 text-xs ml-auto">{clubLabel(h.club)}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+    ) : null;
+
   if (state === "measuring") {
     return (
       <div className="card">
         <GpsTracker
           onShotRecorded={(distMeters) => handleRecorded(distMeters)}
           onCancel={reset}
+          recordLabel="②ボール地点で計測"
         />
       </div>
     );
   }
 
   if (state === "result" && result) {
-    const yards = metersToYards(result.distanceMeters);
     const meters = Math.round(result.distanceMeters);
     return (
       <div className="space-y-4">
+        {bestBanner}
+
         <div className="card text-center py-8">
+          {result.isNewBest && (
+            <div className="inline-block mb-2 px-3 py-1 rounded-full bg-amber-100 text-amber-700 text-sm font-bold">
+              🎉 自己ベスト更新！
+            </div>
+          )}
           <p className="text-sm font-semibold text-green-600">計測結果</p>
           <div className="mt-2 flex items-baseline justify-center gap-2">
-            <span className="text-6xl font-bold text-green-700 tabular-nums">{yards}</span>
+            <span className="text-6xl font-bold text-green-700 tabular-nums">
+              {result.yards}
+            </span>
             <span className="text-2xl font-bold text-green-700">yd</span>
           </div>
-          <p className="text-green-500 text-sm mt-1">（{meters}m）</p>
+          <p className="text-green-500 text-sm mt-1">
+            （{meters}m）{result.club && ` ・ ${CLUB_LABELS[result.club]}`}
+          </p>
 
           <div className="mt-6">
-            <SoloShareButton distanceYards={yards} distanceMeters={meters} />
+            <SoloShareButton distanceYards={result.yards} distanceMeters={meters} />
           </div>
+          {result.isNewBest && (
+            <p className="text-xs text-pink-600 mt-2 font-semibold">
+              自己ベスト更新！シェアして自慢しよう
+            </p>
+          )}
 
           <button onClick={reset} className="btn-secondary mt-3 py-2 text-sm">
             もう一度計る
@@ -79,6 +225,8 @@ export function SoloMeasure() {
             無料で会員登録
           </Link>
         </div>
+
+        {historyList}
       </div>
     );
   }
@@ -86,17 +234,37 @@ export function SoloMeasure() {
   // idle
   return (
     <div className="space-y-4">
+      {bestBanner}
+
       <div className="card">
         <ol className="space-y-2 text-sm text-green-800">
-          <li>1. 「計測スタート」を押して、ボールを打つ位置に立つ</li>
+          <li>1. 「①打つ場所でスタート」を押して、ボールを打つ位置に立つ</li>
           <li>2. ボールの着地点まで歩く（画面の数字がリアルタイムで動きます）</li>
-          <li>3. 着地点で「着地点を記録」を押すと飛距離が出ます</li>
+          <li>3. 着地点で「②ボール地点で計測」を押すと飛距離が出ます</li>
         </ol>
+
+        {/* 番手選択（任意・未選択でも計測可） */}
+        <div className="mt-4">
+          <label className="block text-xs text-green-500 mb-1">番手（任意）</label>
+          <select
+            value={selectedClub}
+            onChange={(e) => setSelectedClub(e.target.value as Club | "")}
+            className="w-full text-sm px-3 py-2 rounded-xl border border-green-200 bg-white text-green-800"
+          >
+            <option value="">番手を選択しない</option>
+            {CLUBS.map((c) => (
+              <option key={c} value={c}>
+                {CLUB_LABELS[c]}
+              </option>
+            ))}
+          </select>
+        </div>
+
         <p className="text-xs text-green-400 mt-3">
           ※ 位置情報の利用を許可してください。屋外でのご利用を推奨します。
         </p>
         <button onClick={() => setState("measuring")} className="btn-primary mt-4">
-          計測スタート
+          ①打つ場所でスタート
         </button>
       </div>
 
@@ -110,6 +278,8 @@ export function SoloMeasure() {
           無料で会員登録
         </Link>
       </div>
+
+      {historyList}
     </div>
   );
 }
