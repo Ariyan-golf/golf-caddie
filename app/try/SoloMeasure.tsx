@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Share2, Download, Copy, Check, X } from "lucide-react";
+import { Share2, Download, Copy, Check, X, Pencil } from "lucide-react";
 import { GpsTracker } from "@/components/GpsTracker";
 import { SoloShareCard } from "@/components/SoloShareCard";
 import { metersToYards } from "@/lib/distance";
@@ -80,6 +80,8 @@ export function SoloMeasure() {
   const [selectedClub, setSelectedClub] = useState<Club | "">("");
   const [best, setBest] = useState<TryRecord | null>(null);
   const [history, setHistory] = useState<TryRecord[]>([]);
+  // 履歴のどの行の番手を編集中か（null＝編集なし）。
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
 
   // localStorage はクライアントのみ。初回マウントで読み込む。
   useEffect(() => {
@@ -127,6 +129,36 @@ export function SoloMeasure() {
     setState("idle");
   }
 
+  // 履歴行の番手を後から付け替え。距離・日付は不変。localStorage に保存し、
+  // 対象が自己ベストと同一記録（日付＋距離一致）なら自己ベストの番手も連動更新。
+  function handleEditClub(index: number, newClubValue: string) {
+    const target = history[index];
+    if (!target) return;
+    const newClub: Club | null = newClubValue === "" ? null : (newClubValue as Club);
+
+    const nextHistory = history.map((h, i) =>
+      i === index ? { ...h, club: newClub } : h
+    );
+    setHistory(nextHistory);
+    try {
+      localStorage.setItem(HISTORY_KEY, JSON.stringify(nextHistory));
+    } catch {
+      /* 保存失敗時も表示は更新済み */
+    }
+
+    if (best && best.date === target.date && best.yards === target.yards) {
+      const nextBest = { ...best, club: newClub };
+      setBest(nextBest);
+      try {
+        localStorage.setItem(BEST_KEY, JSON.stringify(nextBest));
+      } catch {
+        /* 同上 */
+      }
+    }
+
+    setEditingIndex(null);
+  }
+
   // 自己ベスト常時表示バナー（記録があるときだけ）。
   const bestBanner = best ? (
     <div className="card flex items-center justify-between py-3">
@@ -159,7 +191,32 @@ export function SoloMeasure() {
                 {h.yards}y
               </span>
               <span className="text-green-400 text-xs">({h.meters}m)</span>
-              <span className="text-green-600 text-xs ml-auto">{clubLabel(h.club)}</span>
+              {editingIndex === i ? (
+                <select
+                  value={h.club ?? ""}
+                  onChange={(e) => handleEditClub(i, e.target.value)}
+                  onBlur={() => setEditingIndex(null)}
+                  className="ml-auto text-xs px-1.5 py-1 rounded-lg border border-green-300 bg-white text-green-800"
+                >
+                  <option value="">番手未選択</option>
+                  {CLUBS.map((c) => (
+                    <option key={c} value={c}>
+                      {CLUB_LABELS[c]}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setEditingIndex(i)}
+                  aria-label="番手を編集"
+                  className="ml-auto text-green-600 text-xs inline-flex items-center gap-1
+                             underline decoration-dotted underline-offset-2 hover:text-green-700"
+                >
+                  {clubLabel(h.club)}
+                  <Pencil size={12} aria-hidden="true" />
+                </button>
+              )}
             </li>
           ))}
         </ul>
