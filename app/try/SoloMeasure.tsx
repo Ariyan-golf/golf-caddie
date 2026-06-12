@@ -74,6 +74,15 @@ function fmtRecordDate(iso: string): string {
   }
 }
 
+// シェアカード用の完全日付（例: "2026/6/10"）。fmtToday と同形式。
+function fmtCardDate(iso: string): string {
+  try {
+    return new Date(iso).toLocaleDateString("ja-JP");
+  } catch {
+    return "";
+  }
+}
+
 export function SoloMeasure() {
   const [state, setState] = useState<State>("idle");
   const [result, setResult] = useState<Result | null>(null);
@@ -191,32 +200,40 @@ export function SoloMeasure() {
                 {h.yards}y
               </span>
               <span className="text-green-400 text-xs">({h.meters}m)</span>
-              {editingIndex === i ? (
-                <select
-                  value={h.club ?? ""}
-                  onChange={(e) => handleEditClub(i, e.target.value)}
-                  onBlur={() => setEditingIndex(null)}
-                  className="ml-auto text-xs px-1.5 py-1 rounded-lg border border-green-300 bg-white text-green-800"
-                >
-                  <option value="">番手未選択</option>
-                  {CLUBS.map((c) => (
-                    <option key={c} value={c}>
-                      {CLUB_LABELS[c]}
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => setEditingIndex(i)}
-                  aria-label="番手を編集"
-                  className="ml-auto text-green-600 text-xs inline-flex items-center gap-1
-                             underline decoration-dotted underline-offset-2 hover:text-green-700"
-                >
-                  {clubLabel(h.club)}
-                  <Pencil size={12} aria-hidden="true" />
-                </button>
-              )}
+              <div className="ml-auto flex items-center gap-2 shrink-0">
+                {editingIndex === i ? (
+                  <select
+                    value={h.club ?? ""}
+                    onChange={(e) => handleEditClub(i, e.target.value)}
+                    onBlur={() => setEditingIndex(null)}
+                    className="text-xs px-1.5 py-1 rounded-lg border border-green-300 bg-white text-green-800"
+                  >
+                    <option value="">番手未選択</option>
+                    {CLUBS.map((c) => (
+                      <option key={c} value={c}>
+                        {CLUB_LABELS[c]}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setEditingIndex(i)}
+                    aria-label="番手を編集"
+                    className="text-green-600 text-xs inline-flex items-center gap-1
+                               underline decoration-dotted underline-offset-2 hover:text-green-700"
+                  >
+                    {clubLabel(h.club)}
+                    <Pencil size={12} aria-hidden="true" />
+                  </button>
+                )}
+                <SoloShareButton
+                  variant="icon"
+                  distanceYards={h.yards}
+                  distanceMeters={h.meters}
+                  dateLabel={fmtCardDate(h.date)}
+                />
+              </div>
             </li>
           ))}
         </ul>
@@ -399,9 +416,15 @@ function fmtToday() {
 function SoloShareButton({
   distanceYards,
   distanceMeters,
+  dateLabel: dateLabelProp,
+  variant = "primary",
 }: {
   distanceYards: number;
   distanceMeters: number;
+  // 省略時は今日の日付。履歴からのシェアでは各記録の日付を渡す。
+  dateLabel?: string;
+  // primary: 結果画面の大ボタン / icon: 履歴行の小アイコン。
+  variant?: "primary" | "icon";
 }) {
   useNotoSansJp();
   const cardRef = useRef<HTMLDivElement>(null);
@@ -409,7 +432,7 @@ function SoloShareButton({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-  const dateLabel = fmtToday();
+  const dateLabel = dateLabelProp ?? fmtToday();
 
   function buildCaption() {
     return (
@@ -517,13 +540,23 @@ function SoloShareButton({
 
   return (
     <>
-      <button
-        onClick={openPreview}
-        className="w-full inline-flex items-center justify-center gap-2 bg-pink-600 hover:bg-pink-700 active:bg-pink-800 text-white font-bold py-3 rounded-xl transition-colors"
-      >
-        <Share2 size={18} aria-hidden="true" />
-        記録をシェア
-      </button>
+      {variant === "icon" ? (
+        <button
+          onClick={openPreview}
+          aria-label="この記録をシェア"
+          className="shrink-0 text-pink-600 hover:text-pink-700 active:text-pink-800 p-1"
+        >
+          <Share2 size={16} aria-hidden="true" />
+        </button>
+      ) : (
+        <button
+          onClick={openPreview}
+          className="w-full inline-flex items-center justify-center gap-2 bg-pink-600 hover:bg-pink-700 active:bg-pink-800 text-white font-bold py-3 rounded-xl transition-colors"
+        >
+          <Share2 size={18} aria-hidden="true" />
+          記録をシェア
+        </button>
+      )}
 
       {previewOpen && (
         <div
