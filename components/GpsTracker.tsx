@@ -7,14 +7,21 @@ import { calculateDistance, metersToYards } from "@/lib/distance";
 interface GpsTrackerProps {
   onShotRecorded: (distMeters: number, start: Location, end: Location) => void;
   onCancel: () => void;
+  // 計測確定ボタンの文言（既定は本体アプリ向け）。/try では「②ボール地点で計測」を渡す。
+  recordLabel?: string;
 }
 
-export function GpsTracker({ onShotRecorded, onCancel }: GpsTrackerProps) {
+export function GpsTracker({
+  onShotRecorded,
+  onCancel,
+  recordLabel = "着地点を記録",
+}: GpsTrackerProps) {
   const [startLocation, setStartLocation] = useState<Location | null>(null);
   const [currentLocation, setCurrentLocation] = useState<Location | null>(null);
   const [liveDistance, setLiveDistance] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [locating, setLocating] = useState(true);
+  const [showHelp, setShowHelp] = useState(false);
   const watchIdRef = useRef<number | null>(null);
   const startRef = useRef<Location | null>(null);
 
@@ -91,6 +98,27 @@ export function GpsTracker({ onShotRecorded, onCancel }: GpsTrackerProps) {
     return (
       <div className="space-y-2">
         <p className="text-sm text-red-500 bg-red-50 rounded-lg p-2">{error}</p>
+
+        <button
+          type="button"
+          onClick={() => setShowHelp((v) => !v)}
+          className="text-xs text-green-600 underline"
+        >
+          {showHelp ? "設定方法を隠す ▲" : "設定方法を見る ▼"}
+        </button>
+
+        {showHelp && (
+          <ol className="text-xs text-green-700 bg-green-50 rounded-lg p-3 space-y-2 list-decimal list-inside">
+            <li>
+              Safariのアドレスバー左の「ぁあ」→「Webサイトの設定」→ 位置情報を「許可」にする
+            </li>
+            <li>
+              それでも失敗する場合：iPhoneの「設定」→「プライバシーとセキュリティ」→「位置情報サービス」→「Safariのウェブサイト」→「このアプリの使用中」を選択
+            </li>
+            <li>設定後、このページを再読み込みして再試行してください</li>
+          </ol>
+        )}
+
         <button onClick={onCancel} className="btn-secondary py-2 text-sm">キャンセル</button>
       </div>
     );
@@ -115,7 +143,7 @@ export function GpsTracker({ onShotRecorded, onCancel }: GpsTrackerProps) {
       </div>
       <div className="flex gap-2">
         <button onClick={recordLanding} className="btn-primary">
-          着地点を記録
+          {recordLabel}
         </button>
         <button
           onClick={onCancel}
