@@ -6,13 +6,13 @@ import { ShareCardButton } from "@/components/ShareCardButton";
 
 export const dynamic = "force-dynamic";
 
-// ── 区分タブ定義 ──────────────────────────────────────────────
-const CAT_TABS = [
-  { key: "",             label: "全体" },
-  { key: "am",           label: "アマ男性",  category: "amateur",   gender: "male" },
-  { key: "af",           label: "アマ女性",  category: "amateur",   gender: "female" },
-  { key: "pm",           label: "プロ男性",  category: "pro_coach", gender: "male" },
-  { key: "pf",           label: "プロ女性",  category: "pro_coach", gender: "female" },
+// ── 区分タブ定義（単軸: 全国 / 性別 / プロアマ のどれか1つ）──────────
+const SEG_TABS = [
+  { key: "",        label: "全国" },
+  { key: "male",    label: "男性", gender: "male" },
+  { key: "female",  label: "女性", gender: "female" },
+  { key: "amateur", label: "アマ", category: "amateur" },
+  { key: "pro",     label: "プロ", category: "pro_coach" },
 ] as const;
 
 const AGE_TABS = [
@@ -24,12 +24,15 @@ const AGE_TABS = [
   { key: "60plus", label: "60代以上" },
 ] as const;
 
-function catKeyForUser(category: string | null, gender: string | null): string {
-  const tab = CAT_TABS.find(
-    (t) => t.key && "category" in t && t.category === category && t.gender === gender
-  );
-  return tab?.key ?? "";
-}
+// 旧 ?cat=（プロアマ×性別の複合キー）からの後方互換。
+// 新方式は単軸のため複合の片方しか保持できない。距離順位への影響が大きい
+// 性別を優先して引き継ぐ（アマ男性→男性 / プロ女性→女性）。プロアマ条件は外れる。
+const LEGACY_CAT_TO_SEG: Record<string, string> = {
+  am: "male",
+  pm: "male",
+  af: "female",
+  pf: "female",
+};
 
 interface ActiveEvent {
   id:         string;
@@ -52,7 +55,7 @@ function Medal({ rank }: { rank: number }) {
 export default async function PublicTobashikkoRankingPage({
   searchParams,
 }: {
-  searchParams: Promise<{ cat?: string; age?: string }>;
+  searchParams: Promise<{ seg?: string; cat?: string; age?: string }>;
 }) {
   const params = await searchParams;
 
@@ -93,7 +96,6 @@ export default async function PublicTobashikkoRankingPage({
 
   // ── ユーザープロフィール取得（ログイン時のみ） ─────────────
   let nicknameConfigured = false;
-  let userCatKey = "";
   let userCategory: string | null = null;
   let userGender: string | null = null;
   if (user) {
@@ -105,26 +107,25 @@ export default async function PublicTobashikkoRankingPage({
     nicknameConfigured = !!(prof?.nickname?.trim() && prof?.age_group);
     userCategory = prof?.category ?? null;
     userGender = prof?.gender ?? null;
-    userCatKey = catKeyForUser(userCategory, userGender);
   }
 
   // ── タブの選択状態を決定 ──────────────────────────────────
-  const rawCat = params.cat ?? undefined;
+  const rawSeg = params.seg ?? undefined;
+  const rawCat = params.cat ?? undefined;   // 旧クエリ（後方互換）
   const rawAge = params.age ?? undefined;
 
-  // URL にパラメータがなければ初期値を使う
-  const hasExplicitCat = rawCat !== undefined;
-  const activeCatKey = hasExplicitCat
-    ? (CAT_TABS.some((t) => t.key === rawCat) ? rawCat : "")
-    : (user ? userCatKey : "");
+  // 区分: 新 ?seg= を優先。無ければ旧 ?cat= を単軸へフォールバック変換。
+  const activeSegKey = rawSeg !== undefined
+    ? (SEG_TABS.some((t) => t.key === rawSeg) ? rawSeg : "")
+    : (rawCat !== undefined ? (LEGACY_CAT_TO_SEG[rawCat] ?? "") : "");
   const activeAgeKey = AGE_TABS.some((t) => t.key === rawAge) ? (rawAge ?? "") : "";
 
-  // ── フィルタ構築 ──────────────────────────────────────────
-  const activeCatTab = CAT_TABS.find((t) => t.key === activeCatKey);
+  // ── フィルタ構築（区分は単軸: gender か category のどちらか一方のみ）──
+  const activeSegTab = SEG_TABS.find((t) => t.key === activeSegKey);
   const filter: TobashikkoRankingFilter = {};
-  if (activeCatTab && "category" in activeCatTab) {
-    filter.category = activeCatTab.category;
-    filter.gender = activeCatTab.gender;
+  if (activeSegTab) {
+    if ("gender" in activeSegTab)   filter.gender   = activeSegTab.gender;
+    if ("category" in activeSegTab) filter.category = activeSegTab.category;
   }
   if (activeAgeKey) filter.ageGroup = activeAgeKey;
 
@@ -136,16 +137,21 @@ export default async function PublicTobashikkoRankingPage({
     filter,
   );
 
-  // ── ハイライト表示判定: 自分が含まれるフィルタのときだけ ─────
+  // ── ハイライト表示判定: 選択中の区分に自分が含まれるときだけ ─────
+  const userMatchesSeg = (() => {
+    if (!activeSegTab) return true;                                  // 全国
+    if ("gender" in activeSegTab)   return userGender   === activeSegTab.gender;
+    if ("category" in activeSegTab) return userCategory === activeSegTab.category;
+    return true;
+  })();
   const showHighlight = (() => {
     if (!user || !nicknameConfigured) return true;
-    if (activeCatKey === "") return true;
-    return activeCatKey === userCatKey;
+    return userMatchesSeg;
   })();
 
   // ── フィルタのラベル生成 ─────────────────────────────────────
   const filterLabel = [
-    activeCatTab?.key ? activeCatTab.label : "",
+    activeSegTab?.key ? activeSegTab.label : "",
     activeAgeKey ? AGE_TABS.find((t) => t.key === activeAgeKey)?.label : "",
   ].filter(Boolean).join("・");
 
@@ -174,11 +180,11 @@ export default async function PublicTobashikkoRankingPage({
         </p>
       </div>
 
-      {/* 区分タブ */}
+      {/* 区分タブ（単軸） */}
       <FilterTabs
-        tabs={CAT_TABS}
-        activeKey={activeCatKey}
-        paramName="cat"
+        tabs={SEG_TABS}
+        activeKey={activeSegKey}
+        paramName="seg"
         otherParams={{ age: activeAgeKey }}
       />
 
@@ -187,7 +193,7 @@ export default async function PublicTobashikkoRankingPage({
         tabs={AGE_TABS}
         activeKey={activeAgeKey}
         paramName="age"
-        otherParams={{ cat: activeCatKey }}
+        otherParams={{ seg: activeSegKey }}
       />
 
       {/* 本人ハイライト（ログイン時 & 自分が含まれるフィルタ） */}
@@ -197,7 +203,7 @@ export default async function PublicTobashikkoRankingPage({
           nicknameConfigured={nicknameConfigured}
           filterLabel={filterLabel}
           eventPeriodLabel={eventPeriodLabel}
-          cardCategoryLabel={filterLabel || "全体"}
+          cardCategoryLabel={filterLabel || "全国"}
         />
       )}
 
