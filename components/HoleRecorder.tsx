@@ -10,6 +10,7 @@ import { calculateDistance, metersToYards } from "@/lib/distance";
 import { stopGpsTracking, getBestShotPosition, startShotWatch, stopShotWatch, awaitHighAccuracyFix, getShotWatchTimeoutMs, type GpsPoint } from "@/lib/gps";
 import { acquireWakeLock, releaseWakeLock, softReleaseWakeLock } from "@/lib/wakeLock";
 import { isBetaMode } from "@/lib/betaMode";
+import { putHole, putShot, putScoreUpdate } from "@/lib/offline/db";
 import Link from "next/link";
 import { GpsIndicator } from "./GpsIndicator";
 import { CompactCompass } from "./CompactCompass";
@@ -157,6 +158,22 @@ function getScoreColor(total: number | null, par: number): string {
   if (diff === 0) return "#000000"; // パー：黒
   if (diff === 1) return "#1E88E5"; // ボギー：青
   return "#1A237E"; // ダブルボギー以上：濃い青
+}
+
+// Supabase の insert/upsert は通信失敗時、例外を throw するか {error} を返すか
+// 環境依存。ここでは「圏外（navigator.onLine === false）」または message が
+// ネットワーク系のときだけ true を返し、それ以外（RLS/CHECK/FK 等のDBエラー）は
+// false＝従来どおりのエラー表示に流す。引数は supabase の error オブジェクト・
+// 例外・文字列いずれも受け付ける。
+function isNetworkFailure(errOrException: unknown): boolean {
+  if (typeof navigator !== "undefined" && navigator.onLine === false) return true;
+  const msg =
+    errOrException instanceof Error
+      ? errOrException.message
+      : errOrException && typeof errOrException === "object" && "message" in errOrException
+        ? String((errOrException as { message: unknown }).message)
+        : String(errOrException ?? "");
+  return /Failed to fetch|NetworkError|Load failed/i.test(msg);
 }
 
 // ── Main component ──────────────────────────────────────────────────
@@ -600,20 +617,48 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
     return ((startHole - 1 + currentHoleCount) % 18) + 1;
   }
 
+  // オフラインで新ホールを開始する。既存ホール（同 hole_number）があれば
+  // 新UUIDを振らず再利用（unique(round_id,hole_number) 違反回避）。無い時だけ
+  // クライアントUUIDで採番してバッファに積み、readback と同形の最小オブジェクトを
+  // 楽観追加する（created_at は holes 列に存在しないため積まない）。
+  function startHoleOffline(holeNumber: number, par: number) {
+    const existing = holes.find((h) => h.hole_number === holeNumber);
+    if (!existing) {
+      const holeId = crypto.randomUUID();
+      void putHole({ id: holeId, round_id: roundId, hole_number: holeNumber, par });
+      setHoles((prev) => [
+        ...prev,
+        { id: holeId, hole_number: holeNumber, par, score: null, putts: null, penalties: 0, shots: [] },
+      ]);
+    }
+    setPhase(holeMode === "score" ? "score_entry" : "shooting");
+  }
+
   async function handleStartHole(par: number) {
     setCreating(true);
     const supabase = createClient();
     const holeNumber = nextHoleNumber(holes.length);
-    const { data, error } = await supabase
-      .from("holes")
-      .insert({ round_id: roundId, hole_number: holeNumber, par })
-      .select("*, shots(*)")
-      .single();
-    if (!error && data) {
-      setHoles((prev) => [...prev, data as Hole]);
-      setPhase(holeMode === "score" ? "score_entry" : "shooting");
+    try {
+      const { data, error } = await supabase
+        .from("holes")
+        .insert({ round_id: roundId, hole_number: holeNumber, par })
+        .select("*, shots(*)")
+        .single();
+      if (!error && data) {
+        setHoles((prev) => [...prev, data as Hole]);
+        setPhase(holeMode === "score" ? "score_entry" : "shooting");
+      } else if (isNetworkFailure(error)) {
+        startHoleOffline(holeNumber, par);
+      }
+    } catch (e) {
+      if (isNetworkFailure(e)) {
+        startHoleOffline(holeNumber, par);
+      } else {
+        throw e;
+      }
+    } finally {
+      setCreating(false);
     }
-    setCreating(false);
   }
 
   async function refreshCurrent() {
@@ -628,26 +673,63 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
 
   async function completeHole(putts: number) {
     if (!currentHole) return;
+    const holeId = currentHole.id;
     const score = currentHole.shots.length + penalties + putts;
-    const supabase = createClient();
-    await supabase.from("holes").update({ score, putts, penalties }).eq("id", currentHole.id);
-    const updated = holes.map((h) => h.id === currentHole.id ? { ...h, score, putts, penalties } : h);
+    const penaltiesNow = penalties;
+    // (1) 楽観更新 + UI遷移を先に
+    const updated = holes.map((h) => h.id === holeId ? { ...h, score, putts, penalties: penaltiesNow } : h);
     setHoles(updated);
-    const total = updated.reduce((s, h) => s + (h.score ?? 0), 0);
-    await supabase.from("rounds").update({ total_score: total }).eq("id", roundId);
     setPenalties(0);
     setPhase("par_select");
+    const supabase = createClient();
+    try {
+      // (2) オンライン保存
+      const { error } = await supabase.from("holes").update({ score, putts, penalties: penaltiesNow }).eq("id", holeId);
+      if (error) throw error;
+      // (3) 成功時のみ total_score を更新（best-effort）
+      try {
+        const total = updated.reduce((s, h) => s + (h.score ?? 0), 0);
+        await supabase.from("rounds").update({ total_score: total }).eq("id", roundId);
+      } catch (e) {
+        console.error("[complete-hole] total_score update failed:", e);
+      }
+    } catch (e) {
+      // (4) 圏外なら端末バッファへ（total_score は同期時に再計算）
+      if (isNetworkFailure(e)) {
+        void putScoreUpdate({ hole_id: holeId, round_id: roundId, score, putts, penalties: penaltiesNow });
+      } else {
+        console.error("[complete-hole] update failed:", e);
+      }
+    }
   }
 
   async function completeHoleByScore(totalScore: number, putts: number) {
     if (!currentHole) return;
-    const supabase = createClient();
-    await supabase.from("holes").update({ score: totalScore, putts, penalties: 0 }).eq("id", currentHole.id);
-    const updated = holes.map((h) => h.id === currentHole.id ? { ...h, score: totalScore, putts, penalties: 0 } : h);
+    const holeId = currentHole.id;
+    // (1) 楽観更新 + UI遷移を先に
+    const updated = holes.map((h) => h.id === holeId ? { ...h, score: totalScore, putts, penalties: 0 } : h);
     setHoles(updated);
-    const total = updated.reduce((s, h) => s + (h.score ?? 0), 0);
-    await supabase.from("rounds").update({ total_score: total }).eq("id", roundId);
     setPhase("par_select");
+    const supabase = createClient();
+    try {
+      // (2) オンライン保存
+      const { error } = await supabase.from("holes").update({ score: totalScore, putts, penalties: 0 }).eq("id", holeId);
+      if (error) throw error;
+      // (3) 成功時のみ total_score を更新（best-effort）
+      try {
+        const total = updated.reduce((s, h) => s + (h.score ?? 0), 0);
+        await supabase.from("rounds").update({ total_score: total }).eq("id", roundId);
+      } catch (e) {
+        console.error("[complete-hole-by-score] total_score update failed:", e);
+      }
+    } catch (e) {
+      // (4) 圏外なら端末バッファへ（total_score は同期時に再計算）
+      if (isNetworkFailure(e)) {
+        void putScoreUpdate({ hole_id: holeId, round_id: roundId, score: totalScore, putts, penalties: 0 });
+      } else {
+        console.error("[complete-hole-by-score] update failed:", e);
+      }
+    }
   }
 
   async function updateClub(shotId: string, club: Club) {
@@ -715,12 +797,29 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
   }
 
   async function updateScore(holeId: string, newScore: number) {
-    const supabase = createClient();
-    await supabase.from("holes").update({ score: newScore }).eq("id", holeId);
+    // (1) 楽観更新を先に
     const updated = holes.map((h) => h.id === holeId ? { ...h, score: newScore } : h);
     setHoles(updated);
-    const total = updated.reduce((s, h) => s + (h.score ?? 0), 0);
-    await supabase.from("rounds").update({ total_score: total }).eq("id", roundId);
+    const supabase = createClient();
+    try {
+      // (2) オンライン保存
+      const { error } = await supabase.from("holes").update({ score: newScore }).eq("id", holeId);
+      if (error) throw error;
+      // (3) 成功時のみ total_score を更新（best-effort）
+      try {
+        const total = updated.reduce((s, h) => s + (h.score ?? 0), 0);
+        await supabase.from("rounds").update({ total_score: total }).eq("id", roundId);
+      } catch (e) {
+        console.error("[update-score] total_score update failed:", e);
+      }
+    } catch (e) {
+      // (4) 圏外なら端末バッファへ（total_score は同期時に再計算）
+      if (isNetworkFailure(e)) {
+        void putScoreUpdate({ hole_id: holeId, round_id: roundId, score: newScore });
+      } else {
+        console.error("[update-score] update failed:", e);
+      }
+    }
   }
 
   function handleHoleout() {
@@ -754,19 +853,39 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
   async function goBackToPrevHole() {
     const lastHole = holes.at(-1);
     if (!lastHole) return;
+    const holeId = lastHole.id;
     setGoingBack(true);
-    const supabase = createClient();
-    await supabase.from("holes").update({ score: null, putts: null }).eq("id", lastHole.id);
+    // (1) 楽観更新 + UI遷移を先に
     const updatedHoles = holes.map((h) =>
-      h.id === lastHole.id ? { ...h, score: null, putts: null } : h
+      h.id === holeId ? { ...h, score: null, putts: null } : h
     );
     setHoles(updatedHoles);
-    const total = updatedHoles.reduce((s, h) => s + (h.score ?? 0), 0);
-    await supabase.from("rounds").update({ total_score: total }).eq("id", roundId);
     setPenalties(lastHole.penalties ?? 0);
     setConfirmGoBack(false);
-    setGoingBack(false);
     setPhase(holeMode === "score" ? "score_entry" : "putt_select");
+    const supabase = createClient();
+    try {
+      // (2) オンライン保存
+      const { error } = await supabase.from("holes").update({ score: null, putts: null }).eq("id", holeId);
+      if (error) throw error;
+      // (3) 成功時のみ total_score を更新（best-effort）
+      try {
+        const total = updatedHoles.reduce((s, h) => s + (h.score ?? 0), 0);
+        await supabase.from("rounds").update({ total_score: total }).eq("id", roundId);
+      } catch (e) {
+        console.error("[go-back] total_score update failed:", e);
+      }
+    } catch (e) {
+      // (4) 圏外なら端末バッファへ（total_score は同期時に再計算）
+      if (isNetworkFailure(e)) {
+        void putScoreUpdate({ hole_id: holeId, round_id: roundId, score: null, putts: null });
+      } else {
+        console.error("[go-back] update failed:", e);
+      }
+    } finally {
+      // 圏外で await が失敗してもボタンが固まらないよう必ず解除。
+      setGoingBack(false);
+    }
   }
 
   function toggleEdit(id: string, type: "club" | "lie" | "shape") {
@@ -1041,6 +1160,54 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
       // Refresh in the background only when the INSERT succeeded.
       if (insertOk) {
         void refreshCurrent();
+      } else if (isNetworkFailure(insertErrMsg) && currentHole && dmStart && dmEnd && dmDistance) {
+        // 圏外：端末バッファに積み、楽観的にローカル state を更新する。READ
+        // （refreshCurrent）はスキップ。電波が戻ると OfflineSync が自動同期する。
+        const shotId = crypto.randomUUID();
+        const holeId = currentHole.id;
+        const shotNumber = snapshot.shotNumber;
+        const start = dmStart;
+        const end = dmEnd;
+        const dist = dmDistance;
+        void putShot({
+          id: shotId,
+          hole_id: holeId,
+          round_id: roundId,
+          shot_number: shotNumber,
+          start_lat: start.lat,
+          start_lng: start.lng,
+          end_lat: end.lat,
+          end_lng: end.lng,
+          distance_meters: dist.meters,
+          distance_yards: dist.yards,
+          club_input_at: inputMode === "realtime" ? "当日" : "事後",
+          created_at: new Date().toISOString(),
+        });
+        setHoles((prev) =>
+          prev.map((h) =>
+            h.id === holeId
+              ? {
+                  ...h,
+                  shots: [
+                    ...h.shots,
+                    {
+                      id: shotId,
+                      shot_number: shotNumber,
+                      club: null,
+                      distance_yards: dist.yards,
+                      lie_type: null,
+                      ball_shape: null,
+                      ball_direction: null,
+                      start_lat: start.lat,
+                      start_lng: start.lng,
+                    },
+                  ],
+                }
+              : h,
+          ),
+        );
+        // setLastShot(snapshot) は維持（「直前のショット」を正しく表示）。
+        setShotTimeoutToast("オフライン保存しました（電波が戻ると自動で同期）");
       } else {
         // Don't surface a phantom "直前のショット" if the write failed.
         setLastShot(null);
@@ -1070,19 +1237,50 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
 
   async function updateHoleScoreUnified(score: number | null) {
     if (!currentHole) return;
-    const supabase = createClient();
-    await supabase.from("holes").update({ score }).eq("id", currentHole.id);
-    const updated = holes.map((h) => (h.id === currentHole.id ? { ...h, score } : h));
+    const holeId = currentHole.id;
+    // (1) 楽観更新を先に
+    const updated = holes.map((h) => (h.id === holeId ? { ...h, score } : h));
     setHoles(updated);
-    const total = updated.reduce((s, h) => s + (h.score ?? 0), 0);
-    await supabase.from("rounds").update({ total_score: total }).eq("id", roundId);
+    const supabase = createClient();
+    try {
+      // (2) オンライン保存
+      const { error } = await supabase.from("holes").update({ score }).eq("id", holeId);
+      if (error) throw error;
+      // (3) 成功時のみ total_score を更新（best-effort）
+      try {
+        const total = updated.reduce((s, h) => s + (h.score ?? 0), 0);
+        await supabase.from("rounds").update({ total_score: total }).eq("id", roundId);
+      } catch (e) {
+        console.error("[update-hole-score] total_score update failed:", e);
+      }
+    } catch (e) {
+      // (4) 圏外なら端末バッファへ（total_score は同期時に再計算）
+      if (isNetworkFailure(e)) {
+        void putScoreUpdate({ hole_id: holeId, round_id: roundId, score });
+      } else {
+        console.error("[update-hole-score] update failed:", e);
+      }
+    }
   }
 
   async function updateHolePutts(putts: number | null) {
     if (!currentHole) return;
+    const holeId = currentHole.id;
+    // (1) 楽観更新を先に
+    setHoles((prev) => prev.map((h) => (h.id === holeId ? { ...h, putts } : h)));
     const supabase = createClient();
-    await supabase.from("holes").update({ putts }).eq("id", currentHole.id);
-    setHoles((prev) => prev.map((h) => (h.id === currentHole.id ? { ...h, putts } : h)));
+    try {
+      // (2) オンライン保存（元々 rounds.total_score は更新しない）
+      const { error } = await supabase.from("holes").update({ putts }).eq("id", holeId);
+      if (error) throw error;
+    } catch (e) {
+      // (4) 圏外なら端末バッファへ
+      if (isNetworkFailure(e)) {
+        void putScoreUpdate({ hole_id: holeId, round_id: roundId, putts });
+      } else {
+        console.error("[update-hole-putts] update failed:", e);
+      }
+    }
   }
 
   async function handleRoundEndConfirm() {
