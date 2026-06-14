@@ -176,11 +176,28 @@ export async function flush(supabase: SupabaseClient): Promise<void> {
 
     // ── shot_distances の insert（番手別飛距離スタッツ・他テーブルと独立） ──
     // id は渡さずテーブル default に委ねる（既存のオンライン insert と同形）。
+    // user_id は圏外保存時に未解決のことがあるため、ここ（オンライン）で getUser
+    // により一度だけ解決して補完する。
     const shotDistances = await getAllShotDistances();
+    let resolvedUserId: string | null = null;
+    let userIdResolved = false;
     for (const sd of shotDistances) {
       try {
+        let userId = sd.user_id ?? null;
+        if (!userId) {
+          if (!userIdResolved) {
+            const { data } = await supabase.auth.getUser();
+            resolvedUserId = data.user?.id ?? null;
+            userIdResolved = true;
+          }
+          userId = resolvedUserId;
+        }
+        if (!userId) {
+          // ユーザー未解決（未ログイン等）。残して次回再送。
+          continue;
+        }
         const { error } = await supabase.from("shot_distances").insert({
-          user_id: sd.user_id,
+          user_id: userId,
           club: sd.club,
           distance_yards: sd.distance_yards,
           distance_meters: sd.distance_meters,

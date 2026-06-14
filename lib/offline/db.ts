@@ -70,9 +70,11 @@ export interface PendingRoundUpdate {
 // shot_distances テーブルへの insert（番手別飛距離スタッツ）をオフラインで溜める。
 // 主キーはクライアント生成 UUID（バッファ内での一意キー。送信時は id を渡さず
 // テーブル default に委ねる＝既存のオンライン insert と同形）。
+// user_id は任意：圏外保存時は auth 通信（getSession/getUser）を避けるため未解決のまま
+// 積み、flush（オンライン）時に getUser で補完する。
 export interface PendingShotDistance {
   id: string;
-  user_id: string;
+  user_id?: string | null;
   club: string;
   distance_yards: number;
   distance_meters: number;

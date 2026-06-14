@@ -2609,15 +2609,12 @@ function ScoreEntryCard({
   async function handleDmSave() {
     if (!dmDistance) return;
     const supabase = createClient();
-    // 先回り：圏外なら Supabase Auth（getUser=通信）を叩かず、getSession（Cookie の
-    // ローカル読み・通信なし）の id を使って端末バッファへ。オンライン時は従来どおり。
+    // 先回り：圏外なら auth 通信を一切叩かず端末バッファへ。getSession() も失効時に
+    // 更新通信（/auth/v1/token）を誘発し得るため呼ばない。user_id は未解決のまま積み、
+    // flush（オンライン）時に getUser で補完する。オンライン時は従来どおり。
     if (isOffline()) {
-      const { data: { session } } = await supabase.auth.getSession();
-      const uid = session?.user?.id;
-      if (!uid) return;
       void putShotDistance({
         id: crypto.randomUUID(),
-        user_id: uid,
         club: dmClub,
         distance_yards: dmDistance.yards,
         distance_meters: dmDistance.meters,
