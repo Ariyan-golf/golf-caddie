@@ -4,11 +4,29 @@
 // v3 (2026-06-10): cache the /try navigation HTML (network-first) so the
 // registration-free 飛距離計測 page can be re-opened offline once visited online.
 // Scope is /try only — all other routes keep the original network-first behavior.
+// (2026-06-14): when navigator.onLine === false, never call fetch() for
+// same-origin GETs. A failed fetch() attempt is what surfaces the iOS
+// "you are offline" dialog when the PWA is reopened in airplane mode, so we
+// serve from cache only (app shell for navigations, cached assets otherwise)
+// and fall back to a harmless offline response on a miss. Online / cross-origin
+// / non-GET behavior is unchanged. '/' is precached at install so offline
+// navigations have an app shell to restore from.
 const CACHE_NAME = "golf-caddie-v3";
 const STATIC_PATHS = ["/_next/static/", "/characters/", "/icon-"];
+const APP_SHELL = "/";
 
-self.addEventListener("install", () => {
-  self.skipWaiting();
+self.addEventListener("install", (event) => {
+  event.waitUntil(
+    (async () => {
+      try {
+        const cache = await caches.open(CACHE_NAME);
+        await cache.add(APP_SHELL);
+      } catch {
+        // Precache is best-effort; never let it block installation.
+      }
+      await self.skipWaiting();
+    })()
+  );
 });
 
 self.addEventListener("activate", (event) => {
@@ -27,6 +45,28 @@ self.addEventListener("fetch", (event) => {
 
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
+
+  // Offline: never hit the network for same-origin GETs. A failed fetch()
+  // attempt is what surfaces the iOS "you are offline" dialog when the PWA is
+  // reopened in airplane mode, so we must not call fetch() at all here.
+  if (navigator.onLine === false) {
+    event.respondWith(
+      (async () => {
+        const cached = await caches.match(req);
+        if (cached) return cached;
+        if (req.mode === "navigate") {
+          const shell = await caches.match(APP_SHELL);
+          if (shell) return shell;
+          return new Response(
+            "<!doctype html><meta charset=utf-8><title>オフライン</title><p>オフラインです。電波の良い場所で再度開いてください。</p>",
+            { status: 200, headers: { "Content-Type": "text/html; charset=utf-8" } }
+          );
+        }
+        return new Response("", { status: 503, statusText: "Offline" });
+      })()
+    );
+    return;
+  }
 
   // /try only: cache the navigation HTML so the page can be re-opened offline
   // once visited online. Still network-first (always prefer fresh). Limited to

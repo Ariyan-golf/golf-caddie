@@ -16,6 +16,12 @@ import {
   deleteShot,
   getAllScoreUpdates,
   deleteScoreUpdate,
+  getAllShotUpdates,
+  deleteShotUpdate,
+  getAllRoundUpdates,
+  deleteRoundUpdate,
+  getAllShotDistances,
+  deleteShotDistance,
 } from "@/lib/offline/db";
 
 type SupabaseClient = ReturnType<typeof createClient>;
@@ -56,16 +62,61 @@ export async function flush(supabase: SupabaseClient): Promise<void> {
       }
     }
 
+    // ── shots の部分更新（番手・ライ・球筋・終点座標）を shots insert の後に ──
+    // 対象 shot がオフライン作成（pending_shots）なら上の loop で先に insert 済み。
+    // 0 件ヒット（shot 未同期）なら残して次回再送する。
+    const shotUpdates = await getAllShotUpdates();
+    for (const su of shotUpdates) {
+      try {
+        const payload: {
+          club?: string | null;
+          lie_type?: string | null;
+          ball_shape?: string | null;
+          end_lat?: number | null;
+          end_lng?: number | null;
+          distance_meters?: number | null;
+          distance_yards?: number | null;
+        } = {};
+        if (su.club !== undefined) payload.club = su.club;
+        if (su.lie_type !== undefined) payload.lie_type = su.lie_type;
+        if (su.ball_shape !== undefined) payload.ball_shape = su.ball_shape;
+        if (su.end_lat !== undefined) payload.end_lat = su.end_lat;
+        if (su.end_lng !== undefined) payload.end_lng = su.end_lng;
+        if (su.distance_meters !== undefined) payload.distance_meters = su.distance_meters;
+        if (su.distance_yards !== undefined) payload.distance_yards = su.distance_yards;
+        if (Object.keys(payload).length === 0) {
+          await deleteShotUpdate(su.id);
+          continue;
+        }
+        const { data, error } = await supabase
+          .from("shots")
+          .update(payload)
+          .eq("id", su.id)
+          .select("id");
+        if (error || !data || data.length === 0) {
+          // shot 本体が未同期だと 0 件＝後で再送するため残す。
+          if (error) {
+            console.warn("[offline-sync] shot update failed, keep for retry", su.id, error.message);
+          }
+          continue;
+        }
+        await deleteShotUpdate(su.id);
+      } catch (err) {
+        console.warn("[offline-sync] shot update threw, keep for retry", su.id, err);
+      }
+    }
+
     // ── スコア更新を最後に（ホール本体が同期済みであることを期待） ────────
     const scoreUpdates = await getAllScoreUpdates();
     const syncedRoundIds = new Set<string>();
     for (const su of scoreUpdates) {
       try {
         // undefined のフィールドは触らない。null は「明示クリア」の有効値として送る。
-        const payload: { score?: number | null; putts?: number | null; penalties?: number } = {};
+        const payload: { score?: number | null; putts?: number | null; penalties?: number; par?: number | null } = {};
         if (su.score !== undefined) payload.score = su.score;
         if (su.putts !== undefined) payload.putts = su.putts;
         if (su.penalties !== undefined) payload.penalties = su.penalties;
+        if (su.par !== undefined) payload.par = su.par;
 
         const { data, error } = await supabase
           .from("holes")
@@ -99,6 +150,65 @@ export async function flush(supabase: SupabaseClient): Promise<void> {
       } catch (err) {
         // total_score の再計算失敗はスコア保存自体を妨げない。
         console.warn("[offline-sync] total_score recompute failed", roundId, err);
+      }
+    }
+
+    // ── rounds の更新（ラウンド終了確定時の handicap_differential） ────────
+    const roundUpdates = await getAllRoundUpdates();
+    for (const ru of roundUpdates) {
+      try {
+        const payload: { handicap_differential?: number | null } = {};
+        if (ru.handicap_differential !== undefined) payload.handicap_differential = ru.handicap_differential;
+        if (Object.keys(payload).length === 0) {
+          await deleteRoundUpdate(ru.round_id);
+          continue;
+        }
+        const { error } = await supabase.from("rounds").update(payload).eq("id", ru.round_id);
+        if (error) {
+          console.warn("[offline-sync] round update failed, keep for retry", ru.round_id, error.message);
+          continue;
+        }
+        await deleteRoundUpdate(ru.round_id);
+      } catch (err) {
+        console.warn("[offline-sync] round update threw, keep for retry", ru.round_id, err);
+      }
+    }
+
+    // ── shot_distances の insert（番手別飛距離スタッツ・他テーブルと独立） ──
+    // id は渡さずテーブル default に委ねる（既存のオンライン insert と同形）。
+    // user_id は圏外保存時に未解決のことがあるため、ここ（オンライン）で getUser
+    // により一度だけ解決して補完する。
+    const shotDistances = await getAllShotDistances();
+    let resolvedUserId: string | null = null;
+    let userIdResolved = false;
+    for (const sd of shotDistances) {
+      try {
+        let userId = sd.user_id ?? null;
+        if (!userId) {
+          if (!userIdResolved) {
+            const { data } = await supabase.auth.getUser();
+            resolvedUserId = data.user?.id ?? null;
+            userIdResolved = true;
+          }
+          userId = resolvedUserId;
+        }
+        if (!userId) {
+          // ユーザー未解決（未ログイン等）。残して次回再送。
+          continue;
+        }
+        const { error } = await supabase.from("shot_distances").insert({
+          user_id: userId,
+          club: sd.club,
+          distance_yards: sd.distance_yards,
+          distance_meters: sd.distance_meters,
+        });
+        if (error) {
+          console.warn("[offline-sync] shot_distance insert failed, keep for retry", sd.id, error.message);
+          continue;
+        }
+        await deleteShotDistance(sd.id);
+      } catch (err) {
+        console.warn("[offline-sync] shot_distance insert threw, keep for retry", sd.id, err);
       }
     }
   } catch (err) {

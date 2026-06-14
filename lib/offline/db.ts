@@ -9,10 +9,13 @@
 // 主キーは uuid_generate_v4 default なので、id 指定 insert/upsert が成立する）。
 
 const DB_NAME = "gca_offline";
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 const STORE_HOLES = "pending_holes";
 const STORE_SHOTS = "pending_shots";
 const STORE_SCORES = "pending_score_updates";
+const STORE_SHOT_UPDATES = "pending_shot_updates";
+const STORE_ROUND_UPDATES = "pending_round_updates";
+const STORE_SHOT_DISTANCES = "pending_shot_distances";
 
 export interface PendingHole {
   id: string;
@@ -42,6 +45,40 @@ export interface PendingScoreUpdate {
   score?: number | null;
   putts?: number | null;
   penalties?: number;
+  par?: number | null;
+}
+
+// shots テーブルへの部分更新（番手・ライ・球筋・終点座標）をオフラインで溜める。
+// 主キーは shot id。同一 shot への複数フィールド更新は putShotUpdate でマージする。
+export interface PendingShotUpdate {
+  id: string;
+  club?: string | null;
+  lie_type?: string | null;
+  ball_shape?: string | null;
+  end_lat?: number | null;
+  end_lng?: number | null;
+  distance_meters?: number | null;
+  distance_yards?: number | null;
+}
+
+// rounds テーブルへの更新（ラウンド終了確定時の handicap_differential）。主キーは round id。
+export interface PendingRoundUpdate {
+  round_id: string;
+  handicap_differential?: number | null;
+}
+
+// shot_distances テーブルへの insert（番手別飛距離スタッツ）をオフラインで溜める。
+// 主キーはクライアント生成 UUID（バッファ内での一意キー。送信時は id を渡さず
+// テーブル default に委ねる＝既存のオンライン insert と同形）。
+// user_id は任意：圏外保存時は auth 通信（getSession/getUser）を避けるため未解決のまま
+// 積み、flush（オンライン）時に getUser で補完する。
+export interface PendingShotDistance {
+  id: string;
+  user_id?: string | null;
+  club: string;
+  distance_yards: number;
+  distance_meters: number;
+  created_at: string;
 }
 
 // SSR / 非対応環境でも import だけで落ちないよう、利用時にガードする。
@@ -70,6 +107,15 @@ function openDb(): Promise<IDBDatabase | null> {
       }
       if (!db.objectStoreNames.contains(STORE_SCORES)) {
         db.createObjectStore(STORE_SCORES, { keyPath: "hole_id" });
+      }
+      if (!db.objectStoreNames.contains(STORE_SHOT_UPDATES)) {
+        db.createObjectStore(STORE_SHOT_UPDATES, { keyPath: "id" });
+      }
+      if (!db.objectStoreNames.contains(STORE_ROUND_UPDATES)) {
+        db.createObjectStore(STORE_ROUND_UPDATES, { keyPath: "round_id" });
+      }
+      if (!db.objectStoreNames.contains(STORE_SHOT_DISTANCES)) {
+        db.createObjectStore(STORE_SHOT_DISTANCES, { keyPath: "id" });
       }
     };
     req.onsuccess = () => resolve(req.result);
@@ -208,4 +254,47 @@ export function getAllScoreUpdates(): Promise<PendingScoreUpdate[]> {
 
 export function deleteScoreUpdate(hole_id: string): Promise<void> {
   return del(STORE_SCORES, hole_id);
+}
+
+// 同一 shot_id の既存レコードがあれば部分更新でマージしてから put
+// （番手だけ / ライだけ を別々に保存しても他フィールドを消さないため）。
+export async function putShotUpdate(rec: PendingShotUpdate): Promise<void> {
+  const existing = (await getAllShotUpdates()).find((s) => s.id === rec.id);
+  const merged: PendingShotUpdate = existing ? { ...existing, ...rec } : rec;
+  return put(STORE_SHOT_UPDATES, merged);
+}
+
+export function getAllShotUpdates(): Promise<PendingShotUpdate[]> {
+  return getAll<PendingShotUpdate>(STORE_SHOT_UPDATES);
+}
+
+export function deleteShotUpdate(id: string): Promise<void> {
+  return del(STORE_SHOT_UPDATES, id);
+}
+
+// 同一 round_id の既存レコードがあればマージしてから put。
+export async function putRoundUpdate(rec: PendingRoundUpdate): Promise<void> {
+  const existing = (await getAllRoundUpdates()).find((r) => r.round_id === rec.round_id);
+  const merged: PendingRoundUpdate = existing ? { ...existing, ...rec } : rec;
+  return put(STORE_ROUND_UPDATES, merged);
+}
+
+export function getAllRoundUpdates(): Promise<PendingRoundUpdate[]> {
+  return getAll<PendingRoundUpdate>(STORE_ROUND_UPDATES);
+}
+
+export function deleteRoundUpdate(round_id: string): Promise<void> {
+  return del(STORE_ROUND_UPDATES, round_id);
+}
+
+export function putShotDistance(rec: PendingShotDistance): Promise<void> {
+  return put(STORE_SHOT_DISTANCES, rec);
+}
+
+export function getAllShotDistances(): Promise<PendingShotDistance[]> {
+  return getAll<PendingShotDistance>(STORE_SHOT_DISTANCES);
+}
+
+export function deleteShotDistance(id: string): Promise<void> {
+  return del(STORE_SHOT_DISTANCES, id);
 }

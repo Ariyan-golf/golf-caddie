@@ -21,6 +21,9 @@ export function OfflineSync() {
 
     async function run() {
       if (runningRef.current) return; // 二重起動防止
+      // オフライン時は flush しない（通信を投げず iOS の機内モードダイアログを誘発しない）。
+      // 復帰は 'online' イベントが拾う（その時点では navigator.onLine === true）。
+      if (typeof navigator !== "undefined" && navigator.onLine === false) return;
       runningRef.current = true;
       try {
         const supabase = createClient();
@@ -32,16 +35,51 @@ export function OfflineSync() {
       }
     }
 
+    // ── auth 自動トークン更新のオフライン制御 ──────────────────────────
+    // Supabase の auth 自動更新（/auth/v1/token への POST・約30秒tick＋
+    // visibilitychange）は圏外でも走り、iOS の機内モードダイアログを誘発する。
+    // 圏外では stopAutoRefresh() で止め、オンライン復帰で必ず startAutoRefresh()
+    // を呼び戻す（呼び戻し忘れるとセッション失効でログアウトし得る）。
+    // createClient() はブラウザではシングルトンなので常に同一インスタンスを操作する。
+    function stopAuthRefresh() {
+      try {
+        void createClient().auth.stopAutoRefresh();
+      } catch (err) {
+        console.warn("[offline-sync] stopAutoRefresh failed", err);
+      }
+    }
+    function startAuthRefresh() {
+      try {
+        void createClient().auth.startAutoRefresh();
+      } catch (err) {
+        console.warn("[offline-sync] startAutoRefresh failed", err);
+      }
+    }
+
+    // mount 時：オフラインなら自動更新を止める（オンライン時は既定のまま＝挙動不変）。
+    if (typeof navigator !== "undefined" && navigator.onLine === false) {
+      stopAuthRefresh();
+    }
+
     // mount 時に1回
     if (!cancelled) void run();
 
-    // オンライン復帰で同期
-    const onOnline = () => void run();
+    // オンライン復帰：自動更新を再開してから同期。
+    const onOnline = () => {
+      startAuthRefresh();
+      void run();
+    };
+    // 圏外化：自動更新を停止（無操作で走る更新POSTを止める）。
+    const onOffline = () => {
+      stopAuthRefresh();
+    };
     window.addEventListener("online", onOnline);
+    window.addEventListener("offline", onOffline);
 
     return () => {
       cancelled = true;
       window.removeEventListener("online", onOnline);
+      window.removeEventListener("offline", onOffline);
     };
   }, []);
 
