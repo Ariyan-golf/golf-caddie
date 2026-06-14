@@ -21,6 +21,9 @@ export function OfflineSync() {
 
     async function run() {
       if (runningRef.current) return; // 二重起動防止
+      // オフライン時は flush しない（通信を投げず iOS の機内モードダイアログを誘発しない）。
+      // 復帰は 'online' イベントが拾う（その時点では navigator.onLine === true）。
+      if (typeof navigator !== "undefined" && navigator.onLine === false) return;
       runningRef.current = true;
       try {
         const supabase = createClient();
