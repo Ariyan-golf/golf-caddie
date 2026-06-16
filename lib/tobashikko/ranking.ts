@@ -159,7 +159,7 @@ export async function fetchTobashikkoRanking(
   const userIds = Array.from(byUser.keys());
   const { data: profs } = await admin
     .from("profiles")
-    .select("id, nickname, age_group, gender, category")
+    .select("id, nickname, age_group, gender, category, ranking_opt_in")
     .in("id", userIds);
 
   interface ProfRow {
@@ -168,13 +168,20 @@ export async function fetchTobashikkoRanking(
     age_group: string | null;
     gender: string | null;
     category: string | null;
+    ranking_opt_in: boolean | null;
   }
   const profMap = new Map(
     (profs ?? []).map((p: ProfRow) => [p.id, p])
   );
 
+  // ランキング参加 OFF（ranking_opt_in === false）のユーザーは常に除外する。
+  // ※ NOT NULL DEFAULT true のため通常 null にならないが、明示的に false のときだけ外す。
+  let candidates = Array.from(byUser.values()).filter((row) => {
+    const prof = profMap.get(row.user_id);
+    return prof?.ranking_opt_in !== false;
+  });
+
   // フィルタ適用: 該当ユーザーだけ残す
-  let candidates = Array.from(byUser.values());
   if (filter?.category || filter?.gender || filter?.ageGroup) {
     candidates = candidates.filter((row) => {
       const prof = profMap.get(row.user_id);
