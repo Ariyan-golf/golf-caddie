@@ -11,10 +11,11 @@ export async function POST(request: Request) {
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await request.json() as {
-    nickname?:  string;
-    age_group?: string;
-    gender?:    string;
-    category?:  string;
+    nickname?:       string;
+    age_group?:      string;
+    gender?:         string;
+    category?:       string;
+    ranking_opt_in?: boolean;
   };
 
   const nickname = (body.nickname ?? "").trim();
@@ -38,9 +39,10 @@ export async function POST(request: Request) {
     .from("profiles")
     .update({
       nickname,
-      age_group: body.age_group,
-      gender:    body.gender,
-      category:  body.category,
+      age_group:      body.age_group,
+      gender:         body.gender,
+      category:       body.category,
+      ranking_opt_in: body.ranking_opt_in !== false,
     })
     .eq("id", user.id);
 

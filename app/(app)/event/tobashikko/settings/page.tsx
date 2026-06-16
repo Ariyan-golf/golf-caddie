@@ -12,7 +12,7 @@ export default async function TobashikkoSettingsPage() {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("nickname, age_group, gender, category")
+    .select("nickname, age_group, gender, category, ranking_opt_in")
     .eq("id", user.id)
     .single();
 
@@ -33,6 +33,7 @@ export default async function TobashikkoSettingsPage() {
         initialAgeGroup={profile?.age_group ?? null}
         initialGender={profile?.gender ?? null}
         initialCategory={profile?.category ?? null}
+        initialRankingOptIn={profile?.ranking_opt_in ?? true}
       />
     </div>
   );

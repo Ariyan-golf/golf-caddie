@@ -27,10 +27,11 @@ const CATEGORY_OPTIONS = [
 ] as const;
 
 interface Props {
-  initialNickname: string;
-  initialAgeGroup: string | null;
-  initialGender:   string | null;
-  initialCategory: string | null;
+  initialNickname:    string;
+  initialAgeGroup:    string | null;
+  initialGender:      string | null;
+  initialCategory:    string | null;
+  initialRankingOptIn: boolean;
 }
 
 export function TobashikkoSettingsForm({
@@ -38,10 +39,12 @@ export function TobashikkoSettingsForm({
   initialAgeGroup,
   initialGender,
   initialCategory,
+  initialRankingOptIn,
 }: Props) {
   const router = useRouter();
 
   const [nickname, setNickname] = useState(initialNickname);
+  const [rankingOptIn, setRankingOptIn] = useState(initialRankingOptIn);
   const [ageGroup, setAgeGroup] = useState<AgeGroup | "">(
     AGE_OPTIONS.some((o) => o.value === initialAgeGroup) ? (initialAgeGroup as AgeGroup) : ""
   );
@@ -70,10 +73,11 @@ export function TobashikkoSettingsForm({
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        nickname:  trimmed,
-        age_group: ageGroup,
+        nickname:       trimmed,
+        age_group:      ageGroup,
         gender,
         category,
+        ranking_opt_in: rankingOptIn,
       }),
     });
 
@@ -180,6 +184,29 @@ export function TobashikkoSettingsForm({
             </button>
           ))}
         </div>
+      </div>
+
+      {/* 全国ランキングに参加する */}
+      <div>
+        <label className="label">全国ランキングに参加する</label>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={rankingOptIn}
+          onClick={() => setRankingOptIn((v) => !v)}
+          className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors ${
+            rankingOptIn ? "bg-green-600" : "bg-gray-300"
+          }`}
+        >
+          <span
+            className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
+              rankingOptIn ? "translate-x-6" : "translate-x-1"
+            }`}
+          />
+        </button>
+        <p className="mt-1 text-xs text-green-500">
+          OFFにすると公開ランキングに名前が出ません。記録やランキング閲覧は引き続きできます
+        </p>
       </div>
 
       <button type="submit" className="btn-primary w-full" disabled={loading}>
