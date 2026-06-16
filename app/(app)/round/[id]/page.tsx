@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { HoleRecorder } from "@/components/HoleRecorder";
 import { BackButton } from "@/components/BackButton";
 import { RoundCourseEditor } from "@/components/RoundCourseEditor";
+import { RecordShareButton } from "@/components/RecordShareButton";
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -102,6 +103,20 @@ export default async function RoundDetailPage({ params, searchParams }: Props) {
     .eq("round_id", id)
     .order("hole_number");
 
+  // このラウンドの最長ドライバー飛距離（club='1w' のショットの最大 yd）。
+  // 既取得の holes→shots から算出し、追加クエリは行わない。記録が無ければ null。
+  let maxDriverYards: number | null = null;
+  for (const h of holes ?? []) {
+    const shots = (h as { shots?: { club?: string | null; distance_yards?: number | null }[] }).shots ?? [];
+    for (const s of shots) {
+      if (s.club === "1w" && s.distance_yards != null) {
+        if (maxDriverYards == null || s.distance_yards > maxDriverYards) {
+          maxDriverYards = s.distance_yards;
+        }
+      }
+    }
+  }
+
   // Pre-fetch existing green centers for this course + green_type so the
   // round-UI can immediately reflect "registered" state on each hole tab.
   const initialGreenCenters: Record<number, { lat: number; lng: number }> = {};
@@ -139,6 +154,14 @@ export default async function RoundDetailPage({ params, searchParams }: Props) {
               <span className="ml-2 font-bold text-green-700">{round.total_score}打</span>
             )}
           </p>
+        </div>
+        <div className="flex-shrink-0 pt-0.5">
+          <RecordShareButton
+            courseName={round.course_name ?? ""}
+            roundDate={round.date}
+            totalScore={round.total_score ?? null}
+            maxDriverYards={maxDriverYards}
+          />
         </div>
       </div>
 
