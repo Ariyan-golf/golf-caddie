@@ -182,6 +182,7 @@ export default async function RoundDetailPage({ params, searchParams }: Props) {
         greenType={greenType}
         initialGreenCenters={initialGreenCenters}
         pastView={pastView}
+        roundDate={round.date ?? ""}
       />
     </div>
   );

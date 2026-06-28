@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { todayJST } from "@/lib/day-pass";
 import { startGpsTracking } from "@/lib/gps";
 import { acquireWakeLock } from "@/lib/wakeLock";
+import { clearActiveRound } from "@/lib/activeRound";
 
 interface CourseTee {
   id: string;
@@ -77,6 +78,9 @@ export function RoundStartConfirm({
       return;
     }
 
+    // 新規ラウンド開始 → 前のラウンドの端末スナップショットを破棄（C）。
+    // 残っていると次回起動時に古いラウンドへ誤って自動復帰してしまうため。
+    clearActiveRound();
     void startGpsTracking();
     void acquireWakeLock();
 
