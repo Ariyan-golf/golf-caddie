@@ -2,8 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { CLUB_LABELS } from "@/types";
 import type { Club } from "@/types";
 import { getClubStats } from "@/lib/club-averages";
-import { ClubAveragesSection, UNASSIGNED_KEY } from "@/components/ClubAveragesSection";
-import { UnfilledShotsSection, type UnfilledShot } from "@/components/UnfilledShotsSection";
+import { ClubAveragesSection, type UnassignedShot } from "@/components/ClubAveragesSection";
 
 export default async function HistoryPage() {
   const supabase = await createClient();
@@ -15,41 +14,48 @@ export default async function HistoryPage() {
   // 記録ゼロの番手も含む（CLUBS順）。
   const clubStats = await getClubStats(supabase, user!.id);
 
-  // 未分類（club=null）の距離付きラウンドショットは従来どおり別グループで表示。
+  // 未分類（club=null・距離計測済み）のラウンドショット。番手別平均と同じ
+  // ClubAveragesSection 内で「番手の事後選択／詳細編集／削除」ができる唯一の入口。
+  // 表示に必要なホール・ラウンド情報も併せて取得する（旧 UnfilledShotsSection 相当）。
   // RLS が holes→rounds.user_id 経由で所有権を強制する。
+  // 条件は club IS NULL ＋ distance_meters IS NOT NULL を維持。
   const { data: unassignedRows } = await supabase
     .from("shots")
     .select(`
-      id, distance_yards, distance_meters, created_at,
-      holes!inner(rounds!inner(user_id))
+      id, shot_number, distance_yards, distance_meters, created_at,
+      club, ball_shape, ball_direction, lie_vertical, lie_horizontal, note,
+      hole_id, round_id,
+      holes!inner(hole_number, rounds!inner(user_id, course_name, date))
     `)
     .eq("holes.rounds.user_id", user!.id)
     .is("club", null)
     .not("distance_meters", "is", null)
     .order("created_at", { ascending: false });
 
-  const unassignedShots = (unassignedRows ?? []).map((r) => ({
-    id: r.id as string,
-    distance_yards: (r.distance_yards as number | null) ?? 0,
-    distance_meters: Number(r.distance_meters),
-    created_at: r.created_at as string,
-    source: "shot" as const,
-  }));
-
-  // 未分類は記録がある場合のみ末尾に追加（既存 UnassignedRow の挙動を維持）。
-  const statsForSection = unassignedShots.length
-    ? [
-        ...clubStats,
-        {
-          club: UNASSIGNED_KEY,
-          average_distance_meters: parseFloat(
-            (unassignedShots.reduce((s, x) => s + x.distance_meters, 0) / unassignedShots.length).toFixed(1)
-          ),
-          shot_count: unassignedShots.length,
-          shots: unassignedShots,
-        },
-      ]
-    : clubStats;
+  const unassignedShots: UnassignedShot[] = (unassignedRows ?? []).map((r) => {
+    const hole = r.holes as unknown as {
+      hole_number: number;
+      rounds: { course_name: string; date: string };
+    };
+    return {
+      id: r.id as string,
+      shot_number: r.shot_number as number,
+      distance_yards: (r.distance_yards as number | null) ?? null,
+      distance_meters: Number(r.distance_meters),
+      created_at: r.created_at as string,
+      club: (r.club as string | null) ?? null,
+      ball_shape: (r.ball_shape as string | null) ?? null,
+      ball_direction: (r.ball_direction as string | null) ?? null,
+      lie_vertical: (r.lie_vertical as string | null) ?? null,
+      lie_horizontal: (r.lie_horizontal as string | null) ?? null,
+      note: (r.note as string | null) ?? null,
+      hole_id: r.hole_id as string,
+      hole_number: hole.hole_number,
+      round_id: r.round_id as string,
+      round_date: hole.rounds.date,
+      course_name: hole.rounds.course_name,
+    };
+  });
 
   const { data: recentShots } = await supabase
     .from("shots")
@@ -61,42 +67,6 @@ export default async function HistoryPage() {
     .order("created_at", { ascending: false })
     .limit(40);
 
-  // Unfilled shots (post-round mode): club IS NULL with a round attached
-  const { data: unfilledRaw } = await supabase
-    .from("shots")
-    .select(`
-      id, shot_number, distance_yards, club, ball_shape, ball_direction,
-      lie_vertical, lie_horizontal, note, hole_id, round_id,
-      holes!inner(hole_number, rounds!inner(user_id, course_name, date))
-    `)
-    .is("club", null)
-    .eq("holes.rounds.user_id", user!.id)
-    .order("created_at", { ascending: false })
-    .limit(200);
-
-  const unfilledShots: UnfilledShot[] = (unfilledRaw ?? []).map((row) => {
-    const hole = row.holes as unknown as {
-      hole_number: number;
-      rounds: { course_name: string; date: string };
-    };
-    return {
-      id: row.id,
-      shot_number: row.shot_number,
-      distance_yards: row.distance_yards,
-      club: row.club,
-      ball_shape: row.ball_shape,
-      ball_direction: row.ball_direction,
-      lie_vertical: row.lie_vertical,
-      lie_horizontal: row.lie_horizontal,
-      note: row.note,
-      hole_id: row.hole_id,
-      hole_number: hole.hole_number,
-      round_id: row.round_id,
-      round_date: hole.rounds.date,
-      course_name: hole.rounds.course_name,
-    };
-  });
-
   return (
     <div className="max-w-lg mx-auto p-4 space-y-6 pb-8">
       <div className="pt-4">
@@ -106,9 +76,7 @@ export default async function HistoryPage() {
         <h1 className="text-xl font-bold text-green-800">スタッツ</h1>
       </div>
 
-      <ClubAveragesSection initialStats={statsForSection} />
-
-      <UnfilledShotsSection initialShots={unfilledShots} />
+      <ClubAveragesSection initialStats={clubStats} initialUnassigned={unassignedShots} />
 
       {recentShots && recentShots.length > 0 && (
         <div className="card">

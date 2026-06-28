@@ -5,7 +5,36 @@ import { createClient } from "@/lib/supabase/client";
 import { CLUBS, CLUB_LABELS } from "@/types";
 import type { Club } from "@/types";
 
-export const UNASSIGNED_KEY = "__unassigned__";
+// 未分類（club 未選択）ショット1件分。距離計測は済んでいる（distance_meters NOT NULL）が
+// 番手が未入力のラウンドショット。番手の事後選択・詳細編集・削除をこのセクションで行う。
+export interface UnassignedShot {
+  id: string;
+  shot_number: number;
+  distance_yards: number | null;
+  distance_meters: number;
+  created_at: string;
+  club: string | null;
+  ball_shape: string | null;
+  ball_direction: string | null;
+  lie_vertical: string | null;
+  lie_horizontal: string | null;
+  note: string | null;
+  hole_id: string;
+  hole_number: number;
+  round_id: string;
+  round_date: string;
+  course_name: string;
+}
+
+// 詳細編集の選択肢（旧 UnfilledShotsSection から移植。CHECK 制約と一致）。
+const BALL_SHAPE_OPTIONS = [
+  "フック", "ドロー", "ストレート", "フェード", "スライス", "トップ", "チョロ",
+] as const;
+const BALL_DIRECTION_OPTIONS = ["左", "真っ直ぐ", "右"] as const;
+const LIE_VERTICAL_OPTIONS  = ["フラット", "左足上がり", "左足下り"] as const;
+const LIE_HORIZONTAL_OPTIONS = ["フラット", "爪先上がり", "爪先下がり"] as const;
+
+type UnassignedDraftMap = Record<string, Partial<UnassignedShot>>;
 
 interface ShotRecord {
   id: string;
@@ -235,78 +264,184 @@ function ClubRow({
   );
 }
 
-function UnassignedRow({
-  stat,
-  onShotDeleted,
+// 詳細編集の1項目（チップ選択）。旧 UnfilledShotsSection から移植。
+function ChipRow({
+  label, options, value, onChange,
 }: {
-  stat: ClubStat;
-  onShotDeleted: (club: string, shotId: string) => void;
+  label: string;
+  options: readonly string[];
+  value: string | null;
+  onChange: (v: string | null) => void;
 }) {
-  const [expanded, setExpanded] = useState(false);
-  const yards = Math.round(stat.average_distance_meters * 1.09361);
-
   return (
-    <div className="pt-3 border-t border-green-100">
-      <button
-        type="button"
-        onClick={() => setExpanded((v) => !v)}
-        className="w-full text-left"
-      >
-        <div className="flex justify-between items-center text-sm gap-2">
-          <span className="text-green-700">
-            <span className="font-bold">未分類</span>
-            <span className="text-green-400 text-xs ml-1">（{stat.shot_count}件）</span>
-            <span className="ml-2">
-              平均<span className="font-bold ml-0.5">{yards}y</span>
-            </span>
-          </span>
-          <span className="text-green-400 text-xs shrink-0">
-            {expanded ? "▲" : "▼"}
-          </span>
-        </div>
-        <p className="text-[11px] text-green-400 mt-1">
-          ラウンド履歴から番手を後から入力できます
-        </p>
-      </button>
-
-      {/* ── 個別記録一覧（展開時） ── */}
-      {expanded && (
-        <div className="mt-2 ml-2 space-y-1 border-l-2 border-green-100 pl-3">
-          <ShotList stat={stat} onShotDeleted={onShotDeleted} />
-        </div>
-      )}
+    <div>
+      <p className="text-xs font-semibold text-green-600 mb-1">{label}</p>
+      <div className="flex flex-wrap gap-1">
+        {options.map((opt) => {
+          const active = value === opt;
+          return (
+            <button
+              key={opt}
+              onClick={() => onChange(active ? null : opt)}
+              className={`text-xs px-2.5 py-1.5 rounded-lg border font-medium transition-colors ${
+                active
+                  ? "bg-green-600 border-green-600 text-white"
+                  : "bg-white border-green-200 text-green-700 hover:bg-green-50"
+              }`}
+            >
+              {opt}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
 
-export function ClubAveragesSection({ initialStats }: { initialStats: ClubStat[] }) {
+// 未分類ショット1件分の行（番手の事後選択・詳細編集・削除）。
+// 編集中の値と各種 state（drafts / expanded / saving / deleting）は親
+// ClubAveragesSection が単一 state で保持し、本コンポーネントは表示と通知のみ担う。
+function UnassignedShotRow({
+  shot, draft, expanded, saving, deleting,
+  onToggleExpand, onDraftChange, onSave, onDelete,
+}: {
+  shot: UnassignedShot;
+  draft: Partial<UnassignedShot>;
+  expanded: boolean;
+  saving: boolean;
+  deleting: boolean;
+  onToggleExpand: () => void;
+  onDraftChange: (patch: Partial<UnassignedShot>) => void;
+  onSave: () => void;
+  onDelete: () => void;
+}) {
+  const club = (draft.club ?? shot.club) as string | null;
+  return (
+    <div className="bg-green-50 rounded-lg p-2.5 space-y-2">
+      <p className="text-[11px] text-green-500">
+        {new Date(shot.round_date).toLocaleDateString("ja-JP")} · {shot.course_name} · {shot.hole_number}H
+      </p>
+      <div className="flex items-center gap-2">
+        <span className="text-xs font-medium text-green-600 w-12 shrink-0">
+          第{shot.shot_number}打
+        </span>
+        <span className="text-xs text-green-500 tabular-nums w-16 shrink-0">
+          {shot.distance_yards != null ? `${shot.distance_yards}y` : "—"}
+          <span className="text-green-400 ml-1">({Math.round(shot.distance_meters)}m)</span>
+        </span>
+        <select
+          value={club ?? ""}
+          onChange={(e) => onDraftChange({ club: e.target.value || null })}
+          className="flex-1 min-w-0 text-sm px-2 py-1.5 rounded-lg border border-green-200 bg-white text-green-800"
+        >
+          <option value="">クラブを選択</option>
+          {CLUBS.map((c) => (
+            <option key={c} value={c}>{CLUB_LABELS[c as Club]}</option>
+          ))}
+        </select>
+        <button
+          onClick={onToggleExpand}
+          className="text-green-500 text-xs px-2 py-1.5 shrink-0"
+        >
+          {expanded ? "▲ 詳細" : "▼ 詳細"}
+        </button>
+      </div>
+
+      {expanded && (
+        <div className="space-y-2 pt-1.5 border-t border-green-100">
+          <ChipRow
+            label="球筋"
+            options={BALL_SHAPE_OPTIONS}
+            value={(draft.ball_shape ?? shot.ball_shape) as string | null}
+            onChange={(v) => onDraftChange({ ball_shape: v })}
+          />
+          <ChipRow
+            label="方向"
+            options={BALL_DIRECTION_OPTIONS}
+            value={(draft.ball_direction ?? shot.ball_direction) as string | null}
+            onChange={(v) => onDraftChange({ ball_direction: v })}
+          />
+          <ChipRow
+            label="ライ縦"
+            options={LIE_VERTICAL_OPTIONS}
+            value={(draft.lie_vertical ?? shot.lie_vertical) as string | null}
+            onChange={(v) => onDraftChange({ lie_vertical: v })}
+          />
+          <ChipRow
+            label="ライ横"
+            options={LIE_HORIZONTAL_OPTIONS}
+            value={(draft.lie_horizontal ?? shot.lie_horizontal) as string | null}
+            onChange={(v) => onDraftChange({ lie_horizontal: v })}
+          />
+          <div>
+            <p className="text-xs font-semibold text-green-600 mb-1">メモ</p>
+            <textarea
+              value={(draft.note ?? shot.note) ?? ""}
+              onChange={(e) => onDraftChange({ note: e.target.value || null })}
+              rows={2}
+              className="w-full text-sm px-2 py-1.5 rounded-lg border border-green-200 bg-white text-green-800"
+            />
+          </div>
+        </div>
+      )}
+
+      <div className="flex items-center gap-2">
+        <button
+          onClick={onSave}
+          disabled={saving || !club}
+          className="flex-1 py-2 rounded-lg bg-green-600 hover:bg-green-700 active:bg-green-800
+                     text-white text-xs font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {saving ? "保存中..." : "保存"}
+        </button>
+        <button
+          onClick={onDelete}
+          disabled={deleting}
+          className="shrink-0 text-xs px-3 py-2 rounded-lg border border-red-200 text-red-400
+                     hover:bg-red-50 hover:text-red-600 transition-colors disabled:opacity-40"
+        >
+          {deleting ? "削除中" : "削除"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+export function ClubAveragesSection({
+  initialStats,
+  initialUnassigned,
+}: {
+  initialStats: ClubStat[];
+  initialUnassigned: UnassignedShot[];
+}) {
   const [stats, setStats] = useState<ClubStat[]>(initialStats);
   // 未記録番手の折りたたみ（ページ内ローカルstateのみ・保存不要）。
   const [showUnrecorded, setShowUnrecorded] = useState(false);
 
-  // 番手（未分類を除く全24本）。進捗・棒グラフ正規化に使用。
-  const classifiedStats = stats.filter((s) => s.club !== UNASSIGNED_KEY);
-  const totalClubs = classifiedStats.length;
-  const recordedCount = classifiedStats.filter((s) => s.shot_count > 0).length;
+  // 未分類ショットは「番手別平均」と同じこのコンポーネントの単一 state で管理する。
+  // 件数表示もリストも下の unassigned から導出するため、保存・削除後に件数とリストが
+  // ずれることがない（旧 UnfilledShotsSection との二重管理・非同期バグを解消）。
+  const [unassigned, setUnassigned] = useState<UnassignedShot[]>(initialUnassigned);
+  const [drafts, setDrafts] = useState<UnassignedDraftMap>({});
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [savingId, setSavingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const totalClubs = stats.length;
+  const recordedCount = stats.filter((s) => s.shot_count > 0).length;
 
   // 棒グラフのスケールはデータのある番手の最大平均で正規化。
-  const withData = classifiedStats.filter((s) => s.shot_count > 0);
+  const withData = stats.filter((s) => s.shot_count > 0);
   const maxYards = withData.length
     ? Math.round(Math.max(...withData.map((s) => s.average_distance_meters)) * 1.09361)
     : 1;
 
   function handleShotDeleted(club: string, shotId: string) {
     setStats((prev) =>
-      prev
-        .map((s) => {
-          if (s.club !== club) return s;
-          const remaining = s.shots.filter((sh) => sh.id !== shotId);
-          // 未分類は0件になったら行ごと消す（既存挙動を維持）。
-          if (s.club === UNASSIGNED_KEY && remaining.length === 0) return null;
-          // 番手は0件でも行は残し「まだ記録なし」表示に戻す。
-          return recalcStat(s, remaining);
-        })
-        .filter((s): s is ClubStat => s !== null)
+      prev.map((s) =>
+        // 番手は0件でも行は残し「まだ記録なし」表示に戻す。
+        s.club === club ? recalcStat(s, s.shots.filter((sh) => sh.id !== shotId)) : s
+      )
     );
   }
 
@@ -349,32 +484,58 @@ export function ClubAveragesSection({ initialStats }: { initialStats: ClubStat[]
     return true;
   }
 
-  const renderRow = (stat: ClubStat) =>
-    stat.club === UNASSIGNED_KEY ? (
-      <UnassignedRow
-        key={stat.club}
-        stat={stat}
-        onShotDeleted={handleShotDeleted}
-      />
-    ) : (
-      <ClubRow
-        key={stat.club}
-        stat={stat}
-        maxYards={maxYards}
-        onShotDeleted={handleShotDeleted}
-        onClubChange={handleClubChange}
-      />
-    );
+  // ── 未分類ショットの編集（旧 UnfilledShotsSection から移植）─────────────
+  function setDraft(id: string, patch: Partial<UnassignedShot>) {
+    setDrafts((prev) => ({ ...prev, [id]: { ...prev[id], ...patch } }));
+  }
+
+  // 番手＋詳細を一括保存。番手が付いたら未分類リストから外す（club 非null になるため）。
+  async function saveUnassigned(shot: UnassignedShot) {
+    const draft = drafts[shot.id] ?? {};
+    setSavingId(shot.id);
+    const supabase = createClient();
+    const payload = {
+      club: draft.club ?? shot.club,
+      // このスタッツ画面での番手割り当ては常に事後入力。付け替え(handleClubChange)が
+      // 既に "事後" を付けているのと挙動を揃え、初回割り当てだけ空になる食い違いを防ぐ。
+      // （保存ボタンは番手選択時のみ活性なので、保存時は必ず club が入っている）
+      club_input_at: "事後",
+      ball_shape: draft.ball_shape ?? shot.ball_shape,
+      ball_direction: draft.ball_direction ?? shot.ball_direction,
+      lie_vertical: draft.lie_vertical ?? shot.lie_vertical,
+      lie_horizontal: draft.lie_horizontal ?? shot.lie_horizontal,
+      note: draft.note ?? shot.note,
+    };
+    const { error } = await supabase.from("shots").update(payload).eq("id", shot.id);
+    setSavingId(null);
+    if (error) {
+      console.error("[unassigned] save error:", error.message);
+      return;
+    }
+    if (payload.club) {
+      setUnassigned((prev) => prev.filter((x) => x.id !== shot.id));
+      setDrafts((prev) => { const n = { ...prev }; delete n[shot.id]; return n; });
+    } else {
+      setUnassigned((prev) => prev.map((x) => (x.id === shot.id ? { ...x, ...payload } : x)));
+    }
+  }
+
+  // 削除は既存の番手別と同じ /api/stats/delete-shot（RLS で holes→rounds.user_id を強制）。
+  async function deleteUnassigned(shot: UnassignedShot) {
+    if (!confirm("このショットデータを削除しますか？")) return;
+    setDeletingId(shot.id);
+    const ok = await deleteShot(shot.id);
+    setDeletingId(null);
+    if (ok) {
+      setUnassigned((prev) => prev.filter((x) => x.id !== shot.id));
+      setDrafts((prev) => { const n = { ...prev }; delete n[shot.id]; return n; });
+    }
+  }
 
   // 記録済みが0件のときだけ従来どおり全番手を最初から表示（空カード回避）。
   const showAllFromStart = recordedCount === 0;
-  // 表示順は現状維持。未分類(常時表示)＋記録のある番手を上に、未記録番手は末尾に折りたたむ。
-  const recordedRows = showAllFromStart
-    ? stats
-    : stats.filter((s) => s.club === UNASSIGNED_KEY || s.shot_count > 0);
-  const unrecordedRows = showAllFromStart
-    ? []
-    : stats.filter((s) => s.club !== UNASSIGNED_KEY && s.shot_count === 0);
+  const recordedRows = showAllFromStart ? stats : stats.filter((s) => s.shot_count > 0);
+  const unrecordedRows = showAllFromStart ? [] : stats.filter((s) => s.shot_count === 0);
 
   return (
     <div className="card">
@@ -386,7 +547,15 @@ export function ClubAveragesSection({ initialStats }: { initialStats: ClubStat[]
       </div>
       <p className="text-xs text-green-400 mb-3">番手をタップすると個別記録が開きます</p>
       <div className="space-y-3">
-        {recordedRows.map(renderRow)}
+        {recordedRows.map((stat) => (
+          <ClubRow
+            key={stat.club}
+            stat={stat}
+            maxYards={maxYards}
+            onShotDeleted={handleShotDeleted}
+            onClubChange={handleClubChange}
+          />
+        ))}
         {unrecordedRows.length > 0 && (
           <>
             <button
@@ -396,13 +565,49 @@ export function ClubAveragesSection({ initialStats }: { initialStats: ClubStat[]
             >
               {showUnrecorded ? "未記録の番手を隠す ▲" : "未記録の番手を表示 ▼"}
             </button>
-            {showUnrecorded && unrecordedRows.map(renderRow)}
+            {showUnrecorded &&
+              unrecordedRows.map((stat) => (
+                <ClubRow
+                  key={stat.club}
+                  stat={stat}
+                  maxYards={maxYards}
+                  onShotDeleted={handleShotDeleted}
+                  onClubChange={handleClubChange}
+                />
+              ))}
           </>
         )}
       </div>
       <p className="text-[11px] text-green-400 mt-3">
         ラウンド中の距離計測で番手ごとの飛距離が貯まります
       </p>
+
+      {/* ── 未分類（番手未入力）：番手の事後選択・詳細編集・削除の唯一の入口 ── */}
+      {unassigned.length > 0 && (
+        <div className="mt-4 pt-4 border-t border-green-100 space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="font-semibold text-green-800">未分類（番手未入力）</h3>
+            <span className="text-xs text-green-500 tabular-nums">{unassigned.length} 件</span>
+          </div>
+          <p className="text-[11px] text-green-400">
+            距離計測だけ済んだショットです。番手を選んで保存すると番手別平均へ反映されます。
+          </p>
+          {unassigned.map((shot) => (
+            <UnassignedShotRow
+              key={shot.id}
+              shot={shot}
+              draft={drafts[shot.id] ?? {}}
+              expanded={!!expanded[shot.id]}
+              saving={savingId === shot.id}
+              deleting={deletingId === shot.id}
+              onToggleExpand={() => setExpanded((prev) => ({ ...prev, [shot.id]: !prev[shot.id] }))}
+              onDraftChange={(patch) => setDraft(shot.id, patch)}
+              onSave={() => saveUnassigned(shot)}
+              onDelete={() => deleteUnassigned(shot)}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
