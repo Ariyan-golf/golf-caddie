@@ -346,7 +346,12 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
   const [draconRankToasts, setDraconRankToasts] = useState<string[]>([]);
 
   // Wind compass visibility — persisted to localStorage
-  const [windVisible, setWindVisible] = useState(true);
+  // 方位センサーは稼働中ずっと電力を消費し、イベント毎の再描画もCPUを使う。
+  // 風向き・方向を見たい時だけONにし、それ以外はリスナーを解除して電池を温存する。
+  // そのためデフォルトはOFF。前回ON/OFFした設定が localStorage にあれば尊重する
+  // （前回ONなら今回もON）。OFF中は CompactCompass が useDeviceOrientation(visible)
+  // を通じて deviceorientation リスナーを実際に解除する＝センサー停止＆再描画なし。
+  const [windVisible, setWindVisible] = useState(false);
   useEffect(() => {
     const stored = localStorage.getItem(COMPASS_STORAGE_KEY);
     if (stored !== null) setWindVisible(stored === "true");
@@ -499,9 +504,12 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
     const armTimer = () => {
       if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
       idleTimerRef.current = setTimeout(() => {
-        // B: 計測中（始点記録〜終点待ち）は画面を保つ。ソフト解除せず再アームし、
-        // ポケット内で無操作のまま画面が消える→ページ破棄を誘発するのを防ぐ。
-        if (shotModeRef.current === "recording") {
+        // GPS安定化中（「打つ前」押下直後の起点確定待ちの数秒）だけは解除しない。
+        // 起点がブレると飛距離がずれるため、安定化が終わるまで再アームして待つ。
+        // 安定化後は計測中でも通常どおり解除してよい：画面が消えても進行中ラウンドは
+        // 端末保存（lib/activeRound.ts）と「打つ前」地点（DM_INFLIGHT）から復元され、
+        // 計測・スコアは失われない。
+        if (shotStartGraceTimerRef.current !== null) {
           armTimer();
           return;
         }
@@ -2928,9 +2936,18 @@ function ScoreEntryCard({
 
 const COMPASS_STORAGE_KEY = "golfCaddieWindCompass";
 
-// 無操作で Wake Lock をソフト解除するまでの時間（10分）。食事・組待ち中の
+// 無操作で Wake Lock をソフト解除するまでの時間。食事・組待ち・歩行中の
 // 発熱と電池消耗を止めるための値。
-const WAKE_LOCK_IDLE_MS = 10 * 60 * 1000;
+// 画面の点灯維持はスマホ最大の電力消費源。屋外は高輝度になるため、
+// 最後の操作から60秒で画面を消して電池を温存する。ゴルフは「見る→しまう」の
+// 繰り返しで、1分あれば操作に十分。画面が消えても進行中ラウンドは端末保存から
+// 復元されるため、計測・スコアは失われない。
+// テスト時は NEXT_PUBLIC_WAKELOCK_TIMEOUT_MS で上書き可能（無ければ60秒）。
+const WAKE_LOCK_IDLE_MS = (() => {
+  const raw = process.env.NEXT_PUBLIC_WAKELOCK_TIMEOUT_MS;
+  const parsed = raw ? parseInt(raw, 10) : NaN;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 60_000;
+})();
 
 // ── 計測途中状態の永続化（A）──────────────────────────────────────────
 // ポケットで画面が消える→バックグラウンドでページ破棄→再読込、で揮発する
