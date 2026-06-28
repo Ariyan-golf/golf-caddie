@@ -11,6 +11,7 @@ import { stopGpsTracking, getBestShotPosition, startShotWatch, stopShotWatch, aw
 import { acquireWakeLock, releaseWakeLock, softReleaseWakeLock } from "@/lib/wakeLock";
 import { isBetaMode } from "@/lib/betaMode";
 import { putHole, putShot, putScoreUpdate, putShotUpdate, putRoundUpdate, putShotDistance } from "@/lib/offline/db";
+import { saveActiveRound, clearActiveRound, readActiveRound, type ActiveRoundSnapshot } from "@/lib/activeRound";
 import Link from "next/link";
 import { GpsIndicator } from "./GpsIndicator";
 import { CompactCompass } from "./CompactCompass";
@@ -61,6 +62,7 @@ interface HoleRecorderProps {
   greenType?: "main" | "sub";
   initialGreenCenters?: Record<number, { lat: number; lng: number }>;
   pastView?: boolean;
+  roundDate?: string;
 }
 
 interface RoundShotEntry {
@@ -185,19 +187,45 @@ function isNetworkFailure(errOrException: unknown): boolean {
   return /Failed to fetch|NetworkError|Load failed/i.test(msg);
 }
 
+// 進行中ラウンドの端末スナップショット（snap）を、サーバー値(server)へ補完する。
+// サーバーがまだ持たない（圏外で未同期の）打数/パットだけを埋め、サーバーに値が
+// あればサーバー優先で上書きしない。snap が無ければ server をそのまま返す。
+// useState 初期化子で同期的に呼び、復元時の画面ちらつきを防ぐ（D）。
+function mergeRestoredHoles(server: Hole[], snap: ActiveRoundSnapshot | null): Hole[] {
+  if (!snap) return server;
+  return server.map((h) => {
+    const s = snap.holes.find((x) => x.hole_number === h.hole_number);
+    if (!s) return h;
+    const score = h.score === null && s.score != null ? s.score : h.score;
+    const putts = h.putts === null && s.putts != null ? s.putts : h.putts;
+    return score === h.score && putts === h.putts ? h : { ...h, score, putts };
+  });
+}
+
 // ── Main component ──────────────────────────────────────────────────
 
-export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "shot", windDirection, windSpeed, courseRating, slopeRating, courseHoles, paymentStatus = "paid", golfCourseName = "", inputMode = "post_round", golfCourseId = null, greenType = "main", initialGreenCenters = {}, pastView = false }: HoleRecorderProps) {
+export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "shot", windDirection, windSpeed, courseRating, slopeRating, courseHoles, paymentStatus = "paid", golfCourseName = "", inputMode = "post_round", golfCourseId = null, greenType = "main", initialGreenCenters = {}, pastView = false, roundDate = "" }: HoleRecorderProps) {
   const betaMode = isBetaMode();
   const router = useRouter();
-  const lastHole = initialHoles.at(-1);
+
+  // iPhone Safari は電池低下・画面スリープ・アプリ切替でページを破棄する。
+  // その際 React state は消えるため、進行中ラウンドを端末に保存し、起動時に
+  // 復元して「最初のホールに戻る」事故を防ぐ。サーバー値(initialHoles)へ未同期の
+  // 打数/パットを補完し、現在ホール番号も引き継ぐ。過去ラウンド閲覧(pastView)では
+  // 復元しない。マージは useState 初期化子で同期的に行い、画面はちらつかせない（D）。
+  const [restoredSnapshot] = useState<ActiveRoundSnapshot | null>(() =>
+    pastView ? null : readActiveRound(roundId)
+  );
+  const mergedInitialHoles = mergeRestoredHoles(initialHoles, restoredSnapshot);
+
+  const lastHole = mergedInitialHoles.at(-1);
   const initPhase: Phase =
-    initialHoles.length === 0 ? "par_select" :
+    mergedInitialHoles.length === 0 ? "par_select" :
     lastHole?.score !== null  ? "par_select" :
     mode === "score"          ? "score_entry" :
                                 "shooting";
 
-  const [holes, setHoles]           = useState<Hole[]>(initialHoles);
+  const [holes, setHoles]           = useState<Hole[]>(mergedInitialHoles);
 
   // コース後付け設定 → router.refresh() で新しい par を持つ initialHoles が来たら、
   // 表示中ホールの par をサーバー値へ追従させる。id で対応付け、par 以外は触らない。
@@ -242,9 +270,11 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
   const [showBetaModal, setShowBetaModal] = useState(false);
 
   // ── Step 2-1 unified-screen state ───────────────────────────────────
-  const [currentHoleNumber, setCurrentHoleNumber] = useState<number>(
-    initialHoles.find((h) => h.score === null)?.hole_number ??
-    initialHoles.at(-1)?.hole_number ??
+  const [currentHoleNumber, setCurrentHoleNumber] = useState<number>(() =>
+    // 復元時はスナップショットの現在ホール番号を優先（続きから表示）。
+    restoredSnapshot?.currentHoleNumber ??
+    mergedInitialHoles.find((h) => h.score === null)?.hole_number ??
+    mergedInitialHoles.at(-1)?.hole_number ??
     startHole
   );
   const [dmStart, setDmStart] = useState<{ lat: number; lng: number } | null>(null);
@@ -324,6 +354,29 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
   useEffect(() => {
     localStorage.setItem(COMPASS_STORAGE_KEY, String(windVisible));
   }, [windVisible]);
+
+  // iPhone Safari は電池低下・画面スリープ・アプリ切替でページを破棄する。
+  // その際 React state は消えるため、進行中ラウンドを端末に保存し、起動時に
+  // 復元して「最初のホールに戻る」事故を防ぐ。
+  // ホール移動／打数・パット入力のたびに holes / currentHoleNumber が変わって発火し、
+  // 現在ホール番号・全ホールの打数とパットを丸ごと保存する（A）。
+  // 過去閲覧(pastView)と終了確定後(roundEndConfirmed)は保存しない（C と整合）。
+  useEffect(() => {
+    if (pastView || roundEndConfirmed) return;
+    saveActiveRound({
+      roundId,
+      courseName: golfCourseName,
+      date: roundDate,
+      currentHoleNumber,
+      holes: holes.map((h) => ({
+        id: h.id,
+        hole_number: h.hole_number,
+        score: h.score,
+        putts: h.putts,
+      })),
+      updatedAt: Date.now(),
+    });
+  }, [holes, currentHoleNumber, roundEndConfirmed, pastView, roundId, golfCourseName, roundDate]);
 
   const currentHole  = holes.find((h) => h.hole_number === currentHoleNumber) ?? null;
   const holeCardRefs = useRef<Record<number, HTMLDivElement | null>>({});
@@ -1419,6 +1472,9 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
 
     stopGpsTracking();
     void releaseWakeLock();
+    // ラウンドを正常に終了／保存できた → 端末スナップショットを破棄（C）。
+    // 以後ホームを開いても自動復帰しない。
+    clearActiveRound();
 
     setHandicapDiff(diff);
     setConfirmLoading(false);

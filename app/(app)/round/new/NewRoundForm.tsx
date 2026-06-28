@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { fetchWeather } from "@/lib/weather";
 import { startGpsTracking } from "@/lib/gps";
 import { acquireWakeLock } from "@/lib/wakeLock";
+import { clearActiveRound } from "@/lib/activeRound";
 import { GeoPermissionGuide } from "@/components/GeoPermissionGuide";
 import type { StartHole, Weather, WindSpeed, WindDirection } from "@/types";
 import { WEATHER_OPTIONS, WIND_SPEED_OPTIONS } from "@/types";
@@ -267,6 +268,9 @@ export function NewRoundForm({ linkedCourseId }: { linkedCourseId?: string }) {
   // INSERT 成功後の共通処理: GPS追跡・Wake Lock を起動してラウンド画面へ遷移。
   // handleSubmit と handleStartWithoutCourse で再利用する。
   function navigateToRound(roundId: string) {
+    // 新規ラウンド開始 → 前のラウンドの端末スナップショットを破棄（C）。
+    // 残っていると次回起動時に古いラウンドへ誤って自動復帰してしまうため。
+    clearActiveRound();
     void startGpsTracking();
     void acquireWakeLock();
 

@@ -5,6 +5,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { Navigation } from "@/components/Navigation";
 import { LogoutButton } from "@/components/LogoutButton";
+import { ActiveRoundResume } from "@/components/ActiveRoundResume";
 import { RoundBarGraph } from "@/components/RoundBarGraph";
 import { EventRankingSection, type EventRankingData } from "@/components/EventRankingSection";
 import ConsentGate from "@/components/ConsentGate";
@@ -234,6 +235,10 @@ export default async function HomePage() {
 
   return (
     <div className="min-h-screen pb-20">
+      {/* iPhone Safari は電池低下・画面スリープ・アプリ切替でページを破棄する。
+          その際 PWA は start_url("/")=このホームで再起動するため、進行中ラウンドが
+          あれば /round/[id] へ自動復帰させ「最初のホールに戻る」事故を防ぐ。 */}
+      <ActiveRoundResume />
       <ConsentGate needsConsent={needsConsent} />
       <div className="max-w-lg mx-auto p-4 space-y-6">
         {/* Header */}
