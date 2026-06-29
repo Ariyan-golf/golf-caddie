@@ -3531,17 +3531,17 @@ function RoundComplete({
 
   return (
     <div className="space-y-4">
-      <div className="bg-green-600 text-white rounded-2xl p-5 text-center">
+      <div className="bg-green-600 text-white rounded-2xl p-4 text-center">
         <p className="text-sm opacity-80">ラウンド完了</p>
-        <p className="text-5xl font-bold tabular-nums mt-1">
-          {totalScore}
+        <p className="mt-0.5 flex items-baseline justify-center tabular-nums">
+          <span className="text-5xl font-bold">{totalScore}</span>
           <span className="text-2xl font-normal opacity-80 ml-2">/ {totalPutts}P</span>
-        </p>
-        <p className="text-lg opacity-90">
-          {diff === 0 ? "イーブン" : diff > 0 ? `+${diff}` : `${diff}`}
+          <span className="text-2xl font-normal opacity-90 ml-3">
+            {diff === 0 ? "イーブン" : diff > 0 ? `+${diff}` : `${diff}`}
+          </span>
         </p>
         {holes.length === 18 && (
-          <p className="text-sm opacity-70 mt-2">
+          <p className="text-sm opacity-70 mt-1">
             OUT {out} / {outPutts}P　IN {inn} / {innPutts}P
           </p>
         )}

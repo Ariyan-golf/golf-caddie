@@ -157,9 +157,6 @@ export default async function RoundDetailPage({ params, searchParams }: Props) {
           />
           <p className="text-sm text-green-500">
             {new Date(round.date).toLocaleDateString("ja-JP")}
-            {round.total_score && (
-              <span className="ml-2 font-bold text-green-700">{round.total_score}打</span>
-            )}
           </p>
         </div>
         <div className="flex-shrink-0 pt-0.5">
