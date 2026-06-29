@@ -3,6 +3,7 @@ import { CLUB_LABELS } from "@/types";
 import type { Club } from "@/types";
 import { getClubStats } from "@/lib/club-averages";
 import { ClubAveragesSection, type UnassignedShot } from "@/components/ClubAveragesSection";
+import { ShotShareButton } from "@/components/ShotShareButton";
 
 export default async function HistoryPage() {
   const supabase = await createClient();
@@ -61,7 +62,7 @@ export default async function HistoryPage() {
   const { data: recentShots } = await supabase
     .from("shots")
     .select(`
-      id, club, distance_yards, created_at,
+      id, club, distance_yards, distance_meters, created_at,
       holes(hole_number, rounds(course_name, date))
     `)
     .not("distance_yards", "is", null)
@@ -104,9 +105,19 @@ export default async function HistoryPage() {
                       </span>
                     )}
                   </div>
-                  <span className="text-sm font-semibold text-green-700 tabular-nums">
-                    {shot.distance_yards}y
-                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-sm font-semibold text-green-700 tabular-nums">
+                      {shot.distance_yards}y
+                    </span>
+                    <ShotShareButton
+                      club={shot.club ?? ""}
+                      courseName={hole?.rounds?.course_name ?? ""}
+                      holeNumber={hole?.hole_number ?? null}
+                      distanceYards={shot.distance_yards as number | null}
+                      distanceMeters={shot.distance_meters as number | null}
+                      date={hole?.rounds?.date ?? (shot.created_at as string)}
+                    />
+                  </div>
                 </div>
               );
             })}
