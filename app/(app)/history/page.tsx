@@ -30,6 +30,7 @@ export default async function HistoryPage() {
     .eq("holes.rounds.user_id", user!.id)
     .is("club", null)
     .not("distance_meters", "is", null)
+    .is("deleted_at", null)
     .order("created_at", { ascending: false });
 
   const unassignedShots: UnassignedShot[] = (unassignedRows ?? []).map((r) => {
@@ -64,6 +65,7 @@ export default async function HistoryPage() {
       holes(hole_number, rounds(course_name, date))
     `)
     .not("distance_yards", "is", null)
+    .is("deleted_at", null)
     .order("created_at", { ascending: false })
     .limit(40);
 

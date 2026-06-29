@@ -73,6 +73,7 @@ export default async function HomePage() {
       const baseQuery = adminDb
         .from("shot_distances")
         .select("user_id, distance_meters, distance_yards")
+        .is("deleted_at", null)
         .gte("created_at", event.start_date)
         .lt("created_at", endStr);
 
@@ -156,7 +157,8 @@ export default async function HomePage() {
         .select("distance_yards, holes!inner(rounds!inner(user_id))")
         .eq("holes.rounds.user_id", user.id)
         .eq("club", "1w")
-        .not("distance_yards", "is", null),
+        .not("distance_yards", "is", null)
+        .is("deleted_at", null),
       supabase
         .from("rounds")
         .select("handicap_differential")

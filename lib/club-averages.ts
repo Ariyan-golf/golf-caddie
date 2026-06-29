@@ -50,11 +50,13 @@ export async function getClubStats(
       .select("id, club, distance_yards, distance_meters, created_at, holes!inner(rounds!inner(user_id))")
       .eq("holes.rounds.user_id", userId)
       .not("club", "is", null)
-      .not("distance_meters", "is", null),
+      .not("distance_meters", "is", null)
+      .is("deleted_at", null),
     supabase
       .from("shot_distances")
       .select("id, club, distance_yards, distance_meters, created_at")
-      .eq("user_id", userId),
+      .eq("user_id", userId)
+      .is("deleted_at", null),
   ]);
 
   const validClubs = new Set<string>(CLUBS);

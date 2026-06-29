@@ -20,6 +20,7 @@ export default async function TobashikkoEntryPage() {
     .eq("club", "1w")
     .eq("holes.rounds.user_id", user.id)
     .not("distance_yards", "is", null)
+    .is("deleted_at", null)
     .order("created_at", { ascending: false });
 
   const driverShots: DriverShot[] = (shotRows ?? []).map((row) => {

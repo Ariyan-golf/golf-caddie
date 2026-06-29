@@ -102,6 +102,8 @@ export interface Hole {
   distance_yards: number | null;
 }
 
+export type DistanceSource = "gps" | "manual";
+
 export interface Shot {
   id: string;
   hole_id: string;
@@ -117,6 +119,17 @@ export interface Shot {
   lie_type: LieType | null;
   notes: string | null;
   created_at: string;
+  // 後続マイグレーションで追加された列（実テーブルに合わせて反映）
+  // 20260513000000_post_round_input.sql
+  ball_shape: string | null;       // フック / ドロー / ストレート / フェード / スライス / トップ / チョロ
+  ball_direction: string | null;   // 左 / 真っ直ぐ / 右
+  lie_vertical: string | null;     // フラット / 左足上がり / 左足下り
+  lie_horizontal: string | null;   // フラット / 爪先上がり / 爪先下がり
+  note: string | null;             // 自由記述メモ（旧 notes とは別列）
+  club_input_at: string | null;    // 当日 / 事後
+  // 20260629000000_add_soft_delete_and_distance_source.sql
+  deleted_at: string | null;       // 論理削除タイムスタンプ（NULL = 生存）
+  distance_source: DistanceSource; // gps（GPS計測）/ manual（手入力）。default 'gps'
 }
 
 export interface ClubAverage {

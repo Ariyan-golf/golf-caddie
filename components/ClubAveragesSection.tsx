@@ -71,7 +71,7 @@ function recalcStat(stat: ClubStat, shots: ShotRecord[]): ClubStat {
   };
 }
 
-// shots 由来は削除API、shot_distances 由来は本人RLSで直接 DELETE。
+// shots 由来は削除API（API側で論理削除）、shot_distances 由来は本人RLSで直接 論理削除。
 async function deleteShot(shotId: string): Promise<boolean> {
   const res = await fetch("/api/stats/delete-shot", {
     method: "DELETE",
@@ -83,7 +83,10 @@ async function deleteShot(shotId: string): Promise<boolean> {
 
 async function deleteDistance(id: string): Promise<boolean> {
   const supabase = createClient();
-  const { error } = await supabase.from("shot_distances").delete().eq("id", id);
+  const { error } = await supabase
+    .from("shot_distances")
+    .update({ deleted_at: new Date().toISOString() })
+    .eq("id", id);
   return !error;
 }
 
