@@ -103,19 +103,26 @@ export default async function RoundDetailPage({ params, searchParams }: Props) {
     .eq("round_id", id)
     .order("hole_number");
 
-  // このラウンドの最長ドライバー飛距離（club='1w' のショットの最大 yd）。
+  // このラウンドのドライバー(1W)飛距離サマリ（最長・平均）。
   // 既取得の holes→shots から算出し、追加クエリは行わない。記録が無ければ null。
+  // 条件は club='1w'・distance_yards 非null・deleted_at IS NULL（論理削除済みは除外）。
   let maxDriverYards: number | null = null;
+  let driverSumYards = 0;
+  let driverCount = 0;
   for (const h of holes ?? []) {
-    const shots = (h as { shots?: { club?: string | null; distance_yards?: number | null }[] }).shots ?? [];
+    const shots = (h as { shots?: { club?: string | null; distance_yards?: number | null; deleted_at?: string | null }[] }).shots ?? [];
     for (const s of shots) {
-      if (s.club === "1w" && s.distance_yards != null) {
+      if (s.club === "1w" && s.distance_yards != null && s.deleted_at == null) {
         if (maxDriverYards == null || s.distance_yards > maxDriverYards) {
           maxDriverYards = s.distance_yards;
         }
+        driverSumYards += s.distance_yards;
+        driverCount += 1;
       }
     }
   }
+  const avgDriverYards: number | null =
+    driverCount > 0 ? Math.round(driverSumYards / driverCount) : null;
 
   // Pre-fetch existing green centers for this course + green_type so the
   // round-UI can immediately reflect "registered" state on each hole tab.
@@ -154,6 +161,20 @@ export default async function RoundDetailPage({ params, searchParams }: Props) {
               <span className="ml-2 font-bold text-green-700">{round.total_score}打</span>
             )}
           </p>
+          {(avgDriverYards != null || maxDriverYards != null) && (
+            <p className="text-xs text-green-400 mt-0.5 tabular-nums">
+              🏌️ ドライバー
+              {avgDriverYards != null && (
+                <span className="ml-1">平均 {avgDriverYards}y</span>
+              )}
+              {avgDriverYards != null && maxDriverYards != null && (
+                <span className="mx-1 text-green-300">/</span>
+              )}
+              {maxDriverYards != null && (
+                <span>最長 {maxDriverYards}y</span>
+              )}
+            </p>
+          )}
         </div>
         <div className="flex-shrink-0 pt-0.5">
           <RecordShareButton
