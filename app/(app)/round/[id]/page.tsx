@@ -161,20 +161,6 @@ export default async function RoundDetailPage({ params, searchParams }: Props) {
               <span className="ml-2 font-bold text-green-700">{round.total_score}打</span>
             )}
           </p>
-          {(avgDriverYards != null || maxDriverYards != null) && (
-            <p className="text-xs text-green-400 mt-0.5 tabular-nums">
-              🏌️ ドライバー
-              {avgDriverYards != null && (
-                <span className="ml-1">平均 {avgDriverYards}y</span>
-              )}
-              {avgDriverYards != null && maxDriverYards != null && (
-                <span className="mx-1 text-green-300">/</span>
-              )}
-              {maxDriverYards != null && (
-                <span>最長 {maxDriverYards}y</span>
-              )}
-            </p>
-          )}
         </div>
         <div className="flex-shrink-0 pt-0.5">
           <RecordShareButton
@@ -204,6 +190,8 @@ export default async function RoundDetailPage({ params, searchParams }: Props) {
         initialGreenCenters={initialGreenCenters}
         pastView={pastView}
         roundDate={round.date ?? ""}
+        avgDriverYards={avgDriverYards}
+        maxDriverYards={maxDriverYards}
       />
     </div>
   );

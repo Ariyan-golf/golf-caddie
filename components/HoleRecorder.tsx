@@ -63,6 +63,8 @@ interface HoleRecorderProps {
   initialGreenCenters?: Record<number, { lat: number; lng: number }>;
   pastView?: boolean;
   roundDate?: string;
+  avgDriverYards?: number | null;
+  maxDriverYards?: number | null;
 }
 
 interface RoundShotEntry {
@@ -204,7 +206,7 @@ function mergeRestoredHoles(server: Hole[], snap: ActiveRoundSnapshot | null): H
 
 // ── Main component ──────────────────────────────────────────────────
 
-export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "shot", windDirection, windSpeed, courseRating, slopeRating, courseHoles, paymentStatus = "paid", golfCourseName = "", inputMode = "post_round", golfCourseId = null, greenType = "main", initialGreenCenters = {}, pastView = false, roundDate = "" }: HoleRecorderProps) {
+export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "shot", windDirection, windSpeed, courseRating, slopeRating, courseHoles, paymentStatus = "paid", golfCourseName = "", inputMode = "post_round", golfCourseId = null, greenType = "main", initialGreenCenters = {}, pastView = false, roundDate = "", avgDriverYards = null, maxDriverYards = null }: HoleRecorderProps) {
   const betaMode = isBetaMode();
   const router = useRouter();
 
@@ -1548,6 +1550,8 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
           onPayNow={() => setShowPaymentModal(true)}
           pastView={pastView}
           onUpdateHole={handleUpdateHole}
+          avgDriverYards={avgDriverYards}
+          maxDriverYards={maxDriverYards}
         />
         {!betaMode && showPaymentModal && (
           <PaymentRequiredModal
@@ -3336,7 +3340,7 @@ function PaymentRequiredModal({
 
 function RoundComplete({
   holes, totalScore, totalPar, mode, handicapDiff, paymentPending, onPayNow,
-  pastView = false, onUpdateHole,
+  pastView = false, onUpdateHole, avgDriverYards = null, maxDriverYards = null,
 }: {
   holes: Hole[];
   totalScore: number;
@@ -3347,6 +3351,8 @@ function RoundComplete({
   onPayNow?: () => void;
   pastView?: boolean;
   onUpdateHole?: (holeId: string, update: Partial<Hole>) => Promise<void>;
+  avgDriverYards?: number | null;
+  maxDriverYards?: number | null;
 }) {
   const diff       = totalScore - totalPar;
   const totalPutts = holes.reduce((s, h) => s + (h.putts ?? 0), 0);
@@ -3537,6 +3543,14 @@ function RoundComplete({
         {holes.length === 18 && (
           <p className="text-sm opacity-70 mt-2">
             OUT {out} / {outPutts}P　IN {inn} / {innPutts}P
+          </p>
+        )}
+        {(avgDriverYards != null || maxDriverYards != null) && (
+          <p className="text-sm opacity-70 mt-1">
+            🏌️ ドライバー
+            {avgDriverYards != null && <span className="ml-1">平均 {avgDriverYards}y</span>}
+            {avgDriverYards != null && maxDriverYards != null && <span className="mx-1">/</span>}
+            {maxDriverYards != null && <span>最長 {maxDriverYards}y</span>}
           </p>
         )}
       </div>
