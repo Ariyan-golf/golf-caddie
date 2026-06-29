@@ -34,6 +34,7 @@ export interface RecordShareButtonProps {
   roundDate:      string;          // YYYY-MM-DD
   totalScore:     number | null;
   maxDriverYards: number | null;   // そのラウンドの最長ドライバー飛距離（無ければ null）
+  avgDriverYards: number | null;   // そのラウンドのドライバー平均（無ければ null）
 }
 
 function fmtDate(s: string) {
@@ -99,6 +100,7 @@ export function RecordShareButton({
   roundDate,
   totalScore,
   maxDriverYards,
+  avgDriverYards,
 }: RecordShareButtonProps) {
   useNotoSansJp();
   const cardRef = useRef<HTMLDivElement>(null);
@@ -120,8 +122,12 @@ export function RecordShareButton({
   function buildCaption() {
     // 記録・成長トーン（自慢色は控えめ）。
     if (variant === "distance" && maxDriverYards != null) {
+      const distancePart =
+        avgDriverYards != null
+          ? `最長${maxDriverYards}y / 平均${avgDriverYards}y`
+          : `最長 ${maxDriverYards}yd`;
       return (
-        `本日のドライバー最長 ${maxDriverYards}yd｜${courseName}\n` +
+        `本日のドライバー ${distancePart}｜${courseName}\n` +
         `コツコツ記録更新中。\n` +
         `#GolfCaddieAI\n` +
         `${SHARE_URL}`
@@ -343,6 +349,7 @@ export function RecordShareButton({
                     dateLabel={fmtDate(roundDate)}
                     totalScore={totalScore}
                     distanceYards={maxDriverYards}
+                    avgDriverYards={avgDriverYards}
                     background={background}
                   />
                 </div>

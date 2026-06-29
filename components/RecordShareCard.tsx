@@ -29,7 +29,8 @@ export interface RecordShareCardProps {
   courseName:   string;
   dateLabel:    string;            // 例: "2026/6/16"
   totalScore:   number | null;     // "round" 用（未記録は null）
-  distanceYards: number | null;    // "distance" 用
+  distanceYards: number | null;    // "distance" 用（最長ドライバー）
+  avgDriverYards?: number | null;  // "distance" 用（平均。null なら平均行を出さない）
   background:   RecordShareBackground;
 }
 
@@ -45,7 +46,7 @@ const SCRIM = "linear-gradient(180deg, rgba(0,0,0,0.35) 0%, rgba(0,0,0,0.55) 100
 
 export const RecordShareCard = forwardRef<HTMLDivElement, RecordShareCardProps>(
   function RecordShareCard(
-    { variant, courseName, dateLabel, totalScore, distanceYards, background },
+    { variant, courseName, dateLabel, totalScore, distanceYards, avgDriverYards = null, background },
     ref,
   ) {
     const isImage = background.type === "image";
@@ -147,15 +148,28 @@ export const RecordShareCard = forwardRef<HTMLDivElement, RecordShareCardProps>(
           ) : (
             <>
               <div style={{ fontSize: 32, fontWeight: 700, color: GREY }}>
-                ドライバー最長飛距離
+                {avgDriverYards != null ? "ドライバー飛距離" : "ドライバー最長飛距離"}
               </div>
 
+              {/* 主役：最長 */}
               <div style={{ marginTop: 8, display: "flex", alignItems: "baseline", justifyContent: "center" }}>
                 <span style={{ fontSize: 184, fontWeight: 900, color: GREEN_DARK, lineHeight: 1 }}>
                   {distanceYards ?? 0}
                 </span>
                 <span style={{ fontSize: 64, fontWeight: 900, color: GREEN_DARK, marginLeft: 12 }}>yd</span>
               </div>
+              <div style={{ fontSize: 30, fontWeight: 700, color: GREY, marginTop: 8 }}>最長</div>
+
+              {/* サブ：平均（記録があるときのみ） */}
+              {avgDriverYards != null && (
+                <div style={{ marginTop: 24, display: "flex", alignItems: "baseline", justifyContent: "center" }}>
+                  <span style={{ fontSize: 30, fontWeight: 700, color: GREY, marginRight: 12 }}>平均</span>
+                  <span style={{ fontSize: 72, fontWeight: 900, color: PINK, lineHeight: 1 }}>
+                    {avgDriverYards}
+                  </span>
+                  <span style={{ fontSize: 32, fontWeight: 900, color: PINK, marginLeft: 8 }}>y</span>
+                </div>
+              )}
 
               {/* 区切り線 */}
               <div style={{ height: 2, background: "#E8E8E8", margin: "44px 8px" }} />

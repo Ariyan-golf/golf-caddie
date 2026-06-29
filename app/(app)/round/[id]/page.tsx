@@ -165,6 +165,7 @@ export default async function RoundDetailPage({ params, searchParams }: Props) {
             roundDate={round.date}
             totalScore={round.total_score ?? null}
             maxDriverYards={maxDriverYards}
+            avgDriverYards={avgDriverYards}
           />
         </div>
       </div>
