@@ -38,7 +38,8 @@ export async function updateSession(request: NextRequest) {
 
   if (!user && !isPublic && !isOpen) {
     const url = request.nextUrl.clone();
-    url.pathname = "/login";
+    // 入口（ルート）は計測画面 /try へ。それ以外の保護ページは従来どおり /login へ。
+    url.pathname = pathname === "/" ? "/try" : "/login";
     return NextResponse.redirect(url);
   }
 

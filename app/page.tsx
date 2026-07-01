@@ -6,6 +6,7 @@ import Image from "next/image";
 import { Navigation } from "@/components/Navigation";
 import { LogoutButton } from "@/components/LogoutButton";
 import { ActiveRoundResume } from "@/components/ActiveRoundResume";
+import { InstallPrompt } from "@/components/InstallPrompt";
 import { RoundBarGraph } from "@/components/RoundBarGraph";
 import { EventRankingSection, type EventRankingData } from "@/components/EventRankingSection";
 import ConsentGate from "@/components/ConsentGate";
@@ -28,7 +29,7 @@ export default async function HomePage() {
   } = await supabase.auth.getSession();
   const user = session?.user ?? null;
 
-  if (!user) redirect("/login");
+  if (!user) redirect("/try");
 
   const needsConsent = await getNeedsConsent();
 
@@ -256,6 +257,8 @@ export default async function HomePage() {
             <LogoutButton />
           </div>
         </div>
+
+        <InstallPrompt />
 
         {/* 飛ばしっこGO 導線 */}
         {tobashikkoConfigured ? (

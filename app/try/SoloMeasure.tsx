@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Share2, Download, Copy, Check, X, Pencil } from "lucide-react";
 import { GpsTracker } from "@/components/GpsTracker";
+import { InstallPrompt } from "@/components/InstallPrompt";
 import { SoloShareCard } from "@/components/SoloShareCard";
 import { metersToYards } from "@/lib/distance";
 import { CLUBS, CLUB_LABELS } from "@/types";
@@ -288,6 +289,8 @@ export function SoloMeasure() {
             もう一度計る
           </button>
         </div>
+
+        <InstallPrompt />
 
         <div className="card text-center py-6 border-2 border-amber-300 bg-gradient-to-r from-amber-50 to-orange-50">
           <p className="text-amber-800 font-semibold">記録を残して、番手アドバイスも受けよう</p>
