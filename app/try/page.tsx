@@ -27,10 +27,19 @@ export default function TryPage() {
 
         <SoloMeasure />
 
-        <div className="pt-2 text-center">
-          <Link href="/register" className="text-xs text-green-600 underline">
-            無料で会員登録する
-          </Link>
+        <div className="pt-2 text-center text-xs text-green-600 space-y-1">
+          <p>
+            計測データをクラウドに保存するには{" "}
+            <Link href="/register" className="underline font-semibold">
+              無料登録
+            </Link>
+          </p>
+          <p>
+            すでに会員の方は{" "}
+            <Link href="/login" className="underline">
+              ログイン
+            </Link>
+          </p>
         </div>
       </div>
     </div>

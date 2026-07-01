@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import Link from "next/link";
 import { Share2, Download, Copy, Check, X, Pencil } from "lucide-react";
 import { GpsTracker } from "@/components/GpsTracker";
 import { InstallPrompt } from "@/components/InstallPrompt";
@@ -16,7 +15,8 @@ import type { Club } from "@/types";
  * - 計測は本番実績のある GpsTracker をそのまま再利用（onShotRecorded コールバック）。
  * - 結果は state に保持するだけ。DB 保存・shots insert・round_id/hole_id・event_id・
  *   ランキングは一切持たない。
- * - すべての CTA は /register に向ける（(app) 配下へは直リンクしない）。
+ * - 「まず測って慣れる」路線のため、この計測 UI 内に登録 CTA は置かない。
+ *   登録・ログイン導線は app/try/page.tsx のフッターに集約する。
  */
 
 type State = "idle" | "measuring" | "result";
@@ -292,17 +292,6 @@ export function SoloMeasure() {
 
         <InstallPrompt />
 
-        <div className="card text-center py-6 border-2 border-amber-300 bg-gradient-to-r from-amber-50 to-orange-50">
-          <p className="text-amber-800 font-semibold">記録を残して、番手アドバイスも受けよう</p>
-          <p className="text-xs text-amber-700 mt-1">登録すると3ラウンド無料でお試し</p>
-          <Link
-            href="/register"
-            className="inline-block mt-3 bg-green-600 hover:bg-green-700 active:bg-green-800 text-white font-bold py-3 px-6 rounded-xl transition-colors"
-          >
-            無料で会員登録
-          </Link>
-        </div>
-
         {historyList}
       </div>
     );
@@ -343,17 +332,6 @@ export function SoloMeasure() {
         <button onClick={() => setState("measuring")} className="btn-primary mt-4">
           ①打つ場所でスタート
         </button>
-      </div>
-
-      <div className="card text-center py-6 border-2 border-amber-300 bg-gradient-to-r from-amber-50 to-orange-50">
-        <p className="text-amber-800 font-semibold">記録の保存・履歴・番手アドバイスは会員機能です</p>
-        <p className="text-xs text-amber-700 mt-1">登録すると3ラウンド無料でお試し</p>
-        <Link
-          href="/register"
-          className="inline-block mt-3 text-sm font-bold text-amber-700 underline"
-        >
-          無料で会員登録
-        </Link>
       </div>
 
       {historyList}
