@@ -29,6 +29,9 @@ const SHARE_URL = "https://golf-caddie-eight.vercel.app/try";
 // プレビュー表示サイズ（実寸 1080×1350 を 0.25 倍）。
 const PREVIEW_SCALE = 0.25;
 
+// フォント埋め込み CSS のキャッシュ（初回だけ取得し、以降の toPng で使い回す）。
+let cachedFontCss: string | null = null;
+
 export interface RecordShareButtonProps {
   courseName:     string;
   roundDate:      string;          // YYYY-MM-DD
@@ -222,17 +225,25 @@ export function RecordShareButton({
     if (!node) throw new Error("card node not mounted");
     await waitForAssets(node, bgDataUrl);
     // html-to-image はクライアント専用。動的 import でバンドルを分離。
-    const { toPng } = await import("html-to-image");
+    const { toPng, getFontEmbedCSS } = await import("html-to-image");
+    // Google フォントの埋め込み CSS は毎回同じなので、初回のみ取得してキャッシュする。
+    // （toPng ごとの再取得・再計算を避け、3回リトライぶんの重い処理を削減する）
+    if (cachedFontCss === null) {
+      cachedFontCss = await getFontEmbedCSS(node);
+    }
     // iOS Safari は foreignObject 内の画像が初回レンダリングで欠落することがある既知問題があるため、
     // 同一オプションで3回連続実行し、最後の結果を採用する（定番の回避策）。
+    // cacheBust は付けない（背景写真・DOM内画像はすべて dataURL なので不要）。
     let dataUrl = "";
     for (let i = 0; i < 3; i++) {
       dataUrl = await toPng(node, {
         pixelRatio: 1,
-        cacheBust: true,
         width: 1080,
         height: 1350,
+        fontEmbedCSS: cachedFontCss,
       });
+      // 連続実行の合間に UI スレッドへ息継ぎさせ、フリーズを防ぐ。
+      await new Promise((r) => setTimeout(r, 0));
     }
     const blob = await (await fetch(dataUrl)).blob();
     const file = new File([blob], "golf-caddie-record.png", { type: "image/png" });
