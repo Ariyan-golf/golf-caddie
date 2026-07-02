@@ -154,7 +154,18 @@ export const RecordShareCard = forwardRef<HTMLDivElement, RecordShareCardProps>(
                 zIndex: 0,
               }}
             />
-            <div style={{ position: "absolute", inset: 0, background: SCRIM, zIndex: 1 }} />
+            {/* 暗幕：distance は従来の SCRIM。round は下部情報帯だけで可読性が取れるため上端を弱める。 */}
+            <div
+              style={{
+                position: "absolute",
+                inset: 0,
+                background:
+                  variant === "round"
+                    ? "linear-gradient(180deg, rgba(0,0,0,0.25) 0%, rgba(0,0,0,0.1) 40%, rgba(0,0,0,0.3) 100%)"
+                    : SCRIM,
+                zIndex: 1,
+              }}
+            />
           </>
         )}
 
@@ -166,67 +177,88 @@ export const RecordShareCard = forwardRef<HTMLDivElement, RecordShareCardProps>(
           </div>
         </div>
 
-        {/* round（写真時）：上下分割レイアウト。
-            a. ヘッダー部（ラベル/コース名/日付/合計）は写真の上に直接（パネルなし・白文字）。
-            b. スコア表のみ半透明白パネルに入れてヘッダー部の下に置く。 */}
-        {variant === "round" && isImage && (
-          <>
-            {/* a. ヘッダー部（写真の上に直接。白文字＋影） */}
+        {/* round（写真時）：GDO 型「写真主役＋下部情報帯」。
+            写真を上部いっぱいに見せ、コース名・合計スコア・18ホールを1枚の半透明帯に集約する。
+            帯下端はピンク帯上端（高さ約170）に接する（bottom 170）。 */}
+        {variant === "round" && isImage && (() => {
+          // OUT / IN 小計（各ナイン全ホール入力済みのときのみ数値）。
+          const outScored = outHoles.length > 0 && outHoles.every((h) => h.score != null);
+          const inScored = inHoles.length > 0 && inHoles.every((h) => h.score != null);
+          const outSum = outHoles.reduce((s, h) => s + (h.score ?? 0), 0);
+          const inSum = inHoles.reduce((s, h) => s + (h.score ?? 0), 0);
+          // 18ホールストリップ用にホール番号で引けるようにする。
+          const holeByNumber = new Map<number, RecordShareHole>(holes.map((h) => [h.holeNumber, h]));
+          const stripRows = [
+            [1, 2, 3, 4, 5, 6, 7, 8, 9],
+            [10, 11, 12, 13, 14, 15, 16, 17, 18],
+          ];
+          return (
             <div
               style={{
                 position: "absolute",
-                top: 180,
-                left: 100,
-                width: 880,
+                left: 60,
+                width: 960,
+                bottom: 170,
+                background: "rgba(255,255,255,0.92)",
+                borderRadius: 28,
+                padding: "36px 40px",
+                boxSizing: "border-box",
                 textAlign: "center",
-                color: "#ffffff",
-                textShadow: "0 2px 12px rgba(0,0,0,0.6)",
                 zIndex: 2,
               }}
             >
-              <div style={{ fontSize: 32, fontWeight: 700 }}>今日のラウンド</div>
-              <div style={{ fontSize: 44, fontWeight: 900, marginTop: 8, lineHeight: 1.2, wordBreak: "break-word" }}>
+              {/* a. コース名・日付 */}
+              <div style={{ fontSize: 40, fontWeight: 900, color: GREEN_DARK, lineHeight: 1.15, wordBreak: "break-word" }}>
                 {courseName}
               </div>
-              <div style={{ fontSize: 28, fontWeight: 700, marginTop: 6 }}>{dateLabel}</div>
+              <div style={{ fontSize: 24, fontWeight: 700, color: GREY, marginTop: 4 }}>{dateLabel}</div>
+
+              {/* b. スコア行：合計＋パー差＋OUT/IN小計 */}
               {totalScore != null ? (
-                <div style={{ marginTop: 16, display: "flex", alignItems: "baseline", justifyContent: "center" }}>
-                  <span style={{ fontSize: 120, fontWeight: 900, color: "#ffffff", lineHeight: 1 }}>{totalScore}</span>
+                <div style={{ marginTop: 12, display: "flex", alignItems: "baseline", justifyContent: "center" }}>
+                  <span style={{ fontSize: 96, fontWeight: 900, color: PINK, lineHeight: 1 }}>{totalScore}</span>
                   {showDiff && (
-                    <span style={{ fontSize: 48, fontWeight: 900, color: "#ffffff", marginLeft: 20 }}>{diffLabel}</span>
+                    <span style={{ fontSize: 40, fontWeight: 900, color: GREY, marginLeft: 16 }}>{diffLabel}</span>
                   )}
+                  <span style={{ fontSize: 28, fontWeight: 700, color: GREY, marginLeft: 28 }}>
+                    OUT {outScored ? outSum : "-"} / IN {inScored ? inSum : "-"}
+                  </span>
                 </div>
               ) : (
-                <div style={{ fontSize: 56, fontWeight: 900, color: "#ffffff", marginTop: 16, lineHeight: 1.2 }}>
+                <div style={{ fontSize: 48, fontWeight: 900, color: GREY, marginTop: 12, lineHeight: 1.2 }}>
                   スコア未記録
                 </div>
               )}
-            </div>
 
-            {/* b. スコア表：半透明白パネル（ヘッダー部の下）。
-                概算高さ検証：top 528 + パネル高さ 約568（内側テーブル約504 + padding上下64）
-                → 下端 約1096。ピンク帯上端 約1172 に対し余白 約76px で重ならない。 */}
-            <div
-              style={{
-                position: "absolute",
-                top: 528,
-                left: 100,
-                width: 880,
-                background: "rgba(255,255,255,0.85)",
-                borderRadius: 32,
-                boxShadow: "0 24px 60px rgba(0,0,0,0.25)",
-                padding: "32px 40px",
-                boxSizing: "border-box",
-                zIndex: 2,
-              }}
-            >
-              <div style={{ display: "flex", gap: 24, justifyContent: "center" }}>
-                {scoreColumn("OUT", outHoles)}
-                {scoreColumn("IN", inHoles)}
+              {/* c. 18ホールストリップ：2行×9セル等幅。番号（上）＋スコア（下・色分け）。パットは載せない。 */}
+              <div style={{ marginTop: 20 }}>
+                {stripRows.map((rowNums, ri) => (
+                  <div key={ri} style={{ display: "flex", marginTop: ri === 0 ? 0 : 10 }}>
+                    {rowNums.map((n) => {
+                      const h = holeByNumber.get(n);
+                      const sc = h?.score ?? null;
+                      return (
+                        <div key={n} style={{ width: `${100 / 9}%`, textAlign: "center" }}>
+                          <div style={{ fontSize: 18, fontWeight: 700, color: GREY }}>{n}</div>
+                          <div
+                            style={{
+                              fontSize: 30,
+                              fontWeight: 900,
+                              lineHeight: 1.1,
+                              color: sc != null ? getScoreColor(sc, h!.par) : GREY,
+                            }}
+                          >
+                            {sc != null ? sc : "-"}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))}
               </div>
             </div>
-          </>
-        )}
+          );
+        })()}
 
         {/* round（写真なし）：従来どおり1枚の白パネルにヘッダー＋表をまとめる。 */}
         {variant === "round" && !isImage && (
