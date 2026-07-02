@@ -29,6 +29,7 @@ export interface RecordShareHole {
   holeNumber: number;
   par:        number;
   score:      number | null;
+  putts:      number | null;
 }
 
 export interface RecordShareCardProps {
@@ -72,29 +73,34 @@ export const RecordShareCard = forwardRef<HTMLDivElement, RecordShareCardProps>(
 
     // スコア表の1列（OUT / IN）。罫線は白パネル前提で常に #E8E8E8。
     const LINE = "#E8E8E8";
+    // パット数の通常色（白パネル前提の濃色）。null セルは GREY で「-」。
+    const PUTT = "#333333";
     const scoreColumn = (label: string, rows: RecordShareHole[]) => {
       const colParSum = rows.reduce((s, r) => s + r.par, 0);
       const allScored = rows.length > 0 && rows.every((r) => r.score != null);
       const colScoreSum = rows.reduce((s, r) => s + (r.score ?? 0), 0);
+      const allPutted = rows.length > 0 && rows.every((r) => r.putts != null);
+      const colPuttSum = rows.reduce((s, r) => s + (r.putts ?? 0), 0);
       const th: CSSProperties = {
-        fontSize: 24, fontWeight: 700, color: GREY, padding: "4px 8px",
+        fontSize: 22, fontWeight: 700, color: GREY, padding: "4px 6px",
         textAlign: "center", borderBottom: `2px solid ${LINE}`,
       };
       const td: CSSProperties = {
-        fontSize: 28, fontWeight: 700, padding: "7px 8px",
+        fontSize: 26, fontWeight: 700, padding: "7px 6px",
         textAlign: "center", borderBottom: `1px solid ${LINE}`,
       };
       const sub: CSSProperties = {
-        fontSize: 30, fontWeight: 900, color: GREEN_DARK, padding: "9px 8px",
+        fontSize: 28, fontWeight: 900, color: GREEN_DARK, padding: "9px 6px",
         textAlign: "center", borderTop: `2px solid ${LINE}`,
       };
       return (
-        <table style={{ width: 368, borderCollapse: "collapse", fontFamily: FONT_STACK }}>
+        <table style={{ width: 372, borderCollapse: "collapse", fontFamily: FONT_STACK }}>
           <thead>
             <tr>
               <th style={{ ...th, textAlign: "left" }}>H</th>
               <th style={th}>Par</th>
               <th style={th}>計</th>
+              <th style={th}>P</th>
             </tr>
           </thead>
           <tbody>
@@ -105,12 +111,16 @@ export const RecordShareCard = forwardRef<HTMLDivElement, RecordShareCardProps>(
                 <td style={{ ...td, fontWeight: 900, color: r.score != null ? getScoreColor(r.score, r.par) : GREY }}>
                   {r.score != null ? r.score : "-"}
                 </td>
+                <td style={{ ...td, color: r.putts != null ? PUTT : GREY }}>
+                  {r.putts != null ? r.putts : "-"}
+                </td>
               </tr>
             ))}
             <tr>
               <td style={{ ...sub, textAlign: "left" }}>{label}</td>
               <td style={sub}>{colParSum}</td>
               <td style={sub}>{allScored ? colScoreSum : "-"}</td>
+              <td style={sub}>{allPutted ? colPuttSum : "-"}</td>
             </tr>
           </tbody>
         </table>
@@ -156,75 +166,144 @@ export const RecordShareCard = forwardRef<HTMLDivElement, RecordShareCardProps>(
           </div>
         </div>
 
-        {/* 中央パネル。
-            round: 常に白パネル（写真時も rgba(255,255,255,0.92)）。色分け数字を活かすため白文字化しない。
-            distance: 写真なしは白パネル、写真時はパネルなし＋白文字。 */}
-        <div
-          style={{
-            position: "absolute",
-            top: variant === "round" ? 180 : 400,
-            left: 100,
-            width: 880,
-            background:
-              variant === "round"
-                ? (isImage ? "rgba(255,255,255,0.78)" : "#ffffff")
-                : (isImage ? "transparent" : "#ffffff"),
-            borderRadius: variant === "round" ? 40 : (isImage ? 0 : 40),
-            boxShadow:
-              variant === "round"
-                ? "0 24px 60px rgba(0,0,0,0.25)"
-                : (isImage ? "none" : "0 24px 60px rgba(0,0,0,0.25)"),
-            padding: variant === "round" ? "44px 48px 52px" : "64px 64px 72px",
-            boxSizing: "border-box",
-            textAlign: "center",
-            // 写真上の白文字を読みやすくする影は distance の写真時のみ（round は白パネルなので不要）。
-            textShadow: variant === "round" ? undefined : (isImage ? "0 2px 12px rgba(0,0,0,0.6)" : undefined),
-            zIndex: 2,
-          }}
-        >
-          {variant === "round" ? (
-            <>
-              {/* a. 上部：ラベル・コース名・日付 */}
-              <div style={{ fontSize: 32, fontWeight: 700, color: GREY }}>今日のラウンド</div>
-              <div
-                style={{
-                  fontSize: 44,
-                  fontWeight: 900,
-                  color: GREEN_DARK,
-                  marginTop: 8,
-                  lineHeight: 1.2,
-                  wordBreak: "break-word",
-                }}
-              >
+        {/* round（写真時）：上下分割レイアウト。
+            a. ヘッダー部（ラベル/コース名/日付/合計）は写真の上に直接（パネルなし・白文字）。
+            b. スコア表のみ半透明白パネルに入れてヘッダー部の下に置く。 */}
+        {variant === "round" && isImage && (
+          <>
+            {/* a. ヘッダー部（写真の上に直接。白文字＋影） */}
+            <div
+              style={{
+                position: "absolute",
+                top: 180,
+                left: 100,
+                width: 880,
+                textAlign: "center",
+                color: "#ffffff",
+                textShadow: "0 2px 12px rgba(0,0,0,0.6)",
+                zIndex: 2,
+              }}
+            >
+              <div style={{ fontSize: 32, fontWeight: 700 }}>今日のラウンド</div>
+              <div style={{ fontSize: 44, fontWeight: 900, marginTop: 8, lineHeight: 1.2, wordBreak: "break-word" }}>
                 {courseName}
               </div>
-              <div style={{ fontSize: 28, fontWeight: 700, color: GREY, marginTop: 6 }}>{dateLabel}</div>
-
-              {/* b. 合計スコア＋パー差 */}
+              <div style={{ fontSize: 28, fontWeight: 700, marginTop: 6 }}>{dateLabel}</div>
               {totalScore != null ? (
                 <div style={{ marginTop: 16, display: "flex", alignItems: "baseline", justifyContent: "center" }}>
-                  <span style={{ fontSize: 120, fontWeight: 900, color: PINK, lineHeight: 1 }}>{totalScore}</span>
+                  <span style={{ fontSize: 120, fontWeight: 900, color: "#ffffff", lineHeight: 1 }}>{totalScore}</span>
                   {showDiff && (
-                    <span style={{ fontSize: 48, fontWeight: 900, color: GREY, marginLeft: 20 }}>{diffLabel}</span>
+                    <span style={{ fontSize: 48, fontWeight: 900, color: "#ffffff", marginLeft: 20 }}>{diffLabel}</span>
                   )}
                 </div>
               ) : (
-                <div style={{ fontSize: 56, fontWeight: 900, color: GREY, marginTop: 16, lineHeight: 1.2 }}>
+                <div style={{ fontSize: 56, fontWeight: 900, color: "#ffffff", marginTop: 16, lineHeight: 1.2 }}>
                   スコア未記録
                 </div>
               )}
+            </div>
 
-              {/* c. スコア表：OUT / IN 横並び（スコアカードはスコアに専念。飛距離は distance タブの役割） */}
-              <div style={{ marginTop: 20, display: "flex", gap: 24, justifyContent: "center" }}>
+            {/* b. スコア表：半透明白パネル（ヘッダー部の下）。
+                概算高さ検証：top 528 + パネル高さ 約568（内側テーブル約504 + padding上下64）
+                → 下端 約1096。ピンク帯上端 約1172 に対し余白 約76px で重ならない。 */}
+            <div
+              style={{
+                position: "absolute",
+                top: 528,
+                left: 100,
+                width: 880,
+                background: "rgba(255,255,255,0.85)",
+                borderRadius: 32,
+                boxShadow: "0 24px 60px rgba(0,0,0,0.25)",
+                padding: "32px 40px",
+                boxSizing: "border-box",
+                zIndex: 2,
+              }}
+            >
+              <div style={{ display: "flex", gap: 24, justifyContent: "center" }}>
                 {scoreColumn("OUT", outHoles)}
                 {scoreColumn("IN", inHoles)}
               </div>
-            </>
-          ) : (
-            <>
-              <div style={{ fontSize: 32, fontWeight: 700, color: isImage ? "#ffffff" : GREY }}>
-                {avgDriverYards != null ? "ドライバー飛距離" : "ドライバー最長飛距離"}
+            </div>
+          </>
+        )}
+
+        {/* round（写真なし）：従来どおり1枚の白パネルにヘッダー＋表をまとめる。 */}
+        {variant === "round" && !isImage && (
+          <div
+            style={{
+              position: "absolute",
+              top: 180,
+              left: 100,
+              width: 880,
+              background: "#ffffff",
+              borderRadius: 40,
+              boxShadow: "0 24px 60px rgba(0,0,0,0.25)",
+              padding: "44px 48px 52px",
+              boxSizing: "border-box",
+              textAlign: "center",
+              zIndex: 2,
+            }}
+          >
+            {/* a. 上部：ラベル・コース名・日付 */}
+            <div style={{ fontSize: 32, fontWeight: 700, color: GREY }}>今日のラウンド</div>
+            <div
+              style={{
+                fontSize: 44,
+                fontWeight: 900,
+                color: GREEN_DARK,
+                marginTop: 8,
+                lineHeight: 1.2,
+                wordBreak: "break-word",
+              }}
+            >
+              {courseName}
+            </div>
+            <div style={{ fontSize: 28, fontWeight: 700, color: GREY, marginTop: 6 }}>{dateLabel}</div>
+
+            {/* b. 合計スコア＋パー差 */}
+            {totalScore != null ? (
+              <div style={{ marginTop: 16, display: "flex", alignItems: "baseline", justifyContent: "center" }}>
+                <span style={{ fontSize: 120, fontWeight: 900, color: PINK, lineHeight: 1 }}>{totalScore}</span>
+                {showDiff && (
+                  <span style={{ fontSize: 48, fontWeight: 900, color: GREY, marginLeft: 20 }}>{diffLabel}</span>
+                )}
               </div>
+            ) : (
+              <div style={{ fontSize: 56, fontWeight: 900, color: GREY, marginTop: 16, lineHeight: 1.2 }}>
+                スコア未記録
+              </div>
+            )}
+
+            {/* c. スコア表：OUT / IN 横並び（スコアカードはスコアに専念。飛距離は distance タブの役割） */}
+            <div style={{ marginTop: 20, display: "flex", gap: 24, justifyContent: "center" }}>
+              {scoreColumn("OUT", outHoles)}
+              {scoreColumn("IN", inHoles)}
+            </div>
+          </div>
+        )}
+
+        {/* distance バリアント（変更なし）。写真なしは白パネル、写真時はパネルなし＋白文字。 */}
+        {variant === "distance" && (
+          <div
+            style={{
+              position: "absolute",
+              top: 400,
+              left: 100,
+              width: 880,
+              background: isImage ? "transparent" : "#ffffff",
+              borderRadius: isImage ? 0 : 40,
+              boxShadow: isImage ? "none" : "0 24px 60px rgba(0,0,0,0.25)",
+              padding: "64px 64px 72px",
+              boxSizing: "border-box",
+              textAlign: "center",
+              textShadow: isImage ? "0 2px 12px rgba(0,0,0,0.6)" : undefined,
+              zIndex: 2,
+            }}
+          >
+            <div style={{ fontSize: 32, fontWeight: 700, color: isImage ? "#ffffff" : GREY }}>
+              {avgDriverYards != null ? "ドライバー飛距離" : "ドライバー最長飛距離"}
+            </div>
 
               {/* 主役：最長 */}
               <div style={{ marginTop: 8, display: "flex", alignItems: "baseline", justifyContent: "center" }}>
@@ -257,9 +336,8 @@ export const RecordShareCard = forwardRef<HTMLDivElement, RecordShareCardProps>(
               <div style={{ fontSize: 30, fontWeight: 700, color: isImage ? "#ffffff" : GREY, marginTop: 14 }}>
                 {dateLabel}
               </div>
-            </>
-          )}
-        </div>
+          </div>
+        )}
 
         {/* 下の帯 */}
         <div

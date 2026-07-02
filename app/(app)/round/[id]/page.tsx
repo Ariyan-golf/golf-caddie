@@ -129,8 +129,8 @@ export default async function RoundDetailPage({ params, searchParams }: Props) {
 
   // スコアカード型シェア用に、ホール別の par / スコアを整形して渡す（追加クエリなし）。
   const shareHoles = (holes ?? []).map((h) => {
-    const row = h as { hole_number: number; par: number; score: number | null };
-    return { holeNumber: row.hole_number, par: row.par, score: row.score ?? null };
+    const row = h as { hole_number: number; par: number; score: number | null; putts: number | null };
+    return { holeNumber: row.hole_number, par: row.par, score: row.score ?? null, putts: row.putts ?? null };
   });
 
   // Pre-fetch existing green centers for this course + green_type so the

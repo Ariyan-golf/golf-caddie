@@ -39,7 +39,7 @@ export interface RecordShareButtonProps {
   maxDriverYards: number | null;   // そのラウンドの最長ドライバー飛距離（無ければ null）
   avgDriverYards: number | null;   // そのラウンドのドライバー平均（無ければ null）
   maxDriverHole?: number | null;   // 最長ドライバーが出たホール番号（無ければ null）
-  holes: { holeNumber: number; par: number; score: number | null }[]; // スコアカード型カード用
+  holes: { holeNumber: number; par: number; score: number | null; putts: number | null }[]; // スコアカード型カード用
 }
 
 function fmtDate(s: string) {
