@@ -64,6 +64,46 @@ function preloadImage(dataUrl: string): Promise<void> {
   });
 }
 
+/**
+ * 選択画像を長辺 maxEdge px 以内に縮小し、JPEG dataURL 化する。
+ * 大きすぎる写真をそのまま背景に使うと html-to-image の生成が重くなり、
+ * 端末によっては「準備中」から進まなくなるため、ここで軽量化しておく。
+ * 長辺が maxEdge 以下でも同じ経路で JPEG 化する（分岐を減らすため）。
+ * EXIF の向きは最近の iOS / ブラウザが Image デコード時に自動適用するため個別対応は不要。
+ */
+function loadResizedJpegDataUrl(file: File, maxEdge: number): Promise<string> {
+  return new Promise<string>((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      try {
+        const longEdge = Math.max(img.naturalWidth, img.naturalHeight);
+        const scale = longEdge > maxEdge ? maxEdge / longEdge : 1;
+        const w = Math.round(img.naturalWidth * scale);
+        const h = Math.round(img.naturalHeight * scale);
+        const canvas = document.createElement("canvas");
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          reject(new Error("canvas 2d context unavailable"));
+          return;
+        }
+        ctx.drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL("image/jpeg", 0.85));
+      } catch (err) {
+        reject(err);
+      }
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("image load failed"));
+    };
+    img.src = url;
+  });
+}
+
 /** 撮影前にフォントと画像（DOM内の img ＋ 背景写真）が確実に読み込まれているのを待つ。 */
 async function waitForAssets(node: HTMLElement, bgDataUrl: string | null) {
   // Web フォント（読めない環境ではフォールバックで継続）
@@ -168,12 +208,10 @@ export function RecordShareButton({
     const file = e.target.files?.[0];
     e.target.value = ""; // 同じファイルを選び直せるようにリセット
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === "string") setBgDataUrl(reader.result);
-    };
-    reader.onerror = () => setError("画像の読み込みに失敗しました。");
-    reader.readAsDataURL(file);
+    // 長辺 1600px 以内へ縮小＋JPEG圧縮してから背景に使う（生成ハングの根本対策）。
+    loadResizedJpegDataUrl(file, 1600)
+      .then((dataUrl) => setBgDataUrl(dataUrl))
+      .catch(() => setError("画像の読み込みに失敗しました。"));
   }
 
   /** カード DOM を PNG 化して dataUrl と File を返す。 */
@@ -219,15 +257,29 @@ export function RecordShareButton({
     setPreparedImage(null);
     setError(null);
     (async () => {
+      // 生成が固まったまま「準備中」が続かないよう、60秒でタイムアウトさせる。
+      // race 決着後は勝敗にかかわらず必ずタイマーを解除する。
+      let timeoutId: number | undefined;
       try {
-        const result = await generatePng();
+        const result = await Promise.race([
+          generatePng(),
+          new Promise<never>((_, reject) => {
+            timeoutId = window.setTimeout(() => reject(new Error("generatePng timeout")), 60000);
+          }),
+        ]);
         // 連続変更に備え、古い実行結果が新しい結果を上書きしないようガードする。
         if (!cancelled) setPreparedImage(result);
       } catch (err) {
         if (!cancelled) {
           console.error("record share card prepare failed", err);
-          setError("画像の生成に失敗しました。もう一度お試しください。");
+          setError(
+            (err as Error)?.message === "generatePng timeout"
+              ? "画像の生成に時間がかかりすぎています。別の写真でお試しください。"
+              : "画像の生成に失敗しました。もう一度お試しください。",
+          );
         }
+      } finally {
+        if (timeoutId !== undefined) window.clearTimeout(timeoutId);
       }
     })();
     return () => {
