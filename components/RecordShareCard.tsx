@@ -186,12 +186,19 @@ export const RecordShareCard = forwardRef<HTMLDivElement, RecordShareCardProps>(
           const inScored = inHoles.length > 0 && inHoles.every((h) => h.score != null);
           const outSum = outHoles.reduce((s, h) => s + (h.score ?? 0), 0);
           const inSum = inHoles.reduce((s, h) => s + (h.score ?? 0), 0);
+          // パット小計（各ナイン全ホール putts 入力済みのときのみ数値）。
+          const outPutted = outHoles.length > 0 && outHoles.every((h) => h.putts != null);
+          const inPutted = inHoles.length > 0 && inHoles.every((h) => h.putts != null);
+          const outPuttSum = outHoles.reduce((s, h) => s + (h.putts ?? 0), 0);
+          const inPuttSum = inHoles.reduce((s, h) => s + (h.putts ?? 0), 0);
           // 18ホールストリップ用にホール番号で引けるようにする。
           const holeByNumber = new Map<number, RecordShareHole>(holes.map((h) => [h.holeNumber, h]));
           const stripRows = [
-            [1, 2, 3, 4, 5, 6, 7, 8, 9],
-            [10, 11, 12, 13, 14, 15, 16, 17, 18],
+            { label: "OUT", nums: [1, 2, 3, 4, 5, 6, 7, 8, 9], scored: outScored, sum: outSum, putted: outPutted, puttSum: outPuttSum },
+            { label: "IN", nums: [10, 11, 12, 13, 14, 15, 16, 17, 18], scored: inScored, sum: inSum, putted: inPutted, puttSum: inPuttSum },
           ];
+          // パット数の色（写真時の情報帯・白背景前提の中間グレー）。
+          const PUTT = "#666666";
           return (
             <div
               style={{
@@ -201,7 +208,7 @@ export const RecordShareCard = forwardRef<HTMLDivElement, RecordShareCardProps>(
                 bottom: 170,
                 background: "rgba(255,255,255,0.92)",
                 borderRadius: 28,
-                padding: "36px 40px",
+                padding: "32px 36px",
                 boxSizing: "border-box",
                 textAlign: "center",
                 zIndex: 2,
@@ -213,16 +220,13 @@ export const RecordShareCard = forwardRef<HTMLDivElement, RecordShareCardProps>(
               </div>
               <div style={{ fontSize: 24, fontWeight: 700, color: GREY, marginTop: 4 }}>{dateLabel}</div>
 
-              {/* b. スコア行：合計＋パー差＋OUT/IN小計 */}
+              {/* b. スコア行：合計＋パー差（OUT/IN小計はストリップ右端に集約） */}
               {totalScore != null ? (
                 <div style={{ marginTop: 12, display: "flex", alignItems: "baseline", justifyContent: "center" }}>
                   <span style={{ fontSize: 96, fontWeight: 900, color: PINK, lineHeight: 1 }}>{totalScore}</span>
                   {showDiff && (
                     <span style={{ fontSize: 40, fontWeight: 900, color: GREY, marginLeft: 16 }}>{diffLabel}</span>
                   )}
-                  <span style={{ fontSize: 28, fontWeight: 700, color: GREY, marginLeft: 28 }}>
-                    OUT {outScored ? outSum : "-"} / IN {inScored ? inSum : "-"}
-                  </span>
                 </div>
               ) : (
                 <div style={{ fontSize: 48, fontWeight: 900, color: GREY, marginTop: 12, lineHeight: 1.2 }}>
@@ -230,15 +234,16 @@ export const RecordShareCard = forwardRef<HTMLDivElement, RecordShareCardProps>(
                 </div>
               )}
 
-              {/* c. 18ホールストリップ：2行×9セル等幅。番号（上）＋スコア（下・色分け）。パットは載せない。 */}
+              {/* c. 18ホールストリップ：2行×（9ホール＋小計）の10列。各セル3段（番号／スコア色分け／パット）。 */}
               <div style={{ marginTop: 20 }}>
-                {stripRows.map((rowNums, ri) => (
-                  <div key={ri} style={{ display: "flex", marginTop: ri === 0 ? 0 : 10 }}>
-                    {rowNums.map((n) => {
+                {stripRows.map((row, ri) => (
+                  <div key={row.label} style={{ display: "flex", marginTop: ri === 0 ? 0 : 8 }}>
+                    {row.nums.map((n) => {
                       const h = holeByNumber.get(n);
                       const sc = h?.score ?? null;
+                      const pt = h?.putts ?? null;
                       return (
-                        <div key={n} style={{ width: `${100 / 9}%`, textAlign: "center" }}>
+                        <div key={n} style={{ width: "9%", textAlign: "center" }}>
                           <div style={{ fontSize: 18, fontWeight: 700, color: GREY }}>{n}</div>
                           <div
                             style={{
@@ -250,9 +255,29 @@ export const RecordShareCard = forwardRef<HTMLDivElement, RecordShareCardProps>(
                           >
                             {sc != null ? sc : "-"}
                           </div>
+                          <div style={{ fontSize: 20, fontWeight: 700, color: PUTT, marginTop: 2 }}>
+                            {pt != null ? pt : "-"}
+                          </div>
                         </div>
                       );
                     })}
+                    {/* 小計セル（右端）：OUT/IN 合計打数・合計パット。ホール群と罫線で区切る。 */}
+                    <div
+                      style={{
+                        width: "19%",
+                        textAlign: "center",
+                        boxSizing: "border-box",
+                        borderLeft: "2px solid rgba(0,0,0,0.15)",
+                      }}
+                    >
+                      <div style={{ fontSize: 18, fontWeight: 700, color: GREY }}>{row.label}</div>
+                      <div style={{ fontSize: 30, fontWeight: 900, lineHeight: 1.1, color: GREEN_DARK }}>
+                        {row.scored ? row.sum : "-"}
+                      </div>
+                      <div style={{ fontSize: 20, fontWeight: 700, color: PUTT, marginTop: 2 }}>
+                        {row.putted ? row.puttSum : "-"}
+                      </div>
+                    </div>
                   </div>
                 ))}
               </div>
