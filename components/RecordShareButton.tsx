@@ -156,6 +156,8 @@ export function RecordShareButton({
   const [copied, setCopied] = useState(false);
   // 事前生成した画像（dataUrl / File）。null の間は「準備中」。
   const [preparedImage, setPreparedImage] = useState<{ dataUrl: string; file: File } | null>(null);
+  // 事前生成を手動でやり直すためのカウンタ（インクリメントで useEffect が再実行される）。
+  const [prepareNonce, setPrepareNonce] = useState(0);
   // キャプションコピーの「コピーしました！」表示タイマー（連打時の多重化防止用）。
   const copyTimerRef = useRef<number | null>(null);
 
@@ -286,8 +288,15 @@ export function RecordShareButton({
       cancelled = true;
     };
     // generatePng は毎レンダー再生成されるが、実質の依存は previewOpen / variant / bgDataUrl。
+    // prepareNonce は「画像を再生成する」タップ時の手動再実行トリガー。
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [previewOpen, variant, bgDataUrl]);
+  }, [previewOpen, variant, bgDataUrl, prepareNonce]);
+
+  // 事前生成が失敗したときの再試行（エラーを消して nonce を進め、useEffect を再実行）。
+  function retryPrepare() {
+    setError(null);
+    setPrepareNonce((n) => n + 1);
+  }
 
   // ① シェアする（事前生成済み画像を即共有。生成処理は挟まない）
   async function handleShareAction() {
@@ -478,14 +487,26 @@ export function RecordShareButton({
 
             {/* 3アクション */}
             <div className="space-y-2">
-              <button
-                onClick={handleShareAction}
-                disabled={busy || !preparedImage}
-                className="w-full inline-flex items-center justify-center gap-2 bg-pink-600 hover:bg-pink-700 active:bg-pink-800 disabled:opacity-50 text-white text-sm font-semibold py-2.5 rounded-xl transition-colors"
-              >
-                <Share2 size={16} aria-hidden="true" />
-                {preparedImage ? "シェアする" : "画像を準備中…"}
-              </button>
+              {/* 生成失敗（error あり・画像なし）のときは「再生成」に切り替え、固まらないようにする。 */}
+              {!preparedImage && error ? (
+                <button
+                  onClick={retryPrepare}
+                  disabled={busy}
+                  className="w-full inline-flex items-center justify-center gap-2 bg-pink-600 hover:bg-pink-700 active:bg-pink-800 disabled:opacity-50 text-white text-sm font-semibold py-2.5 rounded-xl transition-colors"
+                >
+                  <RotateCcw size={16} aria-hidden="true" />
+                  画像を再生成する
+                </button>
+              ) : (
+                <button
+                  onClick={handleShareAction}
+                  disabled={busy || !preparedImage}
+                  className="w-full inline-flex items-center justify-center gap-2 bg-pink-600 hover:bg-pink-700 active:bg-pink-800 disabled:opacity-50 text-white text-sm font-semibold py-2.5 rounded-xl transition-colors"
+                >
+                  <Share2 size={16} aria-hidden="true" />
+                  {preparedImage ? "シェアする" : "画像を準備中…"}
+                </button>
+              )}
 
               <button
                 onClick={handleSaveImage}
