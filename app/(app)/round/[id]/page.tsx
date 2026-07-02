@@ -127,6 +127,12 @@ export default async function RoundDetailPage({ params, searchParams }: Props) {
   const avgDriverYards: number | null =
     driverCount > 0 ? Math.round(driverSumYards / driverCount) : null;
 
+  // スコアカード型シェア用に、ホール別の par / スコアを整形して渡す（追加クエリなし）。
+  const shareHoles = (holes ?? []).map((h) => {
+    const row = h as { hole_number: number; par: number; score: number | null };
+    return { holeNumber: row.hole_number, par: row.par, score: row.score ?? null };
+  });
+
   // Pre-fetch existing green centers for this course + green_type so the
   // round-UI can immediately reflect "registered" state on each hole tab.
   const initialGreenCenters: Record<number, { lat: number; lng: number }> = {};
@@ -170,6 +176,7 @@ export default async function RoundDetailPage({ params, searchParams }: Props) {
             maxDriverYards={maxDriverYards}
             avgDriverYards={avgDriverYards}
             maxDriverHole={maxDriverHole}
+            holes={shareHoles}
           />
         </div>
       </div>

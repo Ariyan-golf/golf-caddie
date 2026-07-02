@@ -10,6 +10,7 @@ import { calculateDistance, metersToYards } from "@/lib/distance";
 import { stopGpsTracking, getBestShotPosition, startShotWatch, stopShotWatch, awaitHighAccuracyFix, getShotWatchTimeoutMs, type GpsPoint } from "@/lib/gps";
 import { acquireWakeLock, releaseWakeLock, softReleaseWakeLock } from "@/lib/wakeLock";
 import { isBetaMode } from "@/lib/betaMode";
+import { getScoreColor } from "@/lib/scoreColor";
 import { putHole, putShot, putScoreUpdate, putShotUpdate, putRoundUpdate, putShotDistance } from "@/lib/offline/db";
 import { saveActiveRound, clearActiveRound, readActiveRound, type ActiveRoundSnapshot } from "@/lib/activeRound";
 import Link from "next/link";
@@ -151,17 +152,6 @@ function scoreLabel(score: number, par: number) {
   if (d === 1)  return { text: `${score} (ボギー)`,   cls: "bg-blue-100 text-blue-600" };
   if (d === 2)  return { text: `${score} (ダブル)`,   cls: "bg-purple-100 text-purple-600" };
   return { text: `${score} (+${d})`, cls: "bg-gray-100 text-gray-600" };
-}
-
-// スコアカード「計」の文字色をパーとの差で決定。未入力(null)は既存色のまま（呼び出し側で未適用）。
-function getScoreColor(total: number | null, par: number): string {
-  if (total === null || total === undefined) return "inherit";
-  const diff = total - par;
-  if (diff <= -2) return "#FFD700"; // イーグル以上：金
-  if (diff === -1) return "#E53935"; // バーディー：赤
-  if (diff === 0) return "#000000"; // パー：黒
-  if (diff === 1) return "#1E88E5"; // ボギー：青
-  return "#1A237E"; // ダブルボギー以上：濃い青
 }
 
 // 先回り（pre-guard）方式の中核。通信を投げる前にこれで圏外判定し、true なら
