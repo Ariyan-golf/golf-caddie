@@ -41,6 +41,10 @@ export default function TryPage() {
             </Link>
           </p>
         </div>
+
+        <p className="text-xs text-gray-400 text-center">
+          計測データはサービス品質向上のため匿名で収集されます。
+        </p>
       </div>
     </div>
   );

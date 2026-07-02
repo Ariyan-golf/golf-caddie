@@ -6,8 +6,9 @@ import { GpsTracker } from "@/components/GpsTracker";
 import { InstallPrompt } from "@/components/InstallPrompt";
 import { SoloShareCard } from "@/components/SoloShareCard";
 import { metersToYards } from "@/lib/distance";
+import { saveAnonymousShot } from "@/lib/anonymousShots";
 import { CLUBS, CLUB_LABELS } from "@/types";
-import type { Club } from "@/types";
+import type { Club, Location } from "@/types";
 
 /**
  * 登録不要のソロ飛距離計測 UI。
@@ -99,7 +100,7 @@ export function SoloMeasure() {
     setHistory(loadHistory());
   }, []);
 
-  function handleRecorded(distMeters: number) {
+  function handleRecorded(distMeters: number, start?: Location, end?: Location) {
     const yards = metersToYards(distMeters);
     const meters = Math.round(distMeters);
     const club: Club | null = selectedClub === "" ? null : selectedClub;
@@ -118,6 +119,17 @@ export function SoloMeasure() {
     } catch {
       /* 保存失敗時も計測体験は継続 */
     }
+
+    // 匿名ショットとしてDBへ蓄積（fire-and-forget・失敗しても計測UXに影響なし）。
+    saveAnonymousShot({
+      club,
+      distanceMeters: distMeters,
+      distanceYards: yards,
+      start: start ?? null,
+      end: end ?? null,
+      clubInputAt: "当日",
+      measuredAt: record.date,
+    });
 
     // 自己ベスト判定（ヤードで比較）。初回 or 更新時のみ保存。
     const isNewBest = !best || yards > best.yards;
@@ -245,7 +257,7 @@ export function SoloMeasure() {
     return (
       <div className="card">
         <GpsTracker
-          onShotRecorded={(distMeters) => handleRecorded(distMeters)}
+          onShotRecorded={(distMeters, start, end) => handleRecorded(distMeters, start, end)}
           onCancel={reset}
           recordLabel="②ボール地点で計測"
         />
