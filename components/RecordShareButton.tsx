@@ -24,7 +24,7 @@ import {
 const FONT_HREF =
   "https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@700;900&display=swap";
 
-const SHARE_URL = "https://golf-caddie-eight.vercel.app/lp.html";
+const SHARE_URL = "https://golf-caddie-eight.vercel.app/try";
 
 // プレビュー表示サイズ（実寸 1080×1350 を 0.25 倍）。
 const PREVIEW_SCALE = 0.25;
@@ -35,6 +35,7 @@ export interface RecordShareButtonProps {
   totalScore:     number | null;
   maxDriverYards: number | null;   // そのラウンドの最長ドライバー飛距離（無ければ null）
   avgDriverYards: number | null;   // そのラウンドのドライバー平均（無ければ null）
+  maxDriverHole?: number | null;   // 最長ドライバーが出たホール番号（無ければ null）
 }
 
 function fmtDate(s: string) {
@@ -101,6 +102,7 @@ export function RecordShareButton({
   totalScore,
   maxDriverYards,
   avgDriverYards,
+  maxDriverHole = null,
 }: RecordShareButtonProps) {
   useNotoSansJp();
   const cardRef = useRef<HTMLDivElement>(null);
@@ -122,10 +124,11 @@ export function RecordShareButton({
   function buildCaption() {
     // 記録・成長トーン（自慢色は控えめ）。
     if (variant === "distance" && maxDriverYards != null) {
+      const holeSuffix = maxDriverHole != null ? `（${maxDriverHole}番ホール）` : "";
       const distancePart =
         avgDriverYards != null
-          ? `最長${maxDriverYards}y / 平均${avgDriverYards}y`
-          : `最長 ${maxDriverYards}yd`;
+          ? `最長${maxDriverYards}y${holeSuffix} / 平均${avgDriverYards}y`
+          : `最長 ${maxDriverYards}yd${holeSuffix}`;
       return (
         `本日のドライバー ${distancePart}｜${courseName}\n` +
         `コツコツ記録更新中。\n` +
@@ -175,12 +178,17 @@ export function RecordShareButton({
     await waitForAssets(node, bgDataUrl);
     // html-to-image はクライアント専用。動的 import でバンドルを分離。
     const { toPng } = await import("html-to-image");
-    const dataUrl = await toPng(node, {
-      pixelRatio: 1,
-      cacheBust: true,
-      width: 1080,
-      height: 1350,
-    });
+    // iOS Safari は foreignObject 内の画像が初回レンダリングで欠落することがある既知問題があるため、
+    // 同一オプションで3回連続実行し、最後の結果を採用する（定番の回避策）。
+    let dataUrl = "";
+    for (let i = 0; i < 3; i++) {
+      dataUrl = await toPng(node, {
+        pixelRatio: 1,
+        cacheBust: true,
+        width: 1080,
+        height: 1350,
+      });
+    }
     const blob = await (await fetch(dataUrl)).blob();
     const file = new File([blob], "golf-caddie-record.png", { type: "image/png" });
     return { dataUrl, file };
@@ -350,6 +358,7 @@ export function RecordShareButton({
                     totalScore={totalScore}
                     distanceYards={maxDriverYards}
                     avgDriverYards={avgDriverYards}
+                    maxDriverHole={maxDriverHole}
                     background={background}
                   />
                 </div>

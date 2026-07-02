@@ -127,12 +127,17 @@ export function ShotShareButton({
     await waitForAssets(node);
     // html-to-image はクライアント専用。動的 import でバンドルを分離。
     const { toPng } = await import("html-to-image");
-    const dataUrl = await toPng(node, {
-      pixelRatio: 1,
-      cacheBust: true,
-      width: 1080,
-      height: 1350,
-    });
+    // iOS Safari は foreignObject 内の画像が初回レンダリングで欠落することがある既知問題があるため、
+    // 同一オプションで3回連続実行し、最後の結果を採用する（定番の回避策）。
+    let dataUrl = "";
+    for (let i = 0; i < 3; i++) {
+      dataUrl = await toPng(node, {
+        pixelRatio: 1,
+        cacheBust: true,
+        width: 1080,
+        height: 1350,
+      });
+    }
     const blob = await (await fetch(dataUrl)).blob();
     const file = new File([blob], "golf-caddie-shot.png", { type: "image/png" });
     return { dataUrl, file };

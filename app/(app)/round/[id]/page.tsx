@@ -107,14 +107,17 @@ export default async function RoundDetailPage({ params, searchParams }: Props) {
   // 既取得の holes→shots から算出し、追加クエリは行わない。記録が無ければ null。
   // 条件は club='1w'・distance_yards 非null・deleted_at IS NULL（論理削除済みは除外）。
   let maxDriverYards: number | null = null;
+  let maxDriverHole: number | null = null;
   let driverSumYards = 0;
   let driverCount = 0;
   for (const h of holes ?? []) {
+    const holeNumber = (h as { hole_number?: number | null }).hole_number ?? null;
     const shots = (h as { shots?: { club?: string | null; distance_yards?: number | null; deleted_at?: string | null }[] }).shots ?? [];
     for (const s of shots) {
       if (s.club === "1w" && s.distance_yards != null && s.deleted_at == null) {
         if (maxDriverYards == null || s.distance_yards > maxDriverYards) {
           maxDriverYards = s.distance_yards;
+          maxDriverHole = holeNumber;
         }
         driverSumYards += s.distance_yards;
         driverCount += 1;
@@ -166,6 +169,7 @@ export default async function RoundDetailPage({ params, searchParams }: Props) {
             totalScore={round.total_score ?? null}
             maxDriverYards={maxDriverYards}
             avgDriverYards={avgDriverYards}
+            maxDriverHole={maxDriverHole}
           />
         </div>
       </div>

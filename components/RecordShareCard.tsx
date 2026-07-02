@@ -31,6 +31,7 @@ export interface RecordShareCardProps {
   totalScore:   number | null;     // "round" 用（未記録は null）
   distanceYards: number | null;    // "distance" 用（最長ドライバー）
   avgDriverYards?: number | null;  // "distance" 用（平均。null なら平均行を出さない）
+  maxDriverHole?: number | null;   // "distance" 用（最長が出たホール番号。null なら「最長」のみ）
   background:   RecordShareBackground;
 }
 
@@ -46,7 +47,7 @@ const SCRIM = "linear-gradient(180deg, rgba(0,0,0,0.35) 0%, rgba(0,0,0,0.55) 100
 
 export const RecordShareCard = forwardRef<HTMLDivElement, RecordShareCardProps>(
   function RecordShareCard(
-    { variant, courseName, dateLabel, totalScore, distanceYards, avgDriverYards = null, background },
+    { variant, courseName, dateLabel, totalScore, distanceYards, avgDriverYards = null, maxDriverHole = null, background },
     ref,
   ) {
     const isImage = background.type === "image";
@@ -97,7 +98,7 @@ export const RecordShareCard = forwardRef<HTMLDivElement, RecordShareCardProps>(
             top: 400,
             left: 100,
             width: 880,
-            background: "#ffffff",
+            background: isImage ? "rgba(255,255,255,0.88)" : "#ffffff",
             borderRadius: 40,
             boxShadow: "0 24px 60px rgba(0,0,0,0.25)",
             padding: "64px 64px 72px",
@@ -158,7 +159,9 @@ export const RecordShareCard = forwardRef<HTMLDivElement, RecordShareCardProps>(
                 </span>
                 <span style={{ fontSize: 64, fontWeight: 900, color: GREEN_DARK, marginLeft: 12 }}>yd</span>
               </div>
-              <div style={{ fontSize: 30, fontWeight: 700, color: GREY, marginTop: 8 }}>最長</div>
+              <div style={{ fontSize: 30, fontWeight: 700, color: GREY, marginTop: 8 }}>
+                {maxDriverHole != null ? `最長（${maxDriverHole}番ホール）` : "最長"}
+              </div>
 
               {/* サブ：平均（記録があるときのみ） */}
               {avgDriverYards != null && (
