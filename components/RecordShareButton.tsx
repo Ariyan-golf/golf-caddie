@@ -114,6 +114,10 @@ export function RecordShareButton({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  // 事前生成した画像（dataUrl / File）。null の間は「準備中」。
+  const [preparedImage, setPreparedImage] = useState<{ dataUrl: string; file: File } | null>(null);
+  // キャプションコピーの「コピーしました！」表示タイマー（連打時の多重化防止用）。
+  const copyTimerRef = useRef<number | null>(null);
 
   const hasDriver = maxDriverYards != null;
 
@@ -153,10 +157,11 @@ export function RecordShareButton({
   }
 
   function closePreview() {
-    if (busy) return; // 生成中は閉じさせない
+    if (busy) return; // 共有処理中は閉じさせない
     setPreviewOpen(false);
     setError(null);
     setCopied(false);
+    setPreparedImage(null);
   }
 
   function onPickBackground(e: React.ChangeEvent<HTMLInputElement>) {
@@ -203,13 +208,42 @@ export function RecordShareButton({
     a.remove();
   }
 
-  // ① シェアする（Web Share、非対応はDLフォールバック）
+  // プレビューを開いた直後、および variant / 背景写真が変わったタイミングで
+  // あらかじめ画像を生成しておく（事前生成方式）。
+  // タップ後に生成すると、生成に数秒かかった場合に iOS のユーザー操作有効期限が切れ、
+  // navigator.share が NotAllowedError で拒否されてしまう。生成はここで済ませておき、
+  // タップ時は生成を挟まず即共有することで確実にシートを開く。
+  useEffect(() => {
+    if (!previewOpen) return;
+    let cancelled = false;
+    setPreparedImage(null);
+    setError(null);
+    (async () => {
+      try {
+        const result = await generatePng();
+        // 連続変更に備え、古い実行結果が新しい結果を上書きしないようガードする。
+        if (!cancelled) setPreparedImage(result);
+      } catch (err) {
+        if (!cancelled) {
+          console.error("record share card prepare failed", err);
+          setError("画像の生成に失敗しました。もう一度お試しください。");
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // generatePng は毎レンダー再生成されるが、実質の依存は previewOpen / variant / bgDataUrl。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [previewOpen, variant, bgDataUrl]);
+
+  // ① シェアする（事前生成済み画像を即共有。生成処理は挟まない）
   async function handleShareAction() {
-    if (busy) return;
+    if (busy || !preparedImage) return;
     setBusy(true);
     setError(null);
+    const { dataUrl, file } = preparedImage;
     try {
-      const { dataUrl, file } = await generatePng();
       const caption = buildCaption();
       const canShareFiles =
         typeof navigator !== "undefined" &&
@@ -217,40 +251,29 @@ export function RecordShareButton({
         navigator.canShare({ files: [file] });
 
       if (canShareFiles) {
-        try {
-          await navigator.share({ files: [file], text: caption });
-        } catch (err) {
-          // ユーザーがシートを閉じた場合（AbortError）は無視。
-          if ((err as Error)?.name !== "AbortError") {
-            downloadPng(dataUrl);
-          }
-        }
+        // 事前生成済みなので生成を挟まず即共有する（iOS の操作有効期限内に確実に呼ぶ）。
+        await navigator.share({ files: [file], text: caption });
       } else {
         // Web Share 非対応（主に PC）→ ダウンロード
         downloadPng(dataUrl);
       }
     } catch (err) {
-      console.error("record share card failed", err);
-      setError("画像の生成に失敗しました。もう一度お試しください。");
+      // ユーザーがシートを閉じた場合（AbortError）は無視。それ以外の失敗時は、
+      // data: 画面で戸惑わせないよう自動ダウンロードはせず、保存を案内するだけにする。
+      if ((err as Error)?.name !== "AbortError") {
+        console.error("record share failed", err);
+        setError("共有シートを開けませんでした。「画像を保存」から保存して投稿してください。");
+      }
     } finally {
       setBusy(false);
     }
   }
 
-  // ② 画像を保存（常にダウンロード）
-  async function handleSaveImage() {
-    if (busy) return;
-    setBusy(true);
+  // ② 画像を保存（事前生成済み画像をダウンロード）
+  function handleSaveImage() {
+    if (busy || !preparedImage) return;
     setError(null);
-    try {
-      const { dataUrl } = await generatePng();
-      downloadPng(dataUrl);
-    } catch (err) {
-      console.error("save record image failed", err);
-      setError("画像の生成に失敗しました。もう一度お試しください。");
-    } finally {
-      setBusy(false);
-    }
+    downloadPng(preparedImage.dataUrl);
   }
 
   // ③ キャプションをコピー
@@ -259,7 +282,14 @@ export function RecordShareButton({
     try {
       await navigator.clipboard.writeText(buildCaption());
       setCopied(true);
-      window.setTimeout(() => setCopied(false), 2000);
+      // 連打時にタイマーが多重化しないよう、直前のタイマーを解除してから貼り直す。
+      if (copyTimerRef.current != null) {
+        window.clearTimeout(copyTimerRef.current);
+      }
+      copyTimerRef.current = window.setTimeout(() => {
+        setCopied(false);
+        copyTimerRef.current = null;
+      }, 2000);
     } catch {
       setError("コピーに失敗しました。手動で選択してコピーしてください。");
     }
@@ -398,16 +428,16 @@ export function RecordShareButton({
             <div className="space-y-2">
               <button
                 onClick={handleShareAction}
-                disabled={busy}
+                disabled={busy || !preparedImage}
                 className="w-full inline-flex items-center justify-center gap-2 bg-pink-600 hover:bg-pink-700 active:bg-pink-800 disabled:opacity-50 text-white text-sm font-semibold py-2.5 rounded-xl transition-colors"
               >
                 <Share2 size={16} aria-hidden="true" />
-                シェアする
+                {preparedImage ? "シェアする" : "画像を準備中…"}
               </button>
 
               <button
                 onClick={handleSaveImage}
-                disabled={busy}
+                disabled={busy || !preparedImage}
                 className="w-full inline-flex items-center justify-center gap-2 bg-white border border-green-300 text-green-700 hover:bg-green-50 disabled:opacity-50 text-sm font-semibold py-2.5 rounded-xl transition-colors"
               >
                 <Download size={16} aria-hidden="true" />
@@ -422,7 +452,7 @@ export function RecordShareButton({
                 {copied ? (
                   <>
                     <Check size={16} aria-hidden="true" />
-                    コピーしました
+                    コピーしました！
                   </>
                 ) : (
                   <>
@@ -433,8 +463,8 @@ export function RecordShareButton({
               </button>
             </div>
 
-            {busy && (
-              <p className="text-xs text-center text-gray-500 mt-3">画像を生成中…</p>
+            {!preparedImage && !error && (
+              <p className="text-xs text-center text-gray-500 mt-3">画像を準備中…</p>
             )}
             {error && (
               <p className="text-xs text-red-600 mt-2 text-center">{error}</p>

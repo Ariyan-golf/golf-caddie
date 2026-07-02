@@ -43,7 +43,8 @@ const GREEN_DARK = "#265E34";
 const GREY = "#787878";
 const GRADIENT = "linear-gradient(180deg, #3E7D44 0%, #76AA58 100%)";
 // 写真の上に重ねる暗幕（上やや薄め→下濃いめ）。白文字の可読性を確保する。
-const SCRIM = "linear-gradient(180deg, rgba(0,0,0,0.35) 0%, rgba(0,0,0,0.55) 100%)";
+// 白パネルを使わず写真の上に直接テキストを乗せるため、やや強めにしている。
+const SCRIM = "linear-gradient(180deg, rgba(0,0,0,0.45) 0%, rgba(0,0,0,0.65) 100%)";
 
 export const RecordShareCard = forwardRef<HTMLDivElement, RecordShareCardProps>(
   function RecordShareCard(
@@ -91,25 +92,28 @@ export const RecordShareCard = forwardRef<HTMLDivElement, RecordShareCardProps>(
           </div>
         </div>
 
-        {/* 白い角丸パネル（中央） */}
+        {/* 中央のテキスト群。写真なし時は白い角丸パネル、写真時はパネルを描画せず写真の上に直接配置 */}
         <div
           style={{
             position: "absolute",
             top: 400,
             left: 100,
             width: 880,
-            background: isImage ? "rgba(255,255,255,0.88)" : "#ffffff",
-            borderRadius: 40,
-            boxShadow: "0 24px 60px rgba(0,0,0,0.25)",
+            // 写真背景時は白パネル（背景・角丸・影）を描画しない。
+            background: isImage ? "transparent" : "#ffffff",
+            borderRadius: isImage ? 0 : 40,
+            boxShadow: isImage ? "none" : "0 24px 60px rgba(0,0,0,0.25)",
             padding: "64px 64px 72px",
             boxSizing: "border-box",
             textAlign: "center",
+            // 写真上の白文字を読みやすくする影（text-shadow は子要素に継承される）。
+            textShadow: isImage ? "0 2px 12px rgba(0,0,0,0.6)" : undefined,
             zIndex: 2,
           }}
         >
           {variant === "round" ? (
             <>
-              <div style={{ fontSize: 32, fontWeight: 700, color: GREY }}>
+              <div style={{ fontSize: 32, fontWeight: 700, color: isImage ? "#ffffff" : GREY }}>
                 今日のラウンド
               </div>
 
@@ -117,7 +121,7 @@ export const RecordShareCard = forwardRef<HTMLDivElement, RecordShareCardProps>(
                 style={{
                   fontSize: 48,
                   fontWeight: 900,
-                  color: GREEN_DARK,
+                  color: isImage ? "#ffffff" : GREEN_DARK,
                   marginTop: 20,
                   lineHeight: 1.25,
                   wordBreak: "break-word",
@@ -127,46 +131,46 @@ export const RecordShareCard = forwardRef<HTMLDivElement, RecordShareCardProps>(
               </div>
 
               {/* 区切り線 */}
-              <div style={{ height: 2, background: "#E8E8E8", margin: "44px 8px" }} />
+              <div style={{ height: 2, background: isImage ? "rgba(255,255,255,0.5)" : "#E8E8E8", margin: "44px 8px" }} />
 
               {totalScore != null ? (
                 <div style={{ display: "flex", alignItems: "baseline", justifyContent: "center" }}>
-                  <span style={{ fontSize: 160, fontWeight: 900, color: PINK, lineHeight: 1 }}>
+                  <span style={{ fontSize: 160, fontWeight: 900, color: isImage ? "#ffffff" : PINK, lineHeight: 1 }}>
                     {totalScore}
                   </span>
-                  <span style={{ fontSize: 56, fontWeight: 900, color: PINK, marginLeft: 12 }}>打</span>
+                  <span style={{ fontSize: 56, fontWeight: 900, color: isImage ? "#ffffff" : PINK, marginLeft: 12 }}>打</span>
                 </div>
               ) : (
-                <div style={{ fontSize: 56, fontWeight: 900, color: GREY, lineHeight: 1.2 }}>
+                <div style={{ fontSize: 56, fontWeight: 900, color: isImage ? "#ffffff" : GREY, lineHeight: 1.2 }}>
                   スコア未記録
                 </div>
               )}
 
-              <div style={{ fontSize: 32, fontWeight: 700, color: GREY, marginTop: 28 }}>
+              <div style={{ fontSize: 32, fontWeight: 700, color: isImage ? "#ffffff" : GREY, marginTop: 28 }}>
                 {dateLabel}
               </div>
             </>
           ) : (
             <>
-              <div style={{ fontSize: 32, fontWeight: 700, color: GREY }}>
+              <div style={{ fontSize: 32, fontWeight: 700, color: isImage ? "#ffffff" : GREY }}>
                 {avgDriverYards != null ? "ドライバー飛距離" : "ドライバー最長飛距離"}
               </div>
 
               {/* 主役：最長 */}
               <div style={{ marginTop: 8, display: "flex", alignItems: "baseline", justifyContent: "center" }}>
-                <span style={{ fontSize: 184, fontWeight: 900, color: GREEN_DARK, lineHeight: 1 }}>
+                <span style={{ fontSize: 184, fontWeight: 900, color: isImage ? "#ffffff" : GREEN_DARK, lineHeight: 1 }}>
                   {distanceYards ?? 0}
                 </span>
-                <span style={{ fontSize: 64, fontWeight: 900, color: GREEN_DARK, marginLeft: 12 }}>yd</span>
+                <span style={{ fontSize: 64, fontWeight: 900, color: isImage ? "#ffffff" : GREEN_DARK, marginLeft: 12 }}>yd</span>
               </div>
-              <div style={{ fontSize: 30, fontWeight: 700, color: GREY, marginTop: 8 }}>
+              <div style={{ fontSize: 30, fontWeight: 700, color: isImage ? "#ffffff" : GREY, marginTop: 8 }}>
                 {maxDriverHole != null ? `最長（${maxDriverHole}番ホール）` : "最長"}
               </div>
 
               {/* サブ：平均（記録があるときのみ） */}
               {avgDriverYards != null && (
                 <div style={{ marginTop: 24, display: "flex", alignItems: "baseline", justifyContent: "center" }}>
-                  <span style={{ fontSize: 30, fontWeight: 700, color: GREY, marginRight: 12 }}>平均</span>
+                  <span style={{ fontSize: 30, fontWeight: 700, color: isImage ? "#ffffff" : GREY, marginRight: 12 }}>平均</span>
                   <span style={{ fontSize: 72, fontWeight: 900, color: PINK, lineHeight: 1 }}>
                     {avgDriverYards}
                   </span>
@@ -175,12 +179,12 @@ export const RecordShareCard = forwardRef<HTMLDivElement, RecordShareCardProps>(
               )}
 
               {/* 区切り線 */}
-              <div style={{ height: 2, background: "#E8E8E8", margin: "44px 8px" }} />
+              <div style={{ height: 2, background: isImage ? "rgba(255,255,255,0.5)" : "#E8E8E8", margin: "44px 8px" }} />
 
-              <div style={{ fontSize: 36, fontWeight: 700, color: GREEN_DARK, wordBreak: "break-word" }}>
+              <div style={{ fontSize: 36, fontWeight: 700, color: isImage ? "#ffffff" : GREEN_DARK, wordBreak: "break-word" }}>
                 {courseName}
               </div>
-              <div style={{ fontSize: 30, fontWeight: 700, color: GREY, marginTop: 14 }}>
+              <div style={{ fontSize: 30, fontWeight: 700, color: isImage ? "#ffffff" : GREY, marginTop: 14 }}>
                 {dateLabel}
               </div>
             </>
