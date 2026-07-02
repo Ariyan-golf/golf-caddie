@@ -167,7 +167,7 @@ export const RecordShareCard = forwardRef<HTMLDivElement, RecordShareCardProps>(
             width: 880,
             background:
               variant === "round"
-                ? (isImage ? "rgba(255,255,255,0.92)" : "#ffffff")
+                ? (isImage ? "rgba(255,255,255,0.78)" : "#ffffff")
                 : (isImage ? "transparent" : "#ffffff"),
             borderRadius: variant === "round" ? 40 : (isImage ? 0 : 40),
             boxShadow:
@@ -214,20 +214,11 @@ export const RecordShareCard = forwardRef<HTMLDivElement, RecordShareCardProps>(
                 </div>
               )}
 
-              {/* c. スコア表：OUT / IN 横並び */}
+              {/* c. スコア表：OUT / IN 横並び（スコアカードはスコアに専念。飛距離は distance タブの役割） */}
               <div style={{ marginTop: 20, display: "flex", gap: 24, justifyContent: "center" }}>
                 {scoreColumn("OUT", outHoles)}
                 {scoreColumn("IN", inHoles)}
               </div>
-
-              {/* d. 下部：ドライバー飛距離（記録があるときのみ） */}
-              {distanceYards != null && (
-                <div style={{ fontSize: 28, fontWeight: 700, color: GREY, marginTop: 18 }}>
-                  ドライバー 最長{distanceYards}y
-                  {maxDriverHole != null ? `（${maxDriverHole}番ホール）` : ""}
-                  {avgDriverYards != null ? ` / 平均${avgDriverYards}y` : ""}
-                </div>
-              )}
             </>
           ) : (
             <>
