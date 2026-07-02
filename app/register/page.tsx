@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { TERMS_VERSION, PRIVACY_VERSION } from "@/lib/legal";
+import { isBetaMode } from "@/lib/betaMode";
 import LineLoginButton from "@/components/LineLoginButton";
 
 const INVITE_CODE_MAP: Record<string, { graduation_year: number }> = {
@@ -30,6 +31,8 @@ const GENDER_OPTIONS = [
 
 export default function RegisterPage() {
   const router = useRouter();
+  // プレオープン中（beta）は無制限・削除なし。正式版は3ラウンド・30日閲覧。
+  const beta = isBetaMode();
   const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -254,13 +257,19 @@ export default function RegisterPage() {
               )}
             </div>
 
-            {/* 無料体験データ削除の注意 */}
+            {/* 無料体験データ削除の注意（プレオープン／正式版で出し分け） */}
             <div className="bg-amber-50 border-2 border-amber-300 rounded-xl p-3 text-sm space-y-1">
               <p className="font-semibold text-amber-800">⚠️ 無料体験について</p>
-              <p className="text-amber-700 leading-relaxed">
-                無料体験のラウンドデータは <strong>24時間後に自動削除</strong> されます。
-                データを永続保持するには <strong>月額サブスク（330円/月）</strong> への登録が必要です。
-              </p>
+              {beta ? (
+                <p className="text-amber-700 leading-relaxed">
+                  プレオープン中は<strong>無料で無制限</strong>にご利用いただけます。データの削除はありません。
+                </p>
+              ) : (
+                <p className="text-amber-700 leading-relaxed">
+                  無料体験は <strong>3ラウンドまで</strong>。ラウンドデータは<strong>プレー日から30日間</strong>閲覧できます。
+                  データを永続保持するには <strong>月額サブスク（330円/月）</strong> への登録が必要です。
+                </p>
+              )}
             </div>
 
             {/* 利用規約・プライバシーポリシーへの同意（必須） */}

@@ -9,7 +9,7 @@ import { isBetaMode } from "@/lib/betaMode";
 import { todayJST } from "@/lib/day-pass";
 
 // v4: 月額サブスク330円1本に統一。
-// - free: 3回ラウンドの無料体験、データは1日後削除
+// - free: 3回ラウンドの無料体験、データはプレー日から30日閲覧後に削除
 // - premium: 全機能利用可、データ永続保持
 const PLANS = [
   {
@@ -17,11 +17,11 @@ const PLANS = [
     name: "無料体験",
     price: "0円",
     period: "",
-    description: "3回ラウンド・データは1日後削除",
+    description: "3ラウンドまで・プレー日から30日間閲覧可",
     features: [
       "全機能利用可（お試し）",
       "ラウンド記録（3回まで）",
-      "データは翌日0:30に自動削除",
+      "30日経過後にデータは自動削除",
     ],
     limits: [
       "データは永続保持されません",

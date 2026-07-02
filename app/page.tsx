@@ -174,7 +174,7 @@ export default async function HomePage() {
   const isSubscriber = profile?.plan === "premium" || profile?.plan === "premium_paid" || profile?.plan === "standard";
   const roundCount = profile?.round_count ?? 0;
   const remainingFree = Math.max(FREE_ROUND_LIMIT - roundCount, 0);
-  // ベータ中（プレオープン）は回数無制限・cronも停止のため、残りN/3や「1日後削除」は表示しない。
+  // ベータ中（プレオープン）は回数無制限・cronも停止のため、残りN/3や「30日閲覧」は表示しない。
   const beta = isBetaMode();
 
   // ドライバー(1W)平均飛距離（生 shots を本人分で集計）。距離は distance_yards をそのまま使用。
@@ -420,7 +420,7 @@ export default async function HomePage() {
                     "無制限でお試しいただけます"
                   ) : (
                     <>
-                      残り <span className="font-bold">{remainingFree}</span> / {FREE_ROUND_LIMIT} ラウンド・データは1日後に削除されます
+                      残り <span className="font-bold">{remainingFree}</span> / {FREE_ROUND_LIMIT} ラウンド・データはプレー日から30日間閲覧できます
                     </>
                   )}
                 </p>
