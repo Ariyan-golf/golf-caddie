@@ -1,4 +1,5 @@
 import { createServerClient, type CookieMethodsServer } from "@supabase/ssr";
+import { type User } from "@supabase/supabase-js";
 import { NextResponse, type NextRequest } from "next/server";
 
 export async function updateSession(request: NextRequest) {
@@ -25,7 +26,7 @@ export async function updateSession(request: NextRequest) {
       global: {
         // Supabase Auth への通信が無応答のとき middleware が実行時間上限に達し
         // 504 MIDDLEWARE_INVOCATION_TIMEOUT となるのを防ぐため、3秒でアボートする。
-        fetch: (input, init) => {
+        fetch: (input: RequestInfo | URL, init?: RequestInit) => {
           const controller = new AbortController();
           const timeout = setTimeout(() => controller.abort(), 3000);
           return fetch(input, { ...init, signal: controller.signal }).finally(() =>
@@ -36,7 +37,7 @@ export async function updateSession(request: NextRequest) {
     }
   );
 
-  let user = null;
+  let user: User | null = null;
   try {
     // getUser は未ログイン時にもセッション不在を示す error を返すため、error の有無だけで
     // 判定するとフェイルオープンが常時発動し、未ログイン時のリダイレクトが働かなくなる。
