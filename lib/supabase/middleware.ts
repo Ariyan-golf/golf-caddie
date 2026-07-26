@@ -39,6 +39,26 @@ export async function updateSession(request: NextRequest) {
 
   let user: User | null = null;
   try {
+    // Supabase ライブラリは通信失敗時に内部で自動リトライを繰り返すため、global.fetch の
+    // 個々の通信タイムアウト（3秒）だけでは getUser 全体が 25 秒を超え、middleware が実行
+    // 時間上限に達し 504 となる。そこで getUser の呼び出し全体に 4 秒の締め切りを設ける。
+    // 締め切りが先に解決したかを型安全に判別できるよう、タイマー側は専用シンボルを返す。
+    const DEADLINE = Symbol("getUserDeadline");
+    let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
+    const result = await Promise.race([
+      supabase.auth.getUser(),
+      new Promise<typeof DEADLINE>((resolve) => {
+        deadlineTimer = setTimeout(() => resolve(DEADLINE), 4000);
+      }),
+    ]);
+    if (deadlineTimer) clearTimeout(deadlineTimer);
+    if (result === DEADLINE) {
+      // フェイルオープン（締め切り 経路）: getUser が 4 秒以内に完了しなかったため、
+      // リダイレクト判定は一切行わずログイン済みユーザーの誤リダイレクトを防ぎ、素通しする。
+      console.error("[middleware] supabase.auth.getUser() timed out after deadline");
+      return supabaseResponse;
+    }
+
     // getUser は未ログイン時にもセッション不在を示す error を返すため、error の有無だけで
     // 判定するとフェイルオープンが常時発動し、未ログイン時のリダイレクトが働かなくなる。
     // 通信失敗（タイムアウト/障害）は name が "AuthRetryableFetchError" の error として返るため、
@@ -46,7 +66,7 @@ export async function updateSession(request: NextRequest) {
     const {
       data: { user: fetchedUser },
       error,
-    } = await supabase.auth.getUser();
+    } = result;
     if (error?.name === "AuthRetryableFetchError") {
       // フェイルオープン（通信失敗 経路）: user 取得に失敗しているため、リダイレクト判定は
       // 一切行わずログイン済みユーザーの誤リダイレクトを防ぎ、そのまま素通しする。
