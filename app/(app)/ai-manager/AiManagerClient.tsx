@@ -38,19 +38,18 @@ export function AiManagerClient() {
   const [courseResult, setCourseResult] = useState<CourseInfo | null>(null);
   const [courseError, setCourseError] = useState("");
 
-  // テキストルールQ&A
+  // ルール確認（テキスト・画像 共通）
   const [ruleQuestion, setRuleQuestion] = useState("");
   const [ruleLoading, setRuleLoading] = useState(false);
   const [ruleResult, setRuleResult] = useState<RuleResult | null>(null);
   const [ruleError, setRuleError] = useState("");
+  // 表示中の結果が画像付き送信によるものか（見出し・免責の出し分けに使用）
+  const [resultFromImage, setResultFromImage] = useState(false);
 
-  // カメラ・ビジョン
+  // 添付画像
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [imageBase64, setImageBase64] = useState<string | null>(null);
   const [imageType, setImageType] = useState("image/jpeg");
-  const [cameraLoading, setCameraLoading] = useState(false);
-  const [cameraResult, setCameraResult] = useState<RuleResult | null>(null);
-  const [cameraError, setCameraError] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   async function handleCourseSubmit(e: React.FormEvent) {
@@ -77,28 +76,43 @@ export function AiManagerClient() {
     }
   }
 
+  // 画像が添付されていれば /api/rule-vision、なければ /api/ai-caddie に振り分ける
   async function handleRuleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!ruleQuestion.trim()) return;
+    const question = ruleQuestion.trim();
+    if (!question && !imageBase64) return;
+    const withImage = Boolean(imageBase64);
     setRuleError("");
     setRuleResult(null);
     setRuleLoading(true);
     try {
-      const res = await fetch("/api/ai-caddie", {
+      const res = await fetch(withImage ? "/api/rule-vision" : "/api/ai-caddie", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question: ruleQuestion.trim() }),
+        body: JSON.stringify(
+          withImage
+            ? { imageBase64, mediaType: imageType, question }
+            : { question }
+        ),
       });
       if (!res.ok) {
         const data = await res.json();
         throw new Error(data.error ?? "APIエラー");
       }
       setRuleResult(await res.json());
+      setResultFromImage(withImage);
     } catch (err) {
       setRuleError(err instanceof Error ? err.message : "取得に失敗しました。もう一度お試しください。");
     } finally {
       setRuleLoading(false);
     }
+  }
+
+  // 画像由来の結果は、画像を差し替え・削除した時点で無効になるためクリアする
+  function clearImageResult() {
+    if (!resultFromImage) return;
+    setRuleResult(null);
+    setRuleError("");
   }
 
   function handleImageChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -112,31 +126,7 @@ export function AiManagerClient() {
       setImageBase64(dataUrl.split(",")[1]);
     };
     reader.readAsDataURL(file);
-    setCameraResult(null);
-    setCameraError("");
-  }
-
-  async function handleCameraSubmit() {
-    if (!imageBase64) return;
-    setCameraError("");
-    setCameraResult(null);
-    setCameraLoading(true);
-    try {
-      const res = await fetch("/api/rule-vision", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ imageBase64, mediaType: imageType, question: ruleQuestion }),
-      });
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error ?? "APIエラー");
-      }
-      setCameraResult(await res.json());
-    } catch (err) {
-      setCameraError(err instanceof Error ? err.message : "取得に失敗しました。もう一度お試しください。");
-    } finally {
-      setCameraLoading(false);
-    }
+    clearImageResult();
   }
 
   return (
@@ -146,7 +136,6 @@ export function AiManagerClient() {
       <div className="card space-y-4">
         <h2 className="text-lg font-bold text-green-800">📋 ルール確認</h2>
 
-        {/* テキストQ&A */}
         <form onSubmit={handleRuleSubmit} className="space-y-3">
           <textarea
             className="input text-base w-full resize-none"
@@ -156,82 +145,69 @@ export function AiManagerClient() {
             onChange={(e) => setRuleQuestion(e.target.value)}
             disabled={ruleLoading}
           />
+
+          {/* 画像添付 */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={handleImageChange}
+          />
           <button
-            type="submit"
-            className="btn-primary text-base py-3 w-full"
-            disabled={ruleLoading || !ruleQuestion.trim()}
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={ruleLoading}
+            className="w-full py-3 rounded-xl border-2 border-dashed border-green-300 text-green-600
+                       font-semibold text-sm flex items-center justify-center gap-2
+                       hover:bg-green-50 transition-colors active:bg-green-100"
           >
-            {ruleLoading ? (
-              <span className="flex items-center justify-center gap-2">
-                <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                調べています...
-              </span>
-            ) : "ルールを調べる"}
+            📷 写真を添付
           </button>
-        </form>
 
-        {/* カメラ撮影 */}
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*"
-          className="hidden"
-          onChange={handleImageChange}
-        />
-        <button
-          onClick={() => fileInputRef.current?.click()}
-          className="w-full py-3 rounded-xl border-2 border-dashed border-green-300 text-green-600
-                     font-semibold text-sm flex items-center justify-center gap-2
-                     hover:bg-green-50 transition-colors active:bg-green-100"
-        >
-          📷 状況を撮影してルール確認
-        </button>
-
-        {imagePreview && (
-          <div className="space-y-2">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={imagePreview} alt="撮影した状況" className="w-full rounded-xl max-h-48 object-cover" />
-            <div className="flex gap-2">
+          {imagePreview && (
+            <div className="space-y-2">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={imagePreview} alt="撮影した状況" className="w-full rounded-xl max-h-48 object-cover" />
               <button
+                type="button"
                 onClick={() => {
                   setImagePreview(null);
                   setImageBase64(null);
-                  setCameraResult(null);
-                  setCameraError("");
+                  clearImageResult();
                   if (fileInputRef.current) fileInputRef.current.value = "";
                 }}
                 className="py-2.5 px-4 rounded-xl border border-gray-200 text-gray-500 text-sm font-medium hover:bg-gray-50"
               >
                 削除
               </button>
-              <button
-                onClick={handleCameraSubmit}
-                disabled={cameraLoading}
-                className="flex-1 btn-primary text-base py-2.5"
-              >
-                {cameraLoading ? (
-                  <span className="flex items-center justify-center gap-2">
-                    <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    確認中...
-                  </span>
-                ) : "この状況のルールを確認"}
-              </button>
             </div>
-          </div>
-        )}
+          )}
+
+          <button
+            type="submit"
+            className="btn-primary text-base py-3 w-full"
+            disabled={ruleLoading || (!ruleQuestion.trim() && !imageBase64)}
+          >
+            {ruleLoading ? (
+              <span className="flex items-center justify-center gap-2">
+                <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                確認中...
+              </span>
+            ) : "ルールを確認"}
+          </button>
+        </form>
       </div>
 
-      {/* テキストルール結果 */}
+      {/* ルール確認結果 */}
       {ruleError && (
         <div className="bg-red-50 border border-red-200 text-red-600 rounded-xl p-4 text-base">{ruleError}</div>
       )}
-      {ruleResult && <RuleCard result={ruleResult} />}
-
-      {/* カメラルール結果 */}
-      {cameraError && (
-        <div className="bg-red-50 border border-red-200 text-red-600 rounded-xl p-4 text-base">{cameraError}</div>
+      {ruleResult && (
+        resultFromImage
+          ? <RuleCard result={ruleResult} showDisclaimer summaryLabel="考えられる規則" />
+          : <RuleCard result={ruleResult} />
       )}
-      {cameraResult && <RuleCard result={cameraResult} showDisclaimer summaryLabel="考えられる規則" />}
 
       {/* ── コース情報 ── */}
       <form onSubmit={handleCourseSubmit} className="card space-y-4">
