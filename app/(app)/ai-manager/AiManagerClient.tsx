@@ -28,6 +28,7 @@ interface RuleResult {
   steps: string[];
   penalty: string | null;
   situation?: string;
+  checkpoints?: string[];
 }
 
 export function AiManagerClient() {
@@ -124,7 +125,7 @@ export function AiManagerClient() {
       const res = await fetch("/api/rule-vision", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ imageBase64, mediaType: imageType }),
+        body: JSON.stringify({ imageBase64, mediaType: imageType, question: ruleQuestion }),
       });
       if (!res.ok) {
         const data = await res.json();
@@ -230,7 +231,7 @@ export function AiManagerClient() {
       {cameraError && (
         <div className="bg-red-50 border border-red-200 text-red-600 rounded-xl p-4 text-base">{cameraError}</div>
       )}
-      {cameraResult && <RuleCard result={cameraResult} showDisclaimer />}
+      {cameraResult && <RuleCard result={cameraResult} showDisclaimer summaryLabel="考えられる規則" />}
 
       {/* ── コース情報 ── */}
       <form onSubmit={handleCourseSubmit} className="card space-y-4">
@@ -343,7 +344,15 @@ export function AiManagerClient() {
   );
 }
 
-function RuleCard({ result, showDisclaimer = false }: { result: RuleResult; showDisclaimer?: boolean }) {
+function RuleCard({
+  result,
+  showDisclaimer = false,
+  summaryLabel = "裁定",
+}: {
+  result: RuleResult;
+  showDisclaimer?: boolean;
+  summaryLabel?: string;
+}) {
   return (
     <div className="space-y-3">
       {result.situation && (
@@ -354,7 +363,7 @@ function RuleCard({ result, showDisclaimer = false }: { result: RuleResult; show
       )}
 
       <div className="card bg-green-50 border-green-200 space-y-1">
-        <p className="text-xs font-semibold text-green-600">裁定</p>
+        <p className="text-xs font-semibold text-green-600">{summaryLabel}</p>
         <p className="text-base font-bold text-green-900">{result.summary}</p>
         {result.rule_ref && (
           <p className="text-xs text-green-500 font-medium">{result.rule_ref}</p>
@@ -378,6 +387,20 @@ function RuleCard({ result, showDisclaimer = false }: { result: RuleResult; show
               <p className="text-base text-green-900">{kp.text}</p>
             </div>
           ))}
+        </div>
+      )}
+
+      {result.checkpoints && result.checkpoints.length > 0 && (
+        <div className="card bg-sky-50 border-sky-200 space-y-2">
+          <h4 className="text-sm font-semibold text-sky-700">🔍 確認すべきポイント</h4>
+          <ul className="space-y-1.5">
+            {result.checkpoints.map((cp, i) => (
+              <li key={i} className="flex items-start gap-2 text-base text-sky-800">
+                <span className="shrink-0 text-sky-500">・</span>
+                {cp}
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 

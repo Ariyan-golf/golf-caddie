@@ -13,23 +13,32 @@ function todayJSTBounds() {
 }
 
 const RULE_VISION_PROMPT = `あなたはR&A・JGA公認の2023年版JGAゴルフ規則に精通したプロゴルフキャディです。
-提供された画像のゴルフの状況を分析し、適用されるゴルフ規則と正しい処置を日本語で回答してください。
+提供された画像のゴルフの状況を分析し、日本語で回答してください。
+
+重要な原則:
+静止画から断定できることは限られています。断定を避け、条件付きで説明してください。
+判断が動作の連続性に依存する場合（押したのか打ったのか、打つ前に触れたのか等）は、
+「〜であれば適法、〜であれば2罰打」という形で両方を示してください。
+画像から読み取れないことは、ユーザー自身が確認すべき点として checkpoints に入れてください。
 
 以下のJSON形式のみで返してください（余分なテキスト不要）:
 {
-  "situation": "画像の状況の説明（1〜2文）",
-  "summary": "裁定の結論を一行で",
-  "rule_ref": "該当規則番号（例：規則18.2）。複数あればカンマ区切り",
+  "situation": "画像から読み取れる状況の説明（1〜2文）",
+  "summary": "考えられる規則と判断の分かれ目を一行で",
+  "rule_ref": "関係する規則番号。複数あればカンマ区切り",
   "key_points": [
-    {"type": "ok", "text": "正しい処置・できること"},
-    {"type": "ng", "text": "禁止事項・できないこと"},
-    {"type": "info", "text": "ペナルティや補足情報"}
+    {"type": "ok", "text": "適法となる条件・できること"},
+    {"type": "ng", "text": "違反となる条件・できないこと"},
+    {"type": "info", "text": "補足情報"}
   ],
+  "checkpoints": ["画像では判断できず、本人が確認すべき点1", "点2"],
   "steps": ["手順がある場合の手順1", "手順2"],
-  "penalty": "ペナルティの説明（ない場合はnull）"
+  "penalty": "違反に該当した場合の罰の説明（該当しうる違反がない場合はnull）"
 }
 
-key_pointsのtypeは "ok" / "ng" / "info" のみ使用。stepsは手順不要な場合は空配列 [] にしてください。`;
+key_pointsのtypeは "ok" / "ng" / "info" のみ使用。
+steps、checkpoints は不要な場合は空配列 [] にしてください。
+必ず実際のゴルフ規則に基づいて回答し、不確かな情報は含めないでください。`;
 
 const VALID_TYPES = ["image/jpeg", "image/png", "image/gif", "image/webp"] as const;
 type ImageMediaType = typeof VALID_TYPES[number];
@@ -64,7 +73,7 @@ export async function POST(request: Request) {
     }
   }
 
-  const { imageBase64, mediaType = "image/jpeg" } = await request.json();
+  const { imageBase64, mediaType = "image/jpeg", question = "" } = await request.json();
   if (!imageBase64) {
     return NextResponse.json({ error: "画像が必要です" }, { status: 400 });
   }
@@ -72,6 +81,11 @@ export async function POST(request: Request) {
   const safeType: ImageMediaType = VALID_TYPES.includes(mediaType as ImageMediaType)
     ? (mediaType as ImageMediaType)
     : "image/jpeg";
+
+  const trimmedQuestion = typeof question === "string" ? question.trim() : "";
+  const userText = trimmedQuestion
+    ? `ユーザーからの質問: ${trimmedQuestion}\n\nこの質問に答える形で、画像の状況に適用されるゴルフ規則を説明してください。`
+    : "この画像の状況にどのゴルフ規則が適用されますか？正しい処置を教えてください。";
 
   const message = await anthropic.messages.create({
     model: "claude-sonnet-4-6",
@@ -86,7 +100,7 @@ export async function POST(request: Request) {
         },
         {
           type: "text",
-          text: "この画像の状況にどのゴルフ規則が適用されますか？正しい処置を教えてください。",
+          text: userText,
         },
       ],
     }],
