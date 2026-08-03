@@ -36,27 +36,14 @@ export async function POST(request: Request) {
   "course_name": "ゴルフ場の正式名称",
   "overview": "コースの概要・特徴（2〜3文）",
   "course_features": ["特徴1", "特徴2", "特徴3", "特徴4", "特徴5"],
-  "dress_code": [
-    {"ok": true, "text": "ゴルフウェア（ポロシャツ・スラックス等）"},
-    {"ok": true, "text": "ゴルフシューズ着用"},
-    {"ok": false, "text": "デニム・ジーンズ"},
-    {"ok": false, "text": "ノースリーブ・タンクトップ"},
-    {"ok": false, "text": "サンダル・ビーチサンダル"}
-  ],
-  "manners": [
-    {"ok": true, "text": "プレー前にスターターへ挨拶"},
-    {"ok": true, "text": "前の組との間隔を適切に保つ"},
-    {"ok": false, "text": "素振りでの他プレイヤーへの危険行為"},
-    {"ok": false, "text": "グリーン上でのスパイク跡を直さない行為"}
-  ],
   "notes": ["注意点1", "注意点2", "注意点3"]
 }
 
-dress_codeは5〜8項目、mannersは5〜7項目、notesは3〜5項目にしてください。`;
+course_featuresは5項目、notesは3〜5項目にしてください。ヤード数、コースレート、ホール数などの具体的な数値は、不確実な場合は記載しないでください。断定を避け、一般的な傾向として記述してください。`;
 
   const message = await anthropic.messages.create({
     model: "claude-sonnet-4-6",
-    max_tokens: 1500,
+    max_tokens: 1000,
     system: "あなたは日本のゴルフ場に詳しいゴルフコンシェルジュです。正確で実用的な情報を日本語で提供します。",
     messages: [{ role: "user", content: prompt }],
   });

@@ -30,7 +30,7 @@ export default async function AiManagerPage() {
         </a>
         <h1 className="text-2xl font-bold text-green-800">🤖 AIマネージャー</h1>
         <p className="text-base text-green-600 mt-1">
-          ゴルフ場のコース情報・ドレスコード・マナーをAIが案内します
+          ゴルフ場のコース情報をAIが案内します
         </p>
       </div>
 

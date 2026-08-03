@@ -2,17 +2,10 @@
 
 import { useState, useRef } from "react";
 
-interface DressItem {
-  ok: boolean;
-  text: string;
-}
-
 interface CourseInfo {
   course_name: string;
   overview: string;
   course_features: string[];
-  dress_code: DressItem[];
-  manners: DressItem[];
   notes: string[];
 }
 
@@ -269,32 +262,13 @@ export function AiManagerClient() {
             </ul>
           </div>
 
-          <div className="card space-y-3">
+          <div className="card space-y-2">
             <h3 className="text-lg font-bold text-green-800 flex items-center gap-2">
-              <span>👔</span> ドレスコード
+              <span>📋</span> 服装・ローカルルールについて
             </h3>
-            <ul className="space-y-2">
-              {courseResult.dress_code.map((item, i) => (
-                <li key={i} className="flex items-center gap-3">
-                  <OkNgBadge ok={item.ok} />
-                  <span className="text-base text-green-900">{item.text}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-
-          <div className="card space-y-3">
-            <h3 className="text-lg font-bold text-green-800 flex items-center gap-2">
-              <span>🤝</span> マナー
-            </h3>
-            <ul className="space-y-2">
-              {courseResult.manners.map((item, i) => (
-                <li key={i} className="flex items-center gap-3">
-                  <OkNgBadge ok={item.ok} />
-                  <span className="text-base text-green-900">{item.text}</span>
-                </li>
-              ))}
-            </ul>
+            <p className="text-base text-green-900 leading-relaxed">
+              服装の決まりやコース内のローカルルールは、ゴルフ場ごとに異なります。プレー前に、ゴルフ場へ直接ご確認ください。
+            </p>
           </div>
 
           <div className="card space-y-3">
@@ -407,19 +381,5 @@ function RuleCard({
         </p>
       )}
     </div>
-  );
-}
-
-function OkNgBadge({ ok }: { ok: boolean }) {
-  return (
-    <span
-      className={`shrink-0 inline-flex items-center justify-center w-10 h-7 rounded-md text-sm font-bold ${
-        ok
-          ? "bg-green-100 text-green-700 border border-green-300"
-          : "bg-red-100 text-red-600 border border-red-300"
-      }`}
-    >
-      {ok ? "OK" : "NG"}
-    </span>
   );
 }
