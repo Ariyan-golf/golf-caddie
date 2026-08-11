@@ -8,6 +8,8 @@ import { startGpsTracking } from "@/lib/gps";
 import { acquireWakeLock } from "@/lib/wakeLock";
 import { clearActiveRound } from "@/lib/activeRound";
 import { GeoPermissionGuide } from "@/components/GeoPermissionGuide";
+import { GuestNameFields } from "@/components/GuestNameFields";
+import { insertRoundGuests, MAX_ROUND_GUESTS } from "@/lib/roundGuests";
 import type { StartHole, Weather, WindSpeed, WindDirection } from "@/types";
 import { WEATHER_OPTIONS, WIND_SPEED_OPTIONS } from "@/types";
 import { REGION_PREFECTURES } from "@/lib/region-prefectures";
@@ -122,6 +124,12 @@ export function NewRoundForm({ linkedCourseId }: { linkedCourseId?: string }) {
   const mode = "score" as const;
   const [loading, setLoading]         = useState(false);
   const [error, setError]             = useState("");
+
+  // 同伴者名（任意・最大 MAX_ROUND_GUESTS 人）。添字がそのまま display_order になる。
+  // 全欄空のままなら round_guests への INSERT は発行しない（従来の開始フローと同一）。
+  const [guestNames, setGuestNames]   = useState<string[]>(
+    Array.from({ length: MAX_ROUND_GUESTS }, () => "")
+  );
 
   // 天気
   const [weather, setWeather]               = useState<Weather | null>(null);
@@ -316,6 +324,11 @@ export function NewRoundForm({ linkedCourseId }: { linkedCourseId?: string }) {
       return;
     }
 
+    // 同伴者名が1つでも入っていれば round_guests へ登録する。
+    // 0人なら INSERT を発行せず、従来どおりそのまま遷移する。
+    // 登録に失敗してもラウンド開始自体は止めない（ラウンド画面で追加できる）。
+    await insertRoundGuests(supabase, data.id, guestNames);
+
     navigateToRound(data.id);
   }
 
@@ -351,6 +364,9 @@ export function NewRoundForm({ linkedCourseId }: { linkedCourseId?: string }) {
       setLoading(false);
       return;
     }
+
+    // 同伴者登録（0人なら INSERT なし）。handleSubmit と同じ扱い。
+    await insertRoundGuests(supabase, data.id, guestNames);
 
     navigateToRound(data.id);
   }
@@ -580,6 +596,9 @@ export function NewRoundForm({ linkedCourseId }: { linkedCourseId?: string }) {
           ))}
         </div>
       </div>
+
+      {/* ── 同伴者（任意） ───────────────────────────────── */}
+      <GuestNameFields names={guestNames} onChange={setGuestNames} disabled={loading} />
 
       {/* ── 天気・風 ─────────────────────────────────────── */}
       <div className="space-y-3">

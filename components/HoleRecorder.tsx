@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { ShotRecorder } from "./ShotRecorder";
-import type { Club } from "@/types";
+import type { Club, GuestShot, RoundGuest } from "@/types";
 import { CLUBS, CLUB_LABELS } from "@/types";
 import { calculateDistance, metersToYards } from "@/lib/distance";
 import { stopGpsTracking, getBestShotPosition, startShotWatch, stopShotWatch, awaitHighAccuracyFix, getShotWatchTimeoutMs, type GpsPoint } from "@/lib/gps";
@@ -13,9 +13,12 @@ import { isBetaMode } from "@/lib/betaMode";
 import { getScoreColor } from "@/lib/scoreColor";
 import { putHole, putShot, putScoreUpdate, putShotUpdate, putRoundUpdate, putShotDistance } from "@/lib/offline/db";
 import { saveActiveRound, clearActiveRound, readActiveRound, type ActiveRoundSnapshot } from "@/lib/activeRound";
+import { insertRoundGuest, softDeleteGuestShot, softDeleteRoundGuest } from "@/lib/roundGuests";
 import Link from "next/link";
 import { GpsIndicator } from "./GpsIndicator";
 import { CompactCompass } from "./CompactCompass";
+import { GuestPanel } from "./GuestPanel";
+import { GuestResultOverlay } from "./GuestResultOverlay";
 
 // ── Local types ─────────────────────────────────────────────────────
 
@@ -66,6 +69,9 @@ interface HoleRecorderProps {
   roundDate?: string;
   avgDriverYards?: number | null;
   maxDriverYards?: number | null;
+  // 同伴者の代理測定（別テーブル round_guests / guest_shots。shots とは無関係）
+  initialGuests?: RoundGuest[];
+  initialGuestShots?: GuestShot[];
 }
 
 interface RoundShotEntry {
@@ -196,7 +202,7 @@ function mergeRestoredHoles(server: Hole[], snap: ActiveRoundSnapshot | null): H
 
 // ── Main component ──────────────────────────────────────────────────
 
-export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "shot", windDirection, windSpeed, courseRating, slopeRating, courseHoles, paymentStatus = "paid", golfCourseName = "", inputMode = "post_round", golfCourseId = null, greenType = "main", initialGreenCenters = {}, pastView = false, roundDate = "", avgDriverYards = null, maxDriverYards = null }: HoleRecorderProps) {
+export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "shot", windDirection, windSpeed, courseRating, slopeRating, courseHoles, paymentStatus = "paid", golfCourseName = "", inputMode = "post_round", golfCourseId = null, greenType = "main", initialGreenCenters = {}, pastView = false, roundDate = "", avgDriverYards = null, maxDriverYards = null, initialGuests = [], initialGuestShots = [] }: HoleRecorderProps) {
   const betaMode = isBetaMode();
   const router = useRouter();
 
@@ -278,6 +284,21 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
   const [shotError, setShotError] = useState<string | null>(null);
   const [shotMode, setShotMode] = useState<"idle" | "recording">("idle");
   const [lastShot, setLastShot] = useState<LastShotMemo | null>(null);
+
+  // ── 同伴者の代理測定 ────────────────────────────────────────────────
+  // 計測ロジック（GPS取得・Haversine距離）は自分のショットと完全に共通で、
+  // 保存先だけが shots ではなく guest_shots に分岐する。shots への
+  // 書き込み経路（handleConfirmShot の INSERT）には一切手を入れていない。
+  const [guests, setGuests] = useState<RoundGuest[]>(initialGuests);
+  const [guestShots, setGuestShots] = useState<GuestShot[]>(initialGuestShots);
+  // 保存対象。"self" = 自分（従来どおり shots へ）／それ以外は round_guests.id。
+  // 1球保存するたび "self" に戻す（＝毎回そのつど明示的に選ぶ運用）。
+  const [shotTarget, setShotTarget] = useState<string>("self");
+  const [savingGuestShot, setSavingGuestShot] = useState(false);
+  // 測定直後に全画面で見せる結果（同伴者に画面を向けて数字を伝えるためのもの）。
+  const [guestResult, setGuestResult] = useState<
+    { guestName: string; yards: number; meters: number | null; saveFailed: boolean } | null
+  >(null);
 
   // B/C: shotMode を ref に追従させ、idle タイマーや visibilitychange の
   // コールバックから「今計測中か」を最新値で参照できるようにする（クロージャ陳腐化回避）。
@@ -1077,6 +1098,8 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
     setShotMode("idle");
     setDmLoading("idle");
     setLastShot(null);
+    // 保存対象は毎回選び直す（前ホールでの同伴者選択を引きずらない）。
+    setShotTarget("self");
     // 残り距離はホール固有なので切替で破棄（新ホール用に再計測を促す）。
     setRemainingDistance(null);
     setRemainingDistanceError(null);
@@ -1104,6 +1127,7 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
     setShotNextAction("before");
     setShotMode("idle");
     setDmLoading("idle");
+    setShotTarget("self");
   }
 
   // pair-scoped watchPosition を標準ハンドラで開く共通処理。
@@ -1256,7 +1280,89 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
     }
   }
 
+  // ── 同伴者の代理測定：保存 ────────────────────────────────────────────
+  //
+  // 保存先は guest_shots のみ。shots / club_averages / tobashikko_entries には
+  // 一切書かないので、本人のクラブ別平均や飛ばしっこGOには絶対に載らない。
+  // 保存の成否にかかわらず全画面の結果表示は出す（測った数字自体は実測値であり、
+  // 同伴者に見せるという本機能の目的は保存とは独立しているため）。
+  async function handleConfirmGuestShot(guest: RoundGuest) {
+    if (!dmStart || !dmEnd || !dmDistance || savingGuestShot) return;
+
+    const yards = dmDistance.yards;
+    const meters = dmDistance.meters;
+    setSavingGuestShot(true);
+    setShotError(null);
+
+    let inserted: GuestShot | null = null;
+    let saveFailed = false;
+
+    try {
+      // 代理測定はオフラインバッファ（lib/offline/db.ts）の対象外。圏外では
+      // 通信を試みず、数字だけ見せて「保存できなかった」ことを明示する。
+      if (isOffline()) {
+        saveFailed = true;
+      } else {
+        const supabase = createClient();
+        const { data, error } = await supabase
+          .from("guest_shots")
+          .insert({
+            guest_id:        guest.id,
+            round_id:        roundId,
+            hole_id:         currentHole?.id ?? null,
+            start_lat:       dmStart.lat,
+            start_lng:       dmStart.lng,
+            end_lat:         dmEnd.lat,
+            end_lng:         dmEnd.lng,
+            distance_meters: meters,
+            distance_yards:  yards,
+          })
+          .select("*")
+          .single();
+        if (error || !data) {
+          console.error("[guest-shot] insert error:", error?.message);
+          saveFailed = true;
+        } else {
+          inserted = data as GuestShot;
+        }
+      }
+    } catch (e) {
+      console.error("[guest-shot] unexpected error:", e);
+      saveFailed = true;
+    } finally {
+      if (inserted) setGuestShots((prev) => [...prev, inserted as GuestShot]);
+      setGuestResult({ guestName: guest.name, yards, meters, saveFailed });
+
+      // 自分のショットと同じ後始末（watch 停止・計測状態のリセット）。
+      // ただし lastShot（＝自分の「直前のショット」表示）は更新しない。
+      clearShotStartGraceTimer();
+      stopShotWatch();
+      clearDmInflight();
+      setDmStart(null);
+      setDmEnd(null);
+      setDmDistance(null);
+      setShotNextAction("before");
+      setShotMode("idle");
+      setDmLoading("idle");
+      setSavingGuestShot(false);
+      setShotTarget("self");
+    }
+  }
+
   async function handleConfirmShot() {
+    // 保存対象が同伴者なら guest_shots 側へ完全に分岐する（以降の shots INSERT は通らない）。
+    if (shotTarget !== "self") {
+      const guest = guests.find((g) => g.id === shotTarget);
+      if (guest) {
+        await handleConfirmGuestShot(guest);
+        return;
+      }
+      // 選択中の同伴者が削除された等で見つからない場合、自分の記録として
+      // 保存してしまうと統計が汚れる。保存せず選び直しを促す（安全側）。
+      setShotTarget("self");
+      setShotError("選択していた同伴者が見つかりません。保存先を選び直してください。");
+      return;
+    }
     if (!currentHole || !dmStart || !dmEnd || !dmDistance || confirmingShot) return;
     const snapshot: LastShotMemo = {
       holeNumber: currentHole.hole_number,
@@ -1379,6 +1485,40 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
       setShotMode("idle");
     }
   }
+
+  // ── 同伴者の追加・削除（ラウンド中／ラウンド後どちらでも可）──────────
+  // 削除はすべて論理削除。物理 DELETE は行わない。
+
+  async function handleAddGuest(name: string): Promise<boolean> {
+    const supabase = createClient();
+    const nextOrder = guests.reduce((m, g) => Math.max(m, g.display_order), -1) + 1;
+    const created = await insertRoundGuest(supabase, roundId, name, nextOrder);
+    if (!created) return false;
+    setGuests((prev) => [...prev, created].sort((a, b) => a.display_order - b.display_order));
+    return true;
+  }
+
+  async function handleDeleteGuest(guest: RoundGuest) {
+    const supabase = createClient();
+    const ok = await softDeleteRoundGuest(supabase, guest.id);
+    if (!ok) return;
+    // round_guests.deleted_at を立て、その人のショットは表示から外す
+    // （guest_shots 側の行はそのまま残す＝復旧可能な論理削除）。
+    setGuests((prev) => prev.filter((g) => g.id !== guest.id));
+    setGuestShots((prev) => prev.filter((s) => s.guest_id !== guest.id));
+    if (shotTarget === guest.id) setShotTarget("self");
+  }
+
+  async function handleDeleteGuestShot(shot: GuestShot) {
+    const supabase = createClient();
+    const ok = await softDeleteGuestShot(supabase, shot.id);
+    if (!ok) return;
+    setGuestShots((prev) => prev.filter((s) => s.id !== shot.id));
+  }
+
+  // guest_shots.hole_id → ホール番号（一覧表示用）
+  const holeNumberById: Record<string, number> = {};
+  for (const h of holes) holeNumberById[h.id] = h.hole_number;
 
   async function updateHolePar(par: number) {
     if (!currentHole) return;
@@ -1543,6 +1683,16 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
           avgDriverYards={avgDriverYards}
           maxDriverYards={maxDriverYards}
         />
+        {/* ラウンド後の同伴者一覧（同伴者0人なら一覧セクションは描画されない）。
+            「あとで測らないでほしい」と言われたときのため、終了後も削除できる。 */}
+        <GuestPanel
+          guests={guests}
+          guestShots={guestShots}
+          holeNumberById={holeNumberById}
+          onAddGuest={handleAddGuest}
+          onDeleteGuest={handleDeleteGuest}
+          onDeleteShot={handleDeleteGuestShot}
+        />
         {!betaMode && showPaymentModal && (
           <PaymentRequiredModal
             onPay={handlePayNow}
@@ -1645,6 +1795,10 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
           shotCount={currentHole?.shots.length ?? 0}
           confirming={confirmingShot}
           lastShot={lastShot}
+          guests={guests}
+          shotTarget={shotTarget}
+          onChangeTarget={setShotTarget}
+          savingGuest={savingGuestShot}
           onShotStart={handleShotStart}
           onShotEnd={handleShotEnd}
           onConfirmShot={handleConfirmShot}
@@ -1662,6 +1816,29 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
           error={remainingDistanceError}
           onMeasure={handleMeasureRemainingDistance}
           onOpenAiCaddie={handleOpenAiCaddie}
+        />
+      )}
+
+      {/* 同伴者一覧＋追加・削除。ラウンド中もここから操作できる。
+          同伴者0人のときは一覧を出さず、控えめな追加導線だけを表示する。 */}
+      <GuestPanel
+        guests={guests}
+        guestShots={guestShots}
+        holeNumberById={holeNumberById}
+        onAddGuest={handleAddGuest}
+        onDeleteGuest={handleDeleteGuest}
+        onDeleteShot={handleDeleteGuestShot}
+      />
+
+      {/* 代理測定の結果を全画面で表示（同伴者に画面を見せる用）。
+          タップで即閉じ、放置しても数秒で自動的に消える。 */}
+      {guestResult && (
+        <GuestResultOverlay
+          guestName={guestResult.guestName}
+          yards={guestResult.yards}
+          meters={guestResult.meters}
+          saveFailed={guestResult.saveFailed}
+          onClose={() => setGuestResult(null)}
         />
       )}
 
@@ -3774,6 +3951,7 @@ function IdleShotSection({
 function ActiveShotPanel({
   hasCurrentHole, creating,
   dmStart, dmEnd, dmDistance, dmLoading, shotCount, confirming, lastShot,
+  guests, shotTarget, onChangeTarget, savingGuest,
   onShotStart, onShotEnd, onConfirmShot, onCancel,
 }: {
   hasCurrentHole: boolean;
@@ -3785,12 +3963,19 @@ function ActiveShotPanel({
   shotCount: number;
   confirming: boolean;
   lastShot: LastShotMemo | null;
+  guests: RoundGuest[];
+  shotTarget: string;
+  onChangeTarget: (target: string) => void;
+  savingGuest: boolean;
   onShotStart: () => void;
   onShotEnd: () => void;
   onConfirmShot: () => void;
   onCancel: () => void;
 }) {
   const disabled = !hasCurrentHole || creating;
+  // 保存先が同伴者かどうか。登録0人なら selector 自体を出さず、
+  // shotTarget は常に "self" のまま＝従来と完全に同じ挙動になる。
+  const targetGuest = guests.find((g) => g.id === shotTarget) ?? null;
 
   const startDone = !!dmStart;
   const endDone   = !!dmEnd;
@@ -3871,17 +4056,64 @@ function ActiveShotPanel({
       </div>
 
 
+      {/* 保存先の選択（同伴者が登録されているときだけ表示）。
+          未登録なら描画されず、従来どおり無条件に自分の shots へ保存される。
+          誤って同伴者の球を自分の記録にしない／自分の球を同伴者にしないよう、
+          選択状態は下の保存ボタンの文言と色にもそのまま反映する。 */}
+      {guests.length > 0 && dmDistance && (
+        <div className="space-y-1.5 pt-1">
+          <p className="text-center text-sm text-gray-500">誰の記録として保存しますか？</p>
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => onChangeTarget("self")}
+              disabled={savingGuest}
+              className={`flex-1 min-w-[30%] py-2.5 rounded-xl border-2 text-sm font-bold
+                          transition-colors active:scale-95 disabled:opacity-50 ${
+                shotTarget === "self"
+                  ? "bg-green-600 border-green-600 text-white"
+                  : "bg-white border-gray-200 text-gray-600"
+              }`}
+            >
+              自分
+            </button>
+            {guests.map((g) => (
+              <button
+                key={g.id}
+                onClick={() => onChangeTarget(g.id)}
+                disabled={savingGuest}
+                className={`flex-1 min-w-[30%] py-2.5 rounded-xl border-2 text-sm font-bold
+                            transition-colors active:scale-95 disabled:opacity-50 truncate ${
+                  shotTarget === g.id
+                    ? "bg-sky-600 border-sky-600 text-white"
+                    : "bg-white border-gray-200 text-gray-600"
+                }`}
+              >
+                {g.name}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Confirm — INSERT into shots. While confirming, the early-return above swaps
-          this for a feedback panel — this branch only renders the active button. */}
+          this for a feedback panel — this branch only renders the active button.
+          同伴者が選ばれている場合のみ guest_shots 側へ保存される（shots には書かない）。 */}
       {dmDistance && (
         <button
           onClick={onConfirmShot}
-          disabled={disabled || confirming}
-          className="w-full py-3.5 rounded-2xl font-bold text-base transition-colors
-                     active:scale-95 shadow-md disabled:cursor-not-allowed
-                     bg-green-700 hover:bg-green-800 active:bg-green-900 text-white"
+          disabled={disabled || confirming || savingGuest}
+          className={`w-full py-3.5 rounded-2xl font-bold text-base transition-colors
+                     active:scale-95 shadow-md disabled:cursor-not-allowed text-white ${
+            targetGuest
+              ? "bg-sky-600 hover:bg-sky-700 active:bg-sky-800"
+              : "bg-green-700 hover:bg-green-800 active:bg-green-900"
+          }`}
         >
-          このショットを記録する
+          {savingGuest
+            ? "保存中..."
+            : targetGuest
+              ? `${targetGuest.name}さんの記録として保存`
+              : "このショットを記録する"}
         </button>
       )}
 

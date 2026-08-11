@@ -4,6 +4,7 @@ import { HoleRecorder } from "@/components/HoleRecorder";
 import { BackButton } from "@/components/BackButton";
 import { RoundCourseEditor } from "@/components/RoundCourseEditor";
 import { RecordShareButton } from "@/components/RecordShareButton";
+import { fetchGuestShots, fetchRoundGuests } from "@/lib/roundGuests";
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -103,6 +104,13 @@ export default async function RoundDetailPage({ params, searchParams }: Props) {
     .eq("round_id", id)
     .order("hole_number");
 
+  // 同伴者の代理測定（別テーブル）。どちらも deleted_at IS NULL の生存分のみ。
+  // shots 由来の集計（下の 1W サマリ等）とは完全に独立しており相互に影響しない。
+  const [guests, guestShots] = await Promise.all([
+    fetchRoundGuests(supabase, id),
+    fetchGuestShots(supabase, id),
+  ]);
+
   // このラウンドのドライバー(1W)飛距離サマリ（最長・平均）。
   // 既取得の holes→shots から算出し、追加クエリは行わない。記録が無ければ null。
   // 条件は club='1w'・distance_yards 非null・deleted_at IS NULL（論理削除済みは除外）。
@@ -201,6 +209,8 @@ export default async function RoundDetailPage({ params, searchParams }: Props) {
         roundDate={round.date ?? ""}
         avgDriverYards={avgDriverYards}
         maxDriverYards={maxDriverYards}
+        initialGuests={guests}
+        initialGuestShots={guestShots}
       />
     </div>
   );

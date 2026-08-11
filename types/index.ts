@@ -132,6 +132,37 @@ export interface Shot {
   distance_source: DistanceSource; // gps（GPS計測）/ manual（手入力）。default 'gps'
 }
 
+// ── 同伴者の代理測定（20260811000000_create_round_guests_and_guest_shots.sql）──
+//
+// shots とは完全に別テーブル。所有者は round_id -> rounds.user_id（＝測定した本人）
+// で決まり、guest_shots は本人のクラブ別平均・飛ばしっこGO・コンペ集計のどのクエリ
+// からも参照されない。同伴者データが本人の統計へ混入しないことを構造で保証する。
+
+export interface RoundGuest {
+  id: string;
+  round_id: string;
+  name: string;
+  display_order: number;
+  created_at: string | null;
+  deleted_at: string | null;   // NULL = 生存（論理削除）
+}
+
+export interface GuestShot {
+  id: string;
+  guest_id: string;
+  round_id: string;
+  hole_id: string | null;
+  start_lat: number | null;
+  start_lng: number | null;
+  end_lat: number | null;
+  end_lng: number | null;
+  distance_meters: number | null;
+  distance_yards: number | null;
+  club: string | null;
+  created_at: string | null;
+  deleted_at: string | null;   // NULL = 生存（論理削除）
+}
+
 export interface ClubAverage {
   id: string;
   user_id: string;

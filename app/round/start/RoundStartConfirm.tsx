@@ -7,6 +7,8 @@ import { todayJST } from "@/lib/day-pass";
 import { startGpsTracking } from "@/lib/gps";
 import { acquireWakeLock } from "@/lib/wakeLock";
 import { clearActiveRound } from "@/lib/activeRound";
+import { GuestNameFields } from "@/components/GuestNameFields";
+import { insertRoundGuests, MAX_ROUND_GUESTS } from "@/lib/roundGuests";
 
 interface CourseTee {
   id: string;
@@ -37,6 +39,10 @@ export function RoundStartConfirm({
   const router = useRouter();
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState("");
+  // 同伴者名（任意・最大 MAX_ROUND_GUESTS 人）。全欄空なら INSERT しない。
+  const [guestNames, setGuestNames] = useState<string[]>(
+    Array.from({ length: MAX_ROUND_GUESTS }, () => "")
+  );
 
   async function handleStart() {
     setCreating(true);
@@ -77,6 +83,10 @@ export function RoundStartConfirm({
       setCreating(false);
       return;
     }
+
+    // 同伴者名が入っていれば登録（0人なら INSERT なし＝従来の開始フローと同一）。
+    // 失敗してもラウンド開始は止めない（ラウンド画面から追加できる）。
+    await insertRoundGuests(supabase, data.id, guestNames);
 
     // 新規ラウンド開始 → 前のラウンドの端末スナップショットを破棄（C）。
     // 残っていると次回起動時に古いラウンドへ誤って自動復帰してしまうため。
@@ -141,6 +151,11 @@ export function RoundStartConfirm({
             <dd className="font-semibold text-green-800 text-right">スコア記録</dd>
           </div>
         </dl>
+      </div>
+
+      {/* 同伴者（任意） */}
+      <div className="card">
+        <GuestNameFields names={guestNames} onChange={setGuestNames} disabled={creating} />
       </div>
 
       {/* 課金注意 */}
