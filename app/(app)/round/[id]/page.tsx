@@ -4,7 +4,6 @@ import { HoleRecorder } from "@/components/HoleRecorder";
 import { BackButton } from "@/components/BackButton";
 import { RoundCourseEditor } from "@/components/RoundCourseEditor";
 import { RecordShareButton } from "@/components/RecordShareButton";
-import { fetchGuestShots, fetchRoundGuests } from "@/lib/roundGuests";
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -104,12 +103,13 @@ export default async function RoundDetailPage({ params, searchParams }: Props) {
     .eq("round_id", id)
     .order("hole_number");
 
-  // 同伴者の代理測定（別テーブル）。どちらも deleted_at IS NULL の生存分のみ。
-  // shots 由来の集計（下の 1W サマリ等）とは完全に独立しており相互に影響しない。
-  const [guests, guestShots] = await Promise.all([
-    fetchRoundGuests(supabase, id),
-    fetchGuestShots(supabase, id),
-  ]);
+  // 論理削除済み（deleted_at 有り）のショットは画面に渡さない。ラウンド画面で
+  // 「直前の記録を取り消す」と deleted_at が立つため、再訪時に復活させないための
+  // フィルタ。クエリ自体は変えず、取得後に落とす。
+  const holesAlive = (holes ?? []).map((h) => {
+    const row = h as { shots?: { deleted_at?: string | null }[] };
+    return { ...h, shots: (row.shots ?? []).filter((s) => s.deleted_at == null) };
+  });
 
   // このラウンドのドライバー(1W)飛距離サマリ（最長・平均）。
   // 既取得の holes→shots から算出し、追加クエリは行わない。記録が無ければ null。
@@ -118,7 +118,7 @@ export default async function RoundDetailPage({ params, searchParams }: Props) {
   let maxDriverHole: number | null = null;
   let driverSumYards = 0;
   let driverCount = 0;
-  for (const h of holes ?? []) {
+  for (const h of holesAlive) {
     const holeNumber = (h as { hole_number?: number | null }).hole_number ?? null;
     const shots = (h as { shots?: { club?: string | null; distance_yards?: number | null; deleted_at?: string | null }[] }).shots ?? [];
     for (const s of shots) {
@@ -191,7 +191,7 @@ export default async function RoundDetailPage({ params, searchParams }: Props) {
 
       <HoleRecorder
         roundId={id}
-        initialHoles={holes ?? []}
+        initialHoles={holesAlive}
         startHole={round.start_hole ?? 1}
         mode={(round.mode ?? "shot") as "shot" | "score"}
         windDirection={round.wind_direction ?? null}
@@ -209,8 +209,6 @@ export default async function RoundDetailPage({ params, searchParams }: Props) {
         roundDate={round.date ?? ""}
         avgDriverYards={avgDriverYards}
         maxDriverYards={maxDriverYards}
-        initialGuests={guests}
-        initialGuestShots={guestShots}
       />
     </div>
   );
