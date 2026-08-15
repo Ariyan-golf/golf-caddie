@@ -46,8 +46,10 @@ const ACTIVE_LABEL: Record<"good" | "ok" | "weak", { icon: string; text: string;
 export function GpsIndicator() {
   const [status, setStatus] = useState<Status>(() => classify());
 
+  // 3秒間隔。表示するのは状態アイコン・±精度・「n秒前」だけなので、1秒毎に
+  // 再描画しても見た目はほぼ変わらず、18ホール分では無駄な再描画が積み上がる。
   useEffect(() => {
-    const id = setInterval(() => setStatus(classify()), 1000);
+    const id = setInterval(() => setStatus(classify()), 3000);
     return () => clearInterval(id);
   }, []);
 

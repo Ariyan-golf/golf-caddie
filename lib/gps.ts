@@ -334,9 +334,13 @@ export function startShotWatch(handlers: ShotWatchHandlers): boolean {
         timestamp: pos.timestamp ?? Date.now(),
       };
       lastPosition = point;
-      console.log(
-        `[gps] watch lat=${point.lat.toFixed(6)} lng=${point.lng.toFixed(6)} acc=${Math.round(point.accuracy)}m`,
-      );
+      // fix ごとに出るログ（1〜3秒に1回）。本番では文字列生成と console 呼び出しが
+      // そのまま無駄な処理になるため、開発時だけ出す。
+      if (process.env.NODE_ENV === "development") {
+        console.log(
+          `[gps] watch lat=${point.lat.toFixed(6)} lng=${point.lng.toFixed(6)} acc=${Math.round(point.accuracy)}m`,
+        );
+      }
       handlers.onUpdate(point);
     },
     (err) => {

@@ -358,20 +358,14 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
   // ラウンド中フィードバック：1W記録直後の暫定順位トースト（複数コンペ対応で配列）。5秒で自動消滅。
   const [draconRankToasts, setDraconRankToasts] = useState<string[]>([]);
 
-  // Wind compass visibility — persisted to localStorage
-  // 方位センサーは稼働中ずっと電力を消費し、イベント毎の再描画もCPUを使う。
-  // 風向き・方向を見たい時だけONにし、それ以外はリスナーを解除して電池を温存する。
-  // そのためデフォルトはOFF。前回ON/OFFした設定が localStorage にあれば尊重する
-  // （前回ONなら今回もON）。OFF中は CompactCompass が useDeviceOrientation(visible)
-  // を通じて deviceorientation リスナーを実際に解除する＝センサー停止＆再描画なし。
+  // Wind compass visibility — ラウンドごとに毎回OFFから始める（永続化しない）。
+  // 方位センサー（deviceorientation・iOSで最大60Hz）は稼働中ずっと電力を消費し、
+  // イベント毎の再描画もCPUを使う。以前は localStorage に ON/OFF を永続化していたが、
+  // 一度でもONにすると以降すべてのラウンドで最初からセンサーが回り続けてしまい、
+  // 18ホールの電池消費に効いていた。見たいときだけボタンでONにする運用にする。
+  // OFF中は CompactCompass が useDeviceOrientation(visible) を通じて
+  // deviceorientation リスナーを実際に解除する＝センサー停止＆再描画なし。
   const [windVisible, setWindVisible] = useState(false);
-  useEffect(() => {
-    const stored = localStorage.getItem(COMPASS_STORAGE_KEY);
-    if (stored !== null) setWindVisible(stored === "true");
-  }, []);
-  useEffect(() => {
-    localStorage.setItem(COMPASS_STORAGE_KEY, String(windVisible));
-  }, [windVisible]);
 
   // iPhone Safari は電池低下・画面スリープ・アプリ切替でページを破棄する。
   // その際 React state は消えるため、進行中ラウンドを端末に保存し、起動時に
@@ -423,11 +417,9 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
   const totalPar       = completedHoles.reduce((s, h) => s + h.par, 0);
   const isRoundDone    = holes.length === 18 && holes.every((h) => h.score !== null);
 
-  // Cleanup when round finishes — GPS is released by ShotRecorder unmount
-  useEffect(() => {
-    if (!isRoundDone) return;
-    localStorage.removeItem(COMPASS_STORAGE_KEY);
-  }, [isRoundDone]);
+  // GPS is released by ShotRecorder unmount.
+  // 風コンパスの ON/OFF は localStorage に持たなくなったため（毎ラウンドOFF始まり）、
+  // ラウンド終了時のキー削除も不要になった。
 
   // 「打つ前」を押した位置から現在位置までの直線距離（Haversine公式）。
   // カート経路に依存しない純粋な飛距離測定 — ゴルファーの興奮ポイント
@@ -486,9 +478,29 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
   // ある GPS監視を張り直し、Wake Lock を取り直して計測を継続できる状態にする。
   // ページ自体の再読込は A の復元が担当。ここは「ページは生存しているが
   // バックグラウンドで watch が止まった」取りこぼしを拾う。
+  //
+  // D（電池対策）: 逆に画面が消えたら、計測中でも watch を明示的に止める。
+  // 「打つ前」を押してからボール地点まで歩く1〜3分間はスマホがポケットの中＝
+  // 画面OFFだが、そこで高精度 watchPosition が回り続けるのが18ホール完走時の
+  // 最大の電池消費源だった（40〜50球で累計40〜150分の連続高精度測位）。
+  // 精度への影響はない：保存される飛距離は「dmStart（2秒待機で確定済みの state）」と
+  // 「『打った後』の awaitHighAccuracyFix（accuracy ≤5m まで待つ独立 watch）」
+  // だけで決まり、途中の watch はライブ距離表示専用だから。dmStart / startPositionRef
+  // は state と ref に残るので watch を止めても失われない。
+  // ただし「打つ前」直後の2秒待機中だけは止めない：始点がまだ確定しておらず、
+  // ここで watch を落とすと起点を取り逃す（Wake Lock のアイドル解除と同じ判断）。
+  // stopShotWatch は15分タイマーも畳むが、復帰時の beginShotWatch が張り直す
+  // （＝従来から visible のたびにタイマーは再スタートしていたので挙動は変わらない）。
   useEffect(() => {
     if (typeof document === "undefined") return;
-    const onVisible = () => {
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        if (shotModeRef.current !== "recording") return;
+        if (shotStartGraceTimerRef.current !== null) return; // 始点確定待ちは触らない
+        if (!startReadyRef.current || !startPositionRef.current) return;
+        stopShotWatch();
+        return;
+      }
       if (document.visibilityState !== "visible") return;
       if (shotModeRef.current !== "recording") return;
       if (!startReadyRef.current || !startPositionRef.current) return;
@@ -496,8 +508,8 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
       beginShotWatch();
       void acquireWakeLock();
     };
-    document.addEventListener("visibilitychange", onVisible);
-    return () => document.removeEventListener("visibilitychange", onVisible);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", onVisibilityChange);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -3131,8 +3143,6 @@ function ScoreEntryCard({
 }
 
 // ── Wind compass ──────────────────────────────────────────────────────
-
-const COMPASS_STORAGE_KEY = "golfCaddieWindCompass";
 
 // 無操作で Wake Lock をソフト解除するまでの時間。食事・組待ち・歩行中の
 // 発熱と電池消耗を止めるための値。
