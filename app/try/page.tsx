@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { SoloMeasure } from "./SoloMeasure";
+import TryAuthLinks from "./TryAuthLinks";
 
 export const metadata: Metadata = {
   title: "登録不要で飛距離を測る | Golf Caddie AI",
@@ -27,20 +27,7 @@ export default function TryPage() {
 
         <SoloMeasure />
 
-        <div className="pt-2 text-center text-xs text-green-600 space-y-1">
-          <p>
-            計測データをクラウドに保存するには{" "}
-            <Link href="/register" className="underline font-semibold">
-              無料登録
-            </Link>
-          </p>
-          <p>
-            すでに会員の方は{" "}
-            <Link href="/login" className="underline">
-              ログイン
-            </Link>
-          </p>
-        </div>
+        <TryAuthLinks />
 
         <p className="text-xs text-gray-400 text-center">
           計測データはサービス品質向上のため匿名で収集されます。
