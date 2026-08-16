@@ -3567,18 +3567,13 @@ function RoundComplete({
   const innPutts   = holes.slice(9).reduce((s, h)  => s + (h.putts ?? 0), 0);
   const innPar     = holes.slice(9).reduce((s, h)  => s + h.par, 0);
 
-  // ホール毎のショット数算出と同じ式で OUT/IN 合計を出す（score / shot モードで分岐）
-  const holeShots = (h: Hole) =>
-    mode === "score"
-      ? (h.score ?? 0) - (h.putts ?? 0)
-      : h.shots.length + (h.penalties ?? 0);
-  const outShots = holes.slice(0, 9).reduce((s, h) => s + holeShots(h), 0);
-  const innShots = holes.slice(9).reduce((s, h)  => s + holeShots(h), 0);
-
   const isEditable = pastView && mode === "score" && !!onUpdateHole;
 
   // ── Inline edit state（セルタップ → input → blur で保存） ─────────────
-  type EditField = "par" | "shots" | "putts";
+  // スコアは「総打数（計）」と「パット」を人が直接入力する方式。ショット数は
+  // 表示も保存もしない（score から putts を引いた逆算値を並べても、ユーザーが
+  // 入力した値ではないため）。
+  type EditField = "par" | "score" | "putts";
   const [editing, setEditing] = useState<{ holeId: string; field: EditField } | null>(null);
   const [editValue, setEditValue] = useState("");
 
@@ -3586,10 +3581,19 @@ function RoundComplete({
     let current: number | null;
     if (field === "par") current = hole.par;
     else if (field === "putts") current = hole.putts;
-    else current = hole.score != null ? (hole.score - (hole.putts ?? 0)) : null;
+    else current = hole.score;
     setEditValue(current != null ? String(current) : "");
     setEditing({ holeId: hole.id, field });
   }
+
+  // 許容範囲は holes の CHECK 制約に合わせる（par 3〜7 / score 1〜99 / putts 0〜99）。
+  // 「計」は編集可能になったため、制約違反の値で UPDATE が黙って失敗しないよう
+  // 列ごとに範囲を持たせる。
+  const EDIT_RANGE: Record<EditField, { min: number; max: number }> = {
+    par:   { min: 3, max: 7 },
+    score: { min: 1, max: 99 },
+    putts: { min: 0, max: 99 },
+  };
 
   async function commitEdit() {
     const e = editing;
@@ -3600,21 +3604,22 @@ function RoundComplete({
     const trimmed = editValue.trim();
     if (trimmed === "") return;
     const num = parseInt(trimmed, 10);
-    if (isNaN(num) || num < 0 || num > 20) return;
+    const range = EDIT_RANGE[e.field];
+    if (isNaN(num) || num < range.min || num > range.max) return;
 
     let update: Partial<Hole>;
     if (e.field === "par") {
       if (num === hole.par) return;
       update = { par: num };
     } else if (e.field === "putts") {
-      const curPutts = hole.putts;
-      if (num === curPutts) return;
-      const curShots = hole.score != null ? hole.score - (curPutts ?? 0) : 0;
-      update = { putts: num, score: curShots + num };
+      // putts のみ更新。総打数は score が直接持つため連動させない
+      // （「5打のうち2パット」で計は5のまま）。
+      if (num === hole.putts) return;
+      update = { putts: num };
     } else {
-      const curShots = hole.score != null ? hole.score - (hole.putts ?? 0) : null;
-      if (num === curShots) return;
-      update = { score: num + (hole.putts ?? 0) };
+      // 「計」＝総打数。入力値をそのまま score に保存する。
+      if (num === hole.score) return;
+      update = { score: num };
     }
     await onUpdateHole(hole.id, update);
   }
@@ -3671,14 +3676,13 @@ function RoundComplete({
   }
 
   function ScoreColumn({
-    label, slice, pSum, sSum, ptSum, shSum,
+    label, slice, pSum, sSum, ptSum,
   }: {
     label: string;
     slice: Hole[];
     pSum: number;
     sSum: number;
     ptSum: number;
-    shSum: number;
   }) {
     return (
       <div>
@@ -3688,44 +3692,36 @@ function RoundComplete({
             <tr className="text-green-500 text-[10px] border-b border-green-100">
               <th className="text-left py-0.5">H</th>
               <th className="text-center py-0.5">Par</th>
-              <th className="text-center py-0.5 text-[9px]">ショット</th>
-              <th className="text-center py-0.5">P</th>
               <th className="text-center py-0.5">計</th>
+              <th className="text-center py-0.5">パット</th>
             </tr>
           </thead>
           <tbody>
-            {slice.map((hole) => {
-              const shots = holeShots(hole);
-              return (
-                <tr key={hole.id} className="border-b border-green-50">
-                  <td className="py-1 text-green-700 font-medium">{hole.hole_number}</td>
-                  <EditableCell
-                    hole={hole} field="par"
-                    displayValue={hole.par}
-                    baseClass="py-1 text-center text-green-500"
-                  />
-                  <EditableCell
-                    hole={hole} field="shots"
-                    displayValue={hole.score != null ? shots : "—"}
-                    baseClass="py-1 text-center text-green-700"
-                  />
-                  <EditableCell
-                    hole={hole} field="putts"
-                    displayValue={hole.putts ?? "—"}
-                    baseClass="py-1 text-center text-green-500"
-                  />
-                  <td className="py-1 text-center">
-                    <ScoreBadge score={hole.score} par={hole.par} />
-                  </td>
-                </tr>
-              );
-            })}
+            {slice.map((hole) => (
+              <tr key={hole.id} className="border-b border-green-50">
+                <td className="py-1 text-green-700 font-medium">{hole.hole_number}</td>
+                <EditableCell
+                  hole={hole} field="par"
+                  displayValue={hole.par}
+                  baseClass="py-1 text-center text-green-500"
+                />
+                <EditableCell
+                  hole={hole} field="score"
+                  displayValue={<ScoreBadge score={hole.score} par={hole.par} />}
+                  baseClass="py-1 text-center"
+                />
+                <EditableCell
+                  hole={hole} field="putts"
+                  displayValue={hole.putts ?? "—"}
+                  baseClass="py-1 text-center text-green-500"
+                />
+              </tr>
+            ))}
             <tr className="border-t-2 border-green-200 bg-green-50 font-bold text-green-700">
               <td className="py-1 text-left">{label}</td>
               <td className="py-1 text-center">{pSum || "—"}</td>
-              <td className="py-1 text-center">{shSum || "—"}</td>
-              <td className="py-1 text-center">{ptSum || "—"}</td>
               <td className="py-1 text-center">{sSum || "—"}</td>
+              <td className="py-1 text-center">{ptSum || "—"}</td>
             </tr>
           </tbody>
         </table>
@@ -3792,20 +3788,20 @@ function RoundComplete({
       <div className="card">
         {isEditable && (
           <p className="text-[10px] text-green-500 text-center mb-2">
-            📝 セルをタップで編集できます（ショット + P = 計）
+            📝 セルをタップで編集できます
           </p>
         )}
         {holes.length > 9 ? (
           <div className="grid grid-cols-2">
             <div className="pr-2">
-              <ScoreColumn label="OUT" slice={holes.slice(0, 9)} pSum={outPar} sSum={out} ptSum={outPutts} shSum={outShots} />
+              <ScoreColumn label="OUT" slice={holes.slice(0, 9)} pSum={outPar} sSum={out} ptSum={outPutts} />
             </div>
             <div className="pl-2 border-l border-green-100">
-              <ScoreColumn label="IN" slice={holes.slice(9)} pSum={innPar} sSum={inn} ptSum={innPutts} shSum={innShots} />
+              <ScoreColumn label="IN" slice={holes.slice(9)} pSum={innPar} sSum={inn} ptSum={innPutts} />
             </div>
           </div>
         ) : (
-          <ScoreColumn label="OUT" slice={holes} pSum={outPar} sSum={out} ptSum={outPutts} shSum={outShots} />
+          <ScoreColumn label="OUT" slice={holes} pSum={outPar} sSum={out} ptSum={outPutts} />
         )}
         <p className="text-[11px] text-gray-600 text-center mt-2 leading-relaxed">
           「計」の数字の色：
