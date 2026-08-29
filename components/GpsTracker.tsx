@@ -1,14 +1,16 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import type { ReactNode } from "react";
 import type { Location } from "@/types";
 import { calculateDistance, metersToYards } from "@/lib/distance";
 
 interface GpsTrackerProps {
   onShotRecorded: (distMeters: number, start: Location, end: Location) => void;
   onCancel: () => void;
-  // 計測確定ボタンの文言（既定は本体アプリ向け）。/try では「②ボール地点で計測」を渡す。
-  recordLabel?: string;
+  // 計測確定ボタンの中身（既定は本体アプリ向け）。/try では説明を添えた
+  // 2行構成の要素を渡すため、文字列だけでなく ReactNode を受け取る。
+  recordLabel?: ReactNode;
 }
 
 export function GpsTracker({

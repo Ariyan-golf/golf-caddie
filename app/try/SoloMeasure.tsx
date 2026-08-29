@@ -292,7 +292,14 @@ export function SoloMeasure() {
         <GpsTracker
           onShotRecorded={(distMeters, start, end) => handleRecorded(distMeters, start, end)}
           onCancel={reset}
-          recordLabel="②ボール地点で計測"
+          recordLabel={
+            <span className="flex flex-col items-center leading-tight">
+              <span className="text-base font-bold">止まった場所でここを押す</span>
+              <span className="mt-0.5 text-[11px] font-normal text-green-100">
+                押すと飛距離が出ます
+              </span>
+            </span>
+          }
         />
       </div>
     );
@@ -370,9 +377,12 @@ export function SoloMeasure() {
     <div className="space-y-4">
       <button
         onClick={() => setState("measuring")}
-        className="btn-primary py-4 text-lg"
+        className="btn-primary flex flex-col items-center leading-tight"
       >
-        ①打つ場所でスタート
+        <span className="text-base font-bold">打つ場所でここを押す</span>
+        <span className="mt-0.5 text-[11px] font-normal text-green-100">
+          押すと距離の計測が始まります
+        </span>
       </button>
 
       {bestBanner}
@@ -384,9 +394,9 @@ export function SoloMeasure() {
         </summary>
 
         <ol className="space-y-2 text-sm text-green-800 mt-3">
-          <li>1. 「①打つ場所でスタート」を押して、ボールを打つ位置に立つ</li>
+          <li>1. ボールを打つ位置に立ち、「打つ場所でここを押す」を押す</li>
           <li>2. ボールの着地点まで歩く（画面の数字がリアルタイムで動きます）</li>
-          <li>3. 着地点で「②ボール地点で計測」を押すと飛距離が出ます</li>
+          <li>3. 着地点で止まり、「止まった場所でここを押す」を押すと飛距離が出ます</li>
         </ol>
 
         <p className="text-xs text-green-400 mt-3">
