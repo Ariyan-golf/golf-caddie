@@ -38,3 +38,6 @@ next-env.d.ts
 
 # supabase
 supabase/.temp/
+
+# ローカル管理（コミットしない）
+GCA_タスク一覧.md
