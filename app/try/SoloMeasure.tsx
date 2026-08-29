@@ -27,6 +27,8 @@ interface Result {
   yards: number;
   club: Club | null;
   isNewBest: boolean;
+  // 履歴・自己ベストの該当行を特定するためのキー（TryRecord.date と同値）。
+  date: string;
 }
 
 // ── localStorage（DB保存なし・端末内のみ） ───────────────────────────────
@@ -88,7 +90,6 @@ function fmtCardDate(iso: string): string {
 export function SoloMeasure() {
   const [state, setState] = useState<State>("idle");
   const [result, setResult] = useState<Result | null>(null);
-  const [selectedClub, setSelectedClub] = useState<Club | "">("");
   const [best, setBest] = useState<TryRecord | null>(null);
   const [history, setHistory] = useState<TryRecord[]>([]);
   // 履歴のどの行の番手を編集中か（null＝編集なし）。
@@ -103,7 +104,9 @@ export function SoloMeasure() {
   function handleRecorded(distMeters: number, start?: Location, end?: Location) {
     const yards = metersToYards(distMeters);
     const meters = Math.round(distMeters);
-    const club: Club | null = selectedClub === "" ? null : selectedClub;
+    // 開始前に番手を聞かない方針のため、計測時点の番手は常に null。
+    // 番手は結果画面で任意に選ばせ、選ばれたら端末内の表示だけを更新する。
+    const club: Club | null = null;
     const record: TryRecord = {
       yards,
       meters,
@@ -142,13 +145,43 @@ export function SoloMeasure() {
       }
     }
 
-    setResult({ distanceMeters: distMeters, yards, club, isNewBest });
+    setResult({ distanceMeters: distMeters, yards, club, isNewBest, date: record.date });
     setState("result");
   }
 
   function reset() {
     setResult(null);
     setState("idle");
+  }
+
+  // 結果画面で番手を後から選んだときの反映。距離・日付は不変。
+  // 対象は date が一致する履歴行と、同一記録なら自己ベスト。
+  // anonymous_shots は INSERT 専用のため、ここでは端末内の表示のみ更新する。
+  function handleResultClubChange(newClubValue: string) {
+    if (!result) return;
+    const newClub: Club | null = newClubValue === "" ? null : (newClubValue as Club);
+
+    setResult({ ...result, club: newClub });
+
+    const nextHistory = history.map((h) =>
+      h.date === result.date ? { ...h, club: newClub } : h
+    );
+    setHistory(nextHistory);
+    try {
+      localStorage.setItem(HISTORY_KEY, JSON.stringify(nextHistory));
+    } catch {
+      /* 保存失敗時も表示は更新済み */
+    }
+
+    if (best && best.date === result.date) {
+      const nextBest = { ...best, club: newClub };
+      setBest(nextBest);
+      try {
+        localStorage.setItem(BEST_KEY, JSON.stringify(nextBest));
+      } catch {
+        /* 同上 */
+      }
+    }
   }
 
   // 履歴行の番手を後から付け替え。距離・日付は不変。localStorage に保存し、
@@ -288,6 +321,26 @@ export function SoloMeasure() {
             （{meters}m）{result.club && ` ・ ${CLUB_LABELS[result.club]}`}
           </p>
 
+          {/* 番手は計測後に任意で選ぶ（開始前には聞かない）。 */}
+          <div className="mt-4 mx-auto w-full max-w-[16rem] text-left">
+            <label htmlFor="result-club" className="block text-xs text-green-500 mb-1">
+              番手を選ぶ（任意）
+            </label>
+            <select
+              id="result-club"
+              value={result.club ?? ""}
+              onChange={(e) => handleResultClubChange(e.target.value)}
+              className="w-full text-sm px-3 py-2 rounded-xl border border-green-200 bg-white text-green-800"
+            >
+              <option value="">番手を選択しない</option>
+              {CLUBS.map((c) => (
+                <option key={c} value={c}>
+                  {CLUB_LABELS[c]}
+                </option>
+              ))}
+            </select>
+          </div>
+
           <div className="mt-6">
             <SoloShareButton distanceYards={result.yards} distanceMeters={meters} />
           </div>
@@ -310,41 +363,36 @@ export function SoloMeasure() {
   }
 
   // idle
+  //
+  // 初回表示で開始ボタンが必ず見えるよう、ボタンをカードの外に出して最上部へ置く。
+  // 手順説明と位置情報の注意書きは <details> に畳み、既定は閉じた状態にする。
   return (
     <div className="space-y-4">
+      <button
+        onClick={() => setState("measuring")}
+        className="btn-primary py-4 text-lg"
+      >
+        ①打つ場所でスタート
+      </button>
+
       {bestBanner}
 
-      <div className="card">
-        <ol className="space-y-2 text-sm text-green-800">
+      <details className="card">
+        <summary className="flex cursor-pointer list-none items-center justify-between text-sm font-semibold text-green-700">
+          使い方（30秒）
+          <span className="text-xs font-normal text-green-400">タップで開く</span>
+        </summary>
+
+        <ol className="space-y-2 text-sm text-green-800 mt-3">
           <li>1. 「①打つ場所でスタート」を押して、ボールを打つ位置に立つ</li>
           <li>2. ボールの着地点まで歩く（画面の数字がリアルタイムで動きます）</li>
           <li>3. 着地点で「②ボール地点で計測」を押すと飛距離が出ます</li>
         </ol>
 
-        {/* 番手選択（任意・未選択でも計測可） */}
-        <div className="mt-4">
-          <label className="block text-xs text-green-500 mb-1">番手（任意）</label>
-          <select
-            value={selectedClub}
-            onChange={(e) => setSelectedClub(e.target.value as Club | "")}
-            className="w-full text-sm px-3 py-2 rounded-xl border border-green-200 bg-white text-green-800"
-          >
-            <option value="">番手を選択しない</option>
-            {CLUBS.map((c) => (
-              <option key={c} value={c}>
-                {CLUB_LABELS[c]}
-              </option>
-            ))}
-          </select>
-        </div>
-
         <p className="text-xs text-green-400 mt-3">
           ※ 位置情報の利用を許可してください。屋外でのご利用を推奨します。
         </p>
-        <button onClick={() => setState("measuring")} className="btn-primary mt-4">
-          ①打つ場所でスタート
-        </button>
-      </div>
+      </details>
 
       {historyList}
     </div>

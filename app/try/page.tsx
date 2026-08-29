@@ -17,8 +17,8 @@ export const metadata: Metadata = {
 export default function TryPage() {
   return (
     <div className="min-h-screen pb-10">
-      <div className="max-w-lg mx-auto p-4 space-y-5">
-        <div className="pt-4 text-center">
+      <div className="max-w-lg mx-auto p-4 space-y-4">
+        <div className="pt-1 text-center">
           <h1 className="text-2xl font-bold text-green-800">飛距離を測ってみよう</h1>
           <p className="text-xs text-green-500 mt-1">
             登録不要・GPSであなたの一発を計測します
