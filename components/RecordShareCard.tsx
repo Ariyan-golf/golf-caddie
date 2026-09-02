@@ -40,6 +40,7 @@ export interface RecordShareCardProps {
   distanceYards: number | null;    // "round"/"distance" 用（最長ドライバー）
   avgDriverYards?: number | null;  // "round"/"distance" 用（平均。null なら平均を出さない）
   maxDriverHole?: number | null;   // "round"/"distance" 用（最長が出たホール番号）
+  showDistance?: boolean;          // "round" 用（true のとき飛距離行を表示。既定 false）
   holes?:       RecordShareHole[]; // "round" 用（ホール別 par / スコア）
   background:   RecordShareBackground;
 }
@@ -57,7 +58,7 @@ const SCRIM = "linear-gradient(180deg, rgba(0,0,0,0.45) 0%, rgba(0,0,0,0.65) 100
 
 export const RecordShareCard = forwardRef<HTMLDivElement, RecordShareCardProps>(
   function RecordShareCard(
-    { variant, courseName, dateLabel, totalScore, distanceYards, avgDriverYards = null, maxDriverHole = null, holes = [], background },
+    { variant, courseName, dateLabel, totalScore, distanceYards, avgDriverYards = null, maxDriverHole = null, showDistance = false, holes = [], background },
     ref,
   ) {
     const isImage = background.type === "image";
@@ -337,6 +338,18 @@ export const RecordShareCard = forwardRef<HTMLDivElement, RecordShareCardProps>(
               {scoreColumn("OUT", outHoles)}
               {scoreColumn("IN", inHoles)}
             </div>
+
+            {/* d. 飛距離行（showDistance トグル ON かつ記録があるときのみ。スコアの主役性を損なわない控えめサイズ） */}
+            {showDistance && distanceYards != null && (
+              <div style={{ marginTop: 18, fontSize: 26, fontWeight: 700, color: GREY }}>
+                🏌 ドライバー{" "}
+                {avgDriverYards != null && (
+                  <span style={{ fontWeight: 900, color: PINK }}>平均{avgDriverYards}y</span>
+                )}
+                {avgDriverYards != null && " / "}
+                <span style={{ fontWeight: 900, color: GREEN_DARK }}>最長{distanceYards}y</span>
+              </div>
+            )}
           </div>
         )}
 

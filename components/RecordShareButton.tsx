@@ -155,6 +155,8 @@ export function RecordShareButton({
 
   const [previewOpen, setPreviewOpen] = useState(false);
   const [variant, setVariant] = useState<RecordShareVariant>("round");
+  // round カードで飛距離行を表示するか（既定ON。1W記録が無いラウンドではトグルUI自体を出さない）。
+  const [showDistance, setShowDistance] = useState(true);
   const [bgDataUrl, setBgDataUrl] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -188,8 +190,13 @@ export function RecordShareButton({
       );
     }
     const scorePart = totalScore != null ? ` ${totalScore}打` : "";
+    const distanceLine =
+      showDistance && maxDriverYards != null
+        ? `最長${maxDriverYards}y${avgDriverYards != null ? ` / 平均${avgDriverYards}y` : ""}\n`
+        : "";
     return (
       `本日のラウンド｜${courseName}${scorePart}\n` +
+      distanceLine +
       `一打ずつ、前へ。記録を残してます。\n` +
       `#GolfCaddieAI\n` +
       `${SHARE_URL}`
@@ -300,10 +307,10 @@ export function RecordShareButton({
     return () => {
       cancelled = true;
     };
-    // generatePng は毎レンダー再生成されるが、実質の依存は previewOpen / variant / bgDataUrl。
+    // generatePng は毎レンダー再生成されるが、実質の依存は previewOpen / variant / bgDataUrl / showDistance。
     // prepareNonce は「画像を再生成する」タップ時の手動再実行トリガー。
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [previewOpen, variant, bgDataUrl, prepareNonce]);
+  }, [previewOpen, variant, bgDataUrl, showDistance, prepareNonce]);
 
   // 事前生成が失敗したときの再試行（エラーを消して nonce を進め、useEffect を再実行）。
   function retryPrepare() {
@@ -434,6 +441,23 @@ export function RecordShareButton({
               </p>
             )}
 
+            {/* 飛距離表示のオン/オフ（round カードにドライバー記録がある場合のみ） */}
+            {variant === "round" && hasDriver && (
+              <div className="mt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowDistance((v) => !v)}
+                  className={`w-full py-2 rounded-xl text-xs font-semibold border-2 transition-colors ${
+                    showDistance
+                      ? "bg-green-600 border-green-600 text-white"
+                      : "bg-white border-green-200 text-green-700"
+                  }`}
+                >
+                  {showDistance ? "飛距離を隠す" : "飛距離を表示"}
+                </button>
+              </div>
+            )}
+
             {/* カードプレビュー（実寸を transform で縮小表示） */}
             <div className="flex justify-center mt-3 mb-3">
               <div
@@ -463,6 +487,7 @@ export function RecordShareButton({
                     distanceYards={maxDriverYards}
                     avgDriverYards={avgDriverYards}
                     maxDriverHole={maxDriverHole}
+                    showDistance={showDistance}
                     holes={holes}
                     background={background}
                   />
