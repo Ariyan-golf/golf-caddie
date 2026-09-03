@@ -152,12 +152,29 @@ export function RecordShareButton({
   useNotoSansJp();
   const cardRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // 背景写真ドラッグ用：プレビュー枠の DOM 参照とドラッグ中の一時状態（再レンダーを伴わないため ref）。
+  const previewFrameRef = useRef<HTMLDivElement>(null);
+  const dragRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    startOffsetX: number;
+    startOffsetY: number;
+    moved: boolean;
+  } | null>(null);
+  const liveOffsetRef = useRef<{ x: number; y: number } | null>(null);
+  // ドラッグでわずかに動いた直後に子要素の click が誤発火しないよう抑制するフラグ。
+  const suppressNextClickRef = useRef(false);
 
   const [previewOpen, setPreviewOpen] = useState(false);
   const [variant, setVariant] = useState<RecordShareVariant>("round");
   // round カードで飛距離行を表示するか（既定ON。1W記録が無いラウンドではトグルUI自体を出さない）。
   const [showDistance, setShowDistance] = useState(true);
   const [bgDataUrl, setBgDataUrl] = useState<string | null>(null);
+  // 背景写真の表示位置オフセット（%、-50〜50）。ドラッグ終了時にのみ確定し、事前生成 useEffect を発火させる。
+  const [backgroundOffset, setBackgroundOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  // ドラッグ中だけ使う「確定前」の見た目用オフセット。null のときは backgroundOffset をそのまま表示。
+  const [liveBackgroundOffset, setLiveBackgroundOffset] = useState<{ x: number; y: number } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -169,6 +186,20 @@ export function RecordShareButton({
   const copyTimerRef = useRef<number | null>(null);
 
   const hasDriver = maxDriverYards != null;
+
+  // 背景写真ドラッグ中、モーダルの縦スクロールと競合しないよう touchmove を非パッシブで止める。
+  // React の onTouchMove はパッシブ登録されるため preventDefault が効かず、DOM に直接登録する必要がある。
+  useEffect(() => {
+    const frame = previewFrameRef.current;
+    if (!frame) return;
+    const onTouchMove = (e: TouchEvent) => {
+      if (dragRef.current) {
+        e.preventDefault();
+      }
+    };
+    frame.addEventListener("touchmove", onTouchMove, { passive: false });
+    return () => frame.removeEventListener("touchmove", onTouchMove);
+  }, [previewOpen]);
 
   const background: RecordShareBackground = bgDataUrl
     ? { type: "image", dataUrl: bgDataUrl }
@@ -224,8 +255,94 @@ export function RecordShareButton({
     if (!file) return;
     // 長辺 1600px 以内へ縮小＋JPEG圧縮してから背景に使う（生成ハングの根本対策）。
     loadResizedJpegDataUrl(file, 1600)
-      .then((dataUrl) => setBgDataUrl(dataUrl))
+      .then((dataUrl) => {
+        setBgDataUrl(dataUrl);
+        resetBackgroundOffset(); // 新しい写真では位置調整をやり直す
+      })
       .catch(() => setError("画像の読み込みに失敗しました。"));
+  }
+
+  /** 背景写真の位置オフセットを中央に戻す（写真の選び直し／解除時）。 */
+  function resetBackgroundOffset() {
+    dragRef.current = null;
+    liveOffsetRef.current = null;
+    setLiveBackgroundOffset(null);
+    setBackgroundOffset({ x: 0, y: 0 });
+  }
+
+  function clampBackgroundOffset(v: number) {
+    return Math.max(-50, Math.min(50, v));
+  }
+
+  /** 背景写真ドラッグ開始（写真が設定されているときのみ有効）。 */
+  function handleBgPointerDown(e: React.PointerEvent<HTMLDivElement>) {
+    if (!bgDataUrl) return;
+    const frame = previewFrameRef.current;
+    if (!frame) return;
+    frame.setPointerCapture(e.pointerId);
+    dragRef.current = {
+      pointerId: e.pointerId,
+      startX: e.clientX,
+      startY: e.clientY,
+      startOffsetX: backgroundOffset.x,
+      startOffsetY: backgroundOffset.y,
+      moved: false,
+    };
+  }
+
+  /** ドラッグ中：プレビューの見た目（liveBackgroundOffset）だけを更新し、PNG 再生成は走らせない。 */
+  function handleBgPointerMove(e: React.PointerEvent<HTMLDivElement>) {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== e.pointerId) return;
+    const dxPreview = e.clientX - drag.startX;
+    const dyPreview = e.clientY - drag.startY;
+    if (!drag.moved && (Math.abs(dxPreview) > 3 || Math.abs(dyPreview) > 3)) {
+      drag.moved = true;
+    }
+    // プレビューは実寸 1080×1350 を PREVIEW_SCALE 倍で表示しているため、指の移動量を実寸換算する。
+    const dxPercent = (dxPreview / PREVIEW_SCALE / 1080) * 100;
+    const dyPercent = (dyPreview / PREVIEW_SCALE / 1350) * 100;
+    const next = {
+      x: clampBackgroundOffset(drag.startOffsetX + dxPercent),
+      y: clampBackgroundOffset(drag.startOffsetY + dyPercent),
+    };
+    liveOffsetRef.current = next;
+    setLiveBackgroundOffset(next);
+  }
+
+  /** ドラッグ終了：ここで初めてオフセットを確定し、事前生成 useEffect を発火させる。 */
+  function handleBgPointerUp(e: React.PointerEvent<HTMLDivElement>) {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== e.pointerId) return;
+    const frame = previewFrameRef.current;
+    if (frame?.hasPointerCapture(e.pointerId)) {
+      frame.releasePointerCapture(e.pointerId);
+    }
+    dragRef.current = null;
+    if (drag.moved && liveOffsetRef.current) {
+      suppressNextClickRef.current = true; // ドラッグ直後の click 誤発火を抑制
+      setBackgroundOffset(liveOffsetRef.current);
+    }
+    liveOffsetRef.current = null;
+    setLiveBackgroundOffset(null);
+  }
+
+  /** ドラッグ中断（pointercancel）：確定せず元の位置に戻す。 */
+  function handleBgPointerCancel(e: React.PointerEvent<HTMLDivElement>) {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== e.pointerId) return;
+    dragRef.current = null;
+    liveOffsetRef.current = null;
+    setLiveBackgroundOffset(null);
+  }
+
+  /** ドラッグ直後にプレビュー枠内の click が誤発火しないよう抑制する。 */
+  function handlePreviewFrameClick(e: React.MouseEvent) {
+    if (suppressNextClickRef.current) {
+      suppressNextClickRef.current = false;
+      e.preventDefault();
+      e.stopPropagation();
+    }
   }
 
   /** カード DOM を PNG 化して dataUrl と File を返す。 */
@@ -307,10 +424,11 @@ export function RecordShareButton({
     return () => {
       cancelled = true;
     };
-    // generatePng は毎レンダー再生成されるが、実質の依存は previewOpen / variant / bgDataUrl / showDistance。
+    // generatePng は毎レンダー再生成されるが、実質の依存は previewOpen / variant / bgDataUrl / showDistance / backgroundOffset。
     // prepareNonce は「画像を再生成する」タップ時の手動再実行トリガー。
+    // backgroundOffset はドラッグ終了時にのみ確定するため、ドラッグ中に連続再生成が走ることはない。
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [previewOpen, variant, bgDataUrl, showDistance, prepareNonce]);
+  }, [previewOpen, variant, bgDataUrl, showDistance, backgroundOffset, prepareNonce]);
 
   // 事前生成が失敗したときの再試行（エラーを消して nonce を進め、useEffect を再実行）。
   function retryPrepare() {
@@ -458,9 +576,15 @@ export function RecordShareButton({
               </div>
             )}
 
-            {/* カードプレビュー（実寸を transform で縮小表示） */}
+            {/* カードプレビュー（実寸を transform で縮小表示）。写真設定時は枠内をドラッグして位置調整できる。 */}
             <div className="flex justify-center mt-3 mb-3">
               <div
+                ref={previewFrameRef}
+                onPointerDown={handleBgPointerDown}
+                onPointerMove={handleBgPointerMove}
+                onPointerUp={handleBgPointerUp}
+                onPointerCancel={handleBgPointerCancel}
+                onClickCapture={handlePreviewFrameClick}
                 style={{
                   width: 1080 * PREVIEW_SCALE,
                   height: 1350 * PREVIEW_SCALE,
@@ -468,6 +592,8 @@ export function RecordShareButton({
                   borderRadius: 16,
                   boxShadow: "0 8px 24px rgba(0,0,0,0.18)",
                   flexShrink: 0,
+                  touchAction: bgDataUrl ? "none" : undefined,
+                  cursor: bgDataUrl ? "grab" : undefined,
                 }}
               >
                 <div
@@ -490,10 +616,16 @@ export function RecordShareButton({
                     showDistance={showDistance}
                     holes={holes}
                     background={background}
+                    backgroundOffset={liveBackgroundOffset ?? backgroundOffset}
                   />
                 </div>
               </div>
             </div>
+            {bgDataUrl && (
+              <p className="text-[11px] text-gray-400 text-center -mt-1 mb-3">
+                写真をドラッグして位置を調整できます
+              </p>
+            )}
 
             {/* 背景写真の選択 */}
             <input
@@ -515,7 +647,10 @@ export function RecordShareButton({
               </button>
               <button
                 type="button"
-                onClick={() => setBgDataUrl(null)}
+                onClick={() => {
+                  setBgDataUrl(null);
+                  resetBackgroundOffset();
+                }}
                 disabled={busy || !bgDataUrl}
                 className="inline-flex items-center justify-center gap-1.5 bg-white border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-40 text-xs font-semibold py-2 rounded-xl transition-colors"
               >

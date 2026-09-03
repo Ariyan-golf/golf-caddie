@@ -43,6 +43,7 @@ export interface RecordShareCardProps {
   showDistance?: boolean;          // "round" 用（true のとき飛距離行を表示。既定 false）
   holes?:       RecordShareHole[]; // "round" 用（ホール別 par / スコア）
   background:   RecordShareBackground;
+  backgroundOffset?: { x: number; y: number }; // 背景写真の表示位置オフセット（%、-50〜50）。ドラッグ調整用。未指定は中央
 }
 
 const FONT_STACK =
@@ -58,7 +59,7 @@ const SCRIM = "linear-gradient(180deg, rgba(0,0,0,0.45) 0%, rgba(0,0,0,0.65) 100
 
 export const RecordShareCard = forwardRef<HTMLDivElement, RecordShareCardProps>(
   function RecordShareCard(
-    { variant, courseName, dateLabel, totalScore, distanceYards, avgDriverYards = null, maxDriverHole = null, showDistance = false, holes = [], background },
+    { variant, courseName, dateLabel, totalScore, distanceYards, avgDriverYards = null, maxDriverHole = null, showDistance = false, holes = [], background, backgroundOffset = { x: 0, y: 0 } },
     ref,
   ) {
     const isImage = background.type === "image";
@@ -151,7 +152,7 @@ export const RecordShareCard = forwardRef<HTMLDivElement, RecordShareCardProps>(
                 inset: 0,
                 backgroundImage: `url(${background.dataUrl})`,
                 backgroundSize: "cover",
-                backgroundPosition: "center",
+                backgroundPosition: `${50 + backgroundOffset.x}% ${50 + backgroundOffset.y}%`,
                 zIndex: 0,
               }}
             />
