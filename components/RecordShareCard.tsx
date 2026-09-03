@@ -163,7 +163,7 @@ export const RecordShareCard = forwardRef<HTMLDivElement, RecordShareCardProps>(
                 inset: 0,
                 background:
                   variant === "round"
-                    ? "linear-gradient(180deg, rgba(0,0,0,0.25) 0%, rgba(0,0,0,0.1) 40%, rgba(0,0,0,0.3) 100%)"
+                    ? "linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.05) 45%, rgba(0,0,0,0.55) 60%, rgba(0,0,0,0.75) 100%)"
                     : SCRIM,
                 zIndex: 1,
               }}
@@ -179,9 +179,8 @@ export const RecordShareCard = forwardRef<HTMLDivElement, RecordShareCardProps>(
           </div>
         </div>
 
-        {/* round（写真時）：GDO 型「写真主役＋下部情報帯」。
-            写真を上部いっぱいに見せ、コース名・合計スコア・18ホールを1枚の半透明帯に集約する。
-            帯下端はピンク帯上端（高さ約170）に接する（bottom 170）。 */}
+        {/* round（写真時）：白パネルを廃止し、写真に直接文字を重ねるレイアウト。
+            テキストコンテナは bottom:190 固定・上方向自動伸長（ピンク帯上端 約1180 の手前で止める）。 */}
         {variant === "round" && isImage && (() => {
           // OUT / IN 小計（各ナイン全ホール入力済みのときのみ数値）。
           const outScored = outHoles.length > 0 && outHoles.every((h) => h.score != null);
@@ -193,106 +192,120 @@ export const RecordShareCard = forwardRef<HTMLDivElement, RecordShareCardProps>(
           const inPutted = inHoles.length > 0 && inHoles.every((h) => h.putts != null);
           const outPuttSum = outHoles.reduce((s, h) => s + (h.putts ?? 0), 0);
           const inPuttSum = inHoles.reduce((s, h) => s + (h.putts ?? 0), 0);
-          // 18ホールストリップ用にホール番号で引けるようにする。
+          // 合計パット（18ホール全部に putts が入っているときのみ）。新規 prop は追加せず holes から算出する。
+          const allPutted = holes.length === 18 && holes.every((h) => h.putts != null);
+          const totalPutts = allPutted ? outPuttSum + inPuttSum : null;
+          // 18ホール帯用にホール番号で引けるようにする。
           const holeByNumber = new Map<number, RecordShareHole>(holes.map((h) => [h.holeNumber, h]));
-          const stripRows = [
-            { label: "OUT", nums: [1, 2, 3, 4, 5, 6, 7, 8, 9], scored: outScored, sum: outSum, putted: outPutted, puttSum: outPuttSum },
-            { label: "IN", nums: [10, 11, 12, 13, 14, 15, 16, 17, 18], scored: inScored, sum: inSum, putted: inPutted, puttSum: inPuttSum },
-          ];
-          // パット数の色（写真時の情報帯・白背景前提の中間グレー）。
-          const PUTT = "#666666";
+
+          // 写真背景では黒・濃紺が沈んで見えにくいため、getScoreColor の判定結果はそのまま使い、
+          // 視認性が低い2色（パー＝黒／ダブルボギー以上＝濃紺）だけ明るい色に置き換える。
+          const scoreColorOnPhoto = (score: number, par: number) => {
+            const base = getScoreColor(score, par);
+            if (base === "#000000") return "#ffffff";
+            if (base === "#1A237E") return "#7FA8FF";
+            return base;
+          };
+          // 写真の上でも読める文字色（濃色の GREY / GREEN_DARK はここでは使わない）。
+          const TEXT_MAIN = "#ffffff";
+          const TEXT_SUB = "#E4E4E4";
+          const ACCENT_GREEN = "#9BE8A8";
+
           return (
             <div
               style={{
                 position: "absolute",
-                left: 60,
-                width: 960,
-                bottom: 170,
-                background: "rgba(255,255,255,0.92)",
-                borderRadius: 28,
-                padding: "32px 36px",
-                boxSizing: "border-box",
-                textAlign: "center",
+                left: 64,
+                right: 64,
+                bottom: 190,
                 zIndex: 2,
+                textAlign: "center",
               }}
             >
-              {/* a. コース名・日付 */}
-              <div style={{ fontSize: 40, fontWeight: 900, color: GREEN_DARK, lineHeight: 1.15, wordBreak: "break-word" }}>
-                {courseName}
-              </div>
-              <div style={{ fontSize: 24, fontWeight: 700, color: GREY, marginTop: 4 }}>{dateLabel}</div>
-
-              {/* b. スコア行：合計＋パー差（OUT/IN小計はストリップ右端に集約） */}
-              {totalScore != null ? (
-                <div style={{ marginTop: 12, display: "flex", alignItems: "baseline", justifyContent: "center" }}>
-                  <span style={{ fontSize: 96, fontWeight: 900, color: PINK, lineHeight: 1 }}>{totalScore}</span>
-                  {showDiff && (
-                    <span style={{ fontSize: 40, fontWeight: 900, color: GREY, marginLeft: 16 }}>{diffLabel}</span>
+              {/* a. 1行目：左＝日付・コース名（2段）／右＝合計スコア＋合計パット */}
+              <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", textAlign: "left" }}>
+                <div style={{ flex: 1, minWidth: 0, marginRight: 24 }}>
+                  <div style={{ fontSize: 22, fontWeight: 700, color: TEXT_SUB }}>{dateLabel}</div>
+                  <div
+                    style={{
+                      fontSize: 34,
+                      fontWeight: 900,
+                      color: TEXT_MAIN,
+                      marginTop: 4,
+                      lineHeight: 1.15,
+                      wordBreak: "break-word",
+                    }}
+                  >
+                    {courseName}
+                  </div>
+                </div>
+                <div style={{ flexShrink: 0, display: "flex", alignItems: "baseline" }}>
+                  {totalScore != null ? (
+                    <>
+                      <span style={{ fontSize: 88, fontWeight: 900, color: PINK, lineHeight: 1 }}>{totalScore}</span>
+                      {totalPutts != null && (
+                        <span style={{ fontSize: 26, fontWeight: 700, color: TEXT_SUB, marginLeft: 10 }}>
+                          パット{totalPutts}
+                        </span>
+                      )}
+                    </>
+                  ) : (
+                    <span style={{ fontSize: 40, fontWeight: 900, color: TEXT_SUB }}>スコア未記録</span>
                   )}
                 </div>
-              ) : (
-                <div style={{ fontSize: 48, fontWeight: 900, color: GREY, marginTop: 12, lineHeight: 1.2 }}>
-                  スコア未記録
-                </div>
-              )}
+              </div>
 
-              {/* c. 18ホールストリップ：2行×（9ホール＋小計）の10列。各セル3段（番号／スコア色分け／パット）。 */}
-              <div style={{ marginTop: 20 }}>
-                {stripRows.map((row, ri) => (
-                  <div key={row.label} style={{ display: "flex", marginTop: ri === 0 ? 0 : 8 }}>
-                    {row.nums.map((n) => {
-                      const h = holeByNumber.get(n);
-                      const sc = h?.score ?? null;
-                      const pt = h?.putts ?? null;
-                      return (
-                        <div key={n} style={{ width: "9%", textAlign: "center" }}>
-                          <div style={{ fontSize: 18, fontWeight: 700, color: GREY }}>{n}</div>
-                          <div
-                            style={{
-                              fontSize: 30,
-                              fontWeight: 900,
-                              lineHeight: 1.1,
-                              color: sc != null ? getScoreColor(sc, h!.par) : GREY,
-                            }}
-                          >
-                            {sc != null ? sc : "-"}
-                          </div>
-                          <div style={{ fontSize: 20, fontWeight: 700, color: PUTT, marginTop: 2 }}>
-                            {pt != null ? pt : "-"}
-                          </div>
-                        </div>
-                      );
-                    })}
-                    {/* 小計セル（右端）：OUT/IN 合計打数・合計パット。ホール群と罫線で区切る。 */}
-                    <div
-                      style={{
-                        width: "19%",
-                        textAlign: "center",
-                        boxSizing: "border-box",
-                        borderLeft: "2px solid rgba(0,0,0,0.15)",
-                      }}
-                    >
-                      <div style={{ fontSize: 18, fontWeight: 700, color: GREY }}>{row.label}</div>
-                      <div style={{ fontSize: 30, fontWeight: 900, lineHeight: 1.1, color: GREEN_DARK }}>
-                        {row.scored ? row.sum : "-"}
-                      </div>
-                      <div style={{ fontSize: 20, fontWeight: 700, color: PUTT, marginTop: 2 }}>
-                        {row.putted ? row.puttSum : "-"}
-                      </div>
+              {/* b. 2行目：OUT / IN 横並び（それぞれスコアとパット） */}
+              <div style={{ marginTop: 24, display: "flex", justifyContent: "center", gap: 48 }}>
+                {[
+                  { label: "OUT", scored: outScored, sum: outSum, putted: outPutted, puttSum: outPuttSum },
+                  { label: "IN", scored: inScored, sum: inSum, putted: inPutted, puttSum: inPuttSum },
+                ].map((col) => (
+                  <div key={col.label} style={{ textAlign: "center" }}>
+                    <div style={{ fontSize: 20, fontWeight: 700, color: TEXT_SUB }}>{col.label}</div>
+                    <div style={{ fontSize: 44, fontWeight: 900, color: TEXT_MAIN, lineHeight: 1 }}>
+                      {col.scored ? col.sum : "-"}
+                    </div>
+                    <div style={{ fontSize: 22, fontWeight: 700, color: TEXT_SUB, marginTop: 2 }}>
+                      {col.putted ? `パット${col.puttSum}` : "-"}
                     </div>
                   </div>
                 ))}
               </div>
 
-              {/* d. 飛距離行（showDistance トグル ON かつ記録があるときのみ。緑背景版と同一仕様） */}
+              {/* c. 3行目：18ホールのスコアを1行の細い帯で表示（ホール番号を小さく添え、スコアはパットなしで表示） */}
+              <div style={{ marginTop: 20, display: "flex" }}>
+                {Array.from({ length: 18 }, (_, i) => i + 1).map((n) => {
+                  const h = holeByNumber.get(n);
+                  const sc = h?.score ?? null;
+                  return (
+                    <div key={n} style={{ width: `${100 / 18}%` }}>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: TEXT_SUB }}>{n}</div>
+                      <div
+                        style={{
+                          marginTop: 1,
+                          fontSize: 23,
+                          fontWeight: 900,
+                          lineHeight: 1.2,
+                          color: sc != null ? scoreColorOnPhoto(sc, h!.par) : TEXT_SUB,
+                        }}
+                      >
+                        {sc != null ? sc : "-"}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* d. 4行目：飛距離行（showDistance トグル ON かつ記録があるときのみ） */}
               {showDistance && distanceYards != null && (
-                <div style={{ marginTop: 14, fontSize: 26, fontWeight: 700, color: GREY }}>
+                <div style={{ marginTop: 14, fontSize: 26, fontWeight: 700, color: TEXT_SUB }}>
                   🏌 ドライバー{" "}
                   {avgDriverYards != null && (
                     <span style={{ fontWeight: 900, color: PINK }}>平均{avgDriverYards}y</span>
                   )}
                   {avgDriverYards != null && " / "}
-                  <span style={{ fontWeight: 900, color: GREEN_DARK }}>最長{distanceYards}y</span>
+                  <span style={{ fontWeight: 900, color: ACCENT_GREEN }}>最長{distanceYards}y</span>
                 </div>
               )}
             </div>
