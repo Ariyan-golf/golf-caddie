@@ -83,15 +83,15 @@ export const RecordShareCard = forwardRef<HTMLDivElement, RecordShareCardProps>(
       const allPutted = rows.length > 0 && rows.every((r) => r.putts != null);
       const colPuttSum = rows.reduce((s, r) => s + (r.putts ?? 0), 0);
       const th: CSSProperties = {
-        fontSize: 22, fontWeight: 700, color: GREY, padding: "4px 6px",
+        fontSize: 22, fontWeight: 700, color: GREY, padding: "2px 6px",
         textAlign: "center", borderBottom: `2px solid ${LINE}`,
       };
       const td: CSSProperties = {
-        fontSize: 26, fontWeight: 700, padding: "7px 6px",
+        fontSize: 26, fontWeight: 700, padding: "4px 6px",
         textAlign: "center", borderBottom: `1px solid ${LINE}`,
       };
       const sub: CSSProperties = {
-        fontSize: 28, fontWeight: 900, color: GREEN_DARK, padding: "9px 6px",
+        fontSize: 28, fontWeight: 900, color: GREEN_DARK, padding: "5px 6px",
         textAlign: "center", borderTop: `2px solid ${LINE}`,
       };
       return (
@@ -291,13 +291,13 @@ export const RecordShareCard = forwardRef<HTMLDivElement, RecordShareCardProps>(
           <div
             style={{
               position: "absolute",
-              top: 180,
+              top: 130,
               left: 100,
               width: 880,
               background: "#ffffff",
               borderRadius: 40,
               boxShadow: "0 24px 60px rgba(0,0,0,0.25)",
-              padding: "44px 48px 52px",
+              padding: "36px 48px 36px",
               boxSizing: "border-box",
               textAlign: "center",
               zIndex: 2,
@@ -341,7 +341,7 @@ export const RecordShareCard = forwardRef<HTMLDivElement, RecordShareCardProps>(
 
             {/* d. 飛距離行（showDistance トグル ON かつ記録があるときのみ。スコアの主役性を損なわない控えめサイズ） */}
             {showDistance && distanceYards != null && (
-              <div style={{ marginTop: 18, fontSize: 26, fontWeight: 700, color: GREY }}>
+              <div style={{ marginTop: 14, fontSize: 26, fontWeight: 700, color: GREY }}>
                 🏌 ドライバー{" "}
                 {avgDriverYards != null && (
                   <span style={{ fontWeight: 900, color: PINK }}>平均{avgDriverYards}y</span>
