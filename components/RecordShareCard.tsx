@@ -282,6 +282,18 @@ export const RecordShareCard = forwardRef<HTMLDivElement, RecordShareCardProps>(
                   </div>
                 ))}
               </div>
+
+              {/* d. 飛距離行（showDistance トグル ON かつ記録があるときのみ。緑背景版と同一仕様） */}
+              {showDistance && distanceYards != null && (
+                <div style={{ marginTop: 14, fontSize: 26, fontWeight: 700, color: GREY }}>
+                  🏌 ドライバー{" "}
+                  {avgDriverYards != null && (
+                    <span style={{ fontWeight: 900, color: PINK }}>平均{avgDriverYards}y</span>
+                  )}
+                  {avgDriverYards != null && " / "}
+                  <span style={{ fontWeight: 900, color: GREEN_DARK }}>最長{distanceYards}y</span>
+                </div>
+              )}
             </div>
           );
         })()}
