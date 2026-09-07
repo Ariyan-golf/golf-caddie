@@ -1,9 +1,9 @@
 import { createClient } from "@/lib/supabase/server";
-import { notFound } from "next/navigation";
 import { HoleRecorder } from "@/components/HoleRecorder";
 import { BackButton } from "@/components/BackButton";
 import { RoundCourseEditor } from "@/components/RoundCourseEditor";
 import { RecordShareButton } from "@/components/RecordShareButton";
+import { RoundNotFoundRedirect } from "@/components/RoundNotFoundRedirect";
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -38,7 +38,10 @@ export default async function RoundDetailPage({ params, searchParams }: Props) {
       .maybeSingle(),
   ]);
 
-  if (!round) notFound();
+  // 削除済み等でDB上に存在しない場合は 404 にせず、端末側の古い自動復帰
+  // スナップショットを破棄した上でホームへ戻す（同じ存在しないラウンドへの
+  // 自動復帰ループを防ぐ）。
+  if (!round) return <RoundNotFoundRedirect roundId={id} />;
 
   const inputMode: "post_round" | "realtime" =
     profile?.input_mode === "realtime" ? "realtime" : "post_round";

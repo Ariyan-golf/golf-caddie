@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import { readActiveRound, clearActiveRound } from "@/lib/activeRound";
 
 interface Round {
   id: string;
@@ -28,6 +29,10 @@ export function RoundListClient({ rounds: initialRounds }: { rounds: Round[] }) 
 
     // クラブ別平均は生 shots から都度集計する方式に統一したため、
     // ここでの club_averages 再計算（旧・集計テーブルへの delete/insert）は不要。
+
+    // 削除したラウンドが端末の自動復帰スナップショットと同一なら破棄する。
+    // 残っていると次回起動時に「もう存在しないラウンド」へ自動復帰しようとしてしまう。
+    if (readActiveRound(id)) clearActiveRound();
 
     setRounds((prev) => prev.filter((r) => r.id !== id));
     setDeletingId(null);

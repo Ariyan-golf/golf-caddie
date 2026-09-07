@@ -37,8 +37,10 @@ export function saveActiveRound(snap: ActiveRoundSnapshot): void {
   if (typeof window === "undefined") return;
   try {
     localStorage.setItem(ACTIVE_ROUND_KEY, JSON.stringify(snap));
-  } catch {
-    // quota 超過・プライベートモード等の保存失敗は無視（記録の流れを止めない）。
+  } catch (err) {
+    // quota 超過・プライベートモード等の保存失敗は本番の記録の流れを止めないため無視するが、
+    // 自動復帰が効かない原因調査のため console.warn だけ残す（本番UIには影響しない）。
+    console.warn("[activeRound] saveActiveRound failed", err);
   }
 }
 
@@ -85,7 +87,7 @@ export function clearActiveRound(): void {
   if (typeof window === "undefined") return;
   try {
     localStorage.removeItem(ACTIVE_ROUND_KEY);
-  } catch {
-    // ignore storage failures
+  } catch (err) {
+    console.warn("[activeRound] clearActiveRound failed", err);
   }
 }

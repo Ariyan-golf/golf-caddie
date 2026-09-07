@@ -10,21 +10,21 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { getFreshActiveRound, isUnfinished } from "@/lib/activeRound";
 
-// このセッションで復帰判定済みの印。アプリ起動（ページ破棄→再読込で新セッション）
-// のときだけ復帰させ、ラウンド中に意図的にホームを開いた SPA 遷移では引き戻さない。
-// sessionStorage はタブ/アプリ終了で消えるため「コールドスタート」の判定に使える。
-const SESSION_FLAG = "gca_resume_checked";
+// このJSコンテキストで復帰判定済みの印。モジュールスコープ変数なので、
+// アプリが実際に終了して JS が再読み込みされたとき（コールドスタート）だけ
+// false に戻る。ラウンド中に意図的にホームへ SPA 遷移した場合は同じ JS
+// コンテキストが生き続けるため true のままとなり、そちらでは引き戻さない。
+// （sessionStorage は iOS PWA では終了→再起動後も引き継がれることがあり、
+// その場合「コールドスタートなのに自動復帰しない」事故につながるため使わない。）
+let resumeCheckedThisLoad = false;
 
 export function ActiveRoundResume() {
   const router = useRouter();
 
   useEffect(() => {
-    try {
-      if (sessionStorage.getItem(SESSION_FLAG)) return;
-      sessionStorage.setItem(SESSION_FLAG, "1");
-    } catch {
-      // sessionStorage 不可環境では毎回チェックにフォールバック（実害なし）。
-    }
+    if (resumeCheckedThisLoad) return;
+    resumeCheckedThisLoad = true;
+
     const snap = getFreshActiveRound();
     if (snap && isUnfinished(snap)) {
       // replace（push でない）でホームを履歴に残さず続きへ戻す。

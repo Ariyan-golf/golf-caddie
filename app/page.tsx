@@ -6,6 +6,7 @@ import Image from "next/image";
 import { Navigation } from "@/components/Navigation";
 import { LogoutButton } from "@/components/LogoutButton";
 import { ActiveRoundResume } from "@/components/ActiveRoundResume";
+import { ActiveRoundBanner } from "@/components/ActiveRoundBanner";
 import { InstallPrompt } from "@/components/InstallPrompt";
 import { RoundBarGraph } from "@/components/RoundBarGraph";
 import { EventRankingSection, type EventRankingData } from "@/components/EventRankingSection";
@@ -257,6 +258,8 @@ export default async function HomePage() {
             <LogoutButton />
           </div>
         </div>
+
+        <ActiveRoundBanner />
 
         <InstallPrompt />
 
