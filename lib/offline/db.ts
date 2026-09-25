@@ -8,6 +8,8 @@
 // 主キーはクライアント生成UUIDをそのまま id に使う前提（rounds/holes/shots の
 // 主キーは uuid_generate_v4 default なので、id 指定 insert/upsert が成立する）。
 
+import type { FairwayResult } from "@/types";
+
 const DB_NAME = "gca_offline";
 const DB_VERSION = 3;
 const STORE_HOLES = "pending_holes";
@@ -46,6 +48,7 @@ export interface PendingScoreUpdate {
   putts?: number | null;
   penalties?: number;
   par?: number | null;
+  fairway_result?: FairwayResult | null;
 }
 
 // shots テーブルへの部分更新（番手・ライ・球筋・終点座標）をオフラインで溜める。

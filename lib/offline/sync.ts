@@ -9,6 +9,7 @@
 // 実質 no-op。
 
 import type { createClient } from "@/lib/supabase/client";
+import type { FairwayResult } from "@/types";
 import {
   getAllHoles,
   getAllShots,
@@ -112,11 +113,15 @@ export async function flush(supabase: SupabaseClient): Promise<void> {
     for (const su of scoreUpdates) {
       try {
         // undefined のフィールドは触らない。null は「明示クリア」の有効値として送る。
-        const payload: { score?: number | null; putts?: number | null; penalties?: number; par?: number | null } = {};
+        const payload: {
+          score?: number | null; putts?: number | null; penalties?: number; par?: number | null;
+          fairway_result?: FairwayResult | null;
+        } = {};
         if (su.score !== undefined) payload.score = su.score;
         if (su.putts !== undefined) payload.putts = su.putts;
         if (su.penalties !== undefined) payload.penalties = su.penalties;
         if (su.par !== undefined) payload.par = su.par;
+        if (su.fairway_result !== undefined) payload.fairway_result = su.fairway_result;
 
         const { data, error } = await supabase
           .from("holes")

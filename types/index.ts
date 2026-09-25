@@ -100,7 +100,12 @@ export interface Hole {
   score: number | null;
   putts: number | null;
   distance_yards: number | null;
+  fairway_result: FairwayResult | null;
 }
+
+// ── Fairway result (20260925120000_add_fairway_result_to_holes.sql) ──────
+// par 4 以上のホールのみ対象。'hit' = キープ / 'left' = 左ミス / 'right' = 右ミス。
+export type FairwayResult = "hit" | "left" | "right";
 
 export type DistanceSource = "gps" | "manual";
 

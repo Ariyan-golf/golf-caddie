@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { ShotRecorder } from "./ShotRecorder";
-import type { Club } from "@/types";
+import type { Club, FairwayResult } from "@/types";
 import { CLUBS, CLUB_LABELS } from "@/types";
 import { calculateDistance, metersToYards } from "@/lib/distance";
 import { stopGpsTracking, getBestShotPosition, startShotWatch, stopShotWatch, awaitHighAccuracyFix, getShotWatchTimeoutMs, type GpsPoint } from "@/lib/gps";
@@ -39,6 +39,7 @@ interface Hole {
   score: number | null;
   putts: number | null;
   penalties: number | null;
+  fairway_result: FairwayResult | null;
   shots: Shot[];
 }
 
@@ -730,7 +731,7 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
       void putHole({ id: holeId, round_id: roundId, hole_number: holeNumber, par });
       setHoles((prev) => [
         ...prev,
-        { id: holeId, hole_number: holeNumber, par, score: null, putts: null, penalties: 0, shots: [] },
+        { id: holeId, hole_number: holeNumber, par, score: null, putts: null, penalties: 0, fairway_result: null, shots: [] },
       ]);
     }
     setPhase(holeMode === "score" ? "score_entry" : "shooting");
@@ -1079,7 +1080,7 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
       void putHole({ id: holeId, round_id: roundId, hole_number: n, par: defaultPar });
       setHoles((prev) => [
         ...prev,
-        { id: holeId, hole_number: n, par: defaultPar, score: null, putts: null, penalties: 0, shots: [] },
+        { id: holeId, hole_number: n, par: defaultPar, score: null, putts: null, penalties: 0, fairway_result: null, shots: [] },
       ]);
       setCreating(false);
       return;
@@ -1617,6 +1618,34 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
     }
   }
 
+  // par4以上のホールのみ対象。同じボタンを再タップすると未入力(null)に戻す。
+  // updateHolePutts/updateHoleParと同じ保存経路（オフライン判定＋端末バッファ）に揃える。
+  async function updateHoleFairway(value: FairwayResult) {
+    if (!currentHole) return;
+    const holeId = currentHole.id;
+    const next = currentHole.fairway_result === value ? null : value;
+    // (1) 楽観更新を先に
+    setHoles((prev) => prev.map((h) => (h.id === holeId ? { ...h, fairway_result: next } : h)));
+    // 先回り：圏外なら通信せず端末バッファへ。
+    if (isOffline()) {
+      void putScoreUpdate({ hole_id: holeId, round_id: roundId, fairway_result: next });
+      return;
+    }
+    const supabase = createClient();
+    try {
+      // (2) オンライン保存
+      const { error } = await supabase.from("holes").update({ fairway_result: next }).eq("id", holeId);
+      if (error) throw error;
+    } catch (e) {
+      // (4) 圏外なら端末バッファへ
+      if (isNetworkFailure(e)) {
+        void putScoreUpdate({ hole_id: holeId, round_id: roundId, fairway_result: next });
+      } else {
+        console.error("[update-hole-fairway] update failed:", e);
+      }
+    }
+  }
+
   async function handleRoundEndConfirm() {
     setConfirmLoading(true);
     // Handicap differential only meaningful for full 18H rounds.
@@ -1788,9 +1817,11 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
         par={currentHole?.par ?? null}
         score={currentHole?.score ?? null}
         putts={currentHole?.putts ?? null}
+        fairwayResult={currentHole?.fairway_result ?? null}
         onParChange={updateHolePar}
         onScoreChange={updateHoleScoreUnified}
         onPuttsChange={updateHolePutts}
+        onFairwayChange={updateHoleFairway}
       />
 
       {/* Compact wind compass — half-height. Always rendered so the green-direction
@@ -3567,7 +3598,38 @@ function RoundComplete({
   const innPutts   = holes.slice(9).reduce((s, h)  => s + (h.putts ?? 0), 0);
   const innPar     = holes.slice(9).reduce((s, h)  => s + h.par, 0);
 
+  // FWキープ率：分母は par4以上・fairway_result 入力済みのホールのみ。
+  function fairwayCounts(slice: Hole[]) {
+    const eligible = slice.filter((h) => h.par >= 4 && h.fairway_result != null);
+    const kept = eligible.filter((h) => h.fairway_result === "hit").length;
+    return { kept, input: eligible.length };
+  }
+  const outFairway   = fairwayCounts(holes.slice(0, 9));
+  const innFairway   = fairwayCounts(holes.slice(9));
+  const totalFairway = fairwayCounts(holes);
+  const fairwayRate  = totalFairway.input > 0
+    ? Math.round((totalFairway.kept / totalFairway.input) * 100)
+    : null;
+
   const isEditable = pastView && mode === "score" && !!onUpdateHole;
+  // FW列だけは mode を問わない（shotモードのラウンドも過去表示から直せるように）。
+  const isFairwayEditable = pastView && !!onUpdateHole;
+
+  // FWセルは par4以上のみタップ可。未入力→hit→left→right→未入力 の順に巡回する。
+  async function cycleFairway(hole: Hole) {
+    if (!isFairwayEditable || !onUpdateHole || hole.par < 4) return;
+    const order: (FairwayResult | null)[] = [null, "hit", "left", "right"];
+    const next = order[(order.indexOf(hole.fairway_result) + 1) % order.length];
+    await onUpdateHole(hole.id, { fairway_result: next });
+  }
+
+  function fairwayCellLabel(hole: Hole): string {
+    if (hole.par < 4) return "-";
+    if (hole.fairway_result === "hit") return "◯";
+    if (hole.fairway_result === "left") return "←";
+    if (hole.fairway_result === "right") return "→";
+    return "";
+  }
 
   // ── Inline edit state（セルタップ → input → blur で保存） ─────────────
   // スコアは「総打数（計）」と「パット」を人が直接入力する方式。ショット数は
@@ -3625,7 +3687,9 @@ function RoundComplete({
   }
 
   function ScoreBadge({ score, par }: { score: number | null; par: number }) {
-    const box = "inline-flex items-center justify-center w-7 h-7 font-bold tabular-nums text-base";
+    // FW列追加でスペースが増えたため w-7/text-base から縮小（OUT/IN横並びが
+    // スマホ幅で崩れないようにするための調整）。
+    const box = "inline-flex items-center justify-center w-6 h-6 font-bold tabular-nums text-sm";
     if (score == null) return <span className={`${box} text-gray-400`}>—</span>;
     // 〇□囲みは廃止。計の数字をパーとの差で色分け（金/赤/黒/青/濃青）。
     return <span className={box} style={{ color: getScoreColor(score, par) }}>{score}</span>;
@@ -3676,24 +3740,29 @@ function RoundComplete({
   }
 
   function ScoreColumn({
-    label, slice, pSum, sSum, ptSum,
+    label, slice, pSum, sSum, ptSum, fwKept, fwInput,
   }: {
     label: string;
     slice: Hole[];
     pSum: number;
     sSum: number;
     ptSum: number;
+    fwKept: number;
+    fwInput: number;
   }) {
     return (
       <div>
         <p className="text-center text-[11px] font-bold text-green-700 mb-1">{label}</p>
-        <table className="w-full text-[11px] tabular-nums">
+        {/* FW列追加につき text-[11px]→[10px] / header [10px]→[9px] に縮小し、
+            OUT/IN横並び（grid-cols-2）がスマホ幅で崩れないようにしている。 */}
+        <table className="w-full text-[10px] tabular-nums">
           <thead>
-            <tr className="text-green-500 text-[10px] border-b border-green-100">
+            <tr className="text-green-500 text-[9px] border-b border-green-100">
               <th className="text-left py-0.5">H</th>
               <th className="text-center py-0.5">Par</th>
               <th className="text-center py-0.5">計</th>
-              <th className="text-center py-0.5">パット</th>
+              <th className="text-center py-0.5">パ</th>
+              <th className="text-center py-0.5">FW</th>
             </tr>
           </thead>
           <tbody>
@@ -3715,6 +3784,19 @@ function RoundComplete({
                   displayValue={hole.putts ?? "—"}
                   baseClass="py-1 text-center text-green-500"
                 />
+                <td className="py-1 text-center text-green-600">
+                  {isFairwayEditable && hole.par >= 4 ? (
+                    <button
+                      type="button"
+                      onClick={() => cycleFairway(hole)}
+                      className="w-full rounded hover:bg-green-50 active:bg-green-100"
+                    >
+                      {fairwayCellLabel(hole)}
+                    </button>
+                  ) : (
+                    fairwayCellLabel(hole)
+                  )}
+                </td>
               </tr>
             ))}
             <tr className="border-t-2 border-green-200 bg-green-50 font-bold text-green-700">
@@ -3722,6 +3804,7 @@ function RoundComplete({
               <td className="py-1 text-center">{pSum || "—"}</td>
               <td className="py-1 text-center">{sSum || "—"}</td>
               <td className="py-1 text-center">{ptSum || "—"}</td>
+              <td className="py-1 text-center">{fwInput > 0 ? `${fwKept}/${fwInput}` : "—"}</td>
             </tr>
           </tbody>
         </table>
@@ -3751,6 +3834,11 @@ function RoundComplete({
             {avgDriverYards != null && <span className="ml-1">平均 {avgDriverYards}y</span>}
             {avgDriverYards != null && maxDriverYards != null && <span className="mx-1">/</span>}
             {maxDriverYards != null && <span>最長 {maxDriverYards}y</span>}
+          </p>
+        )}
+        {fairwayRate != null && (
+          <p className="text-sm opacity-70 mt-1">
+            ⛳ FWキープ {totalFairway.kept}/{totalFairway.input}（{fairwayRate}%）
           </p>
         )}
       </div>
@@ -3786,22 +3874,35 @@ function RoundComplete({
 
       {/* Scorecard — OUT/IN side-by-side (golf standard format) */}
       <div className="card">
-        {isEditable && (
+        {isEditable ? (
           <p className="text-[10px] text-green-500 text-center mb-2">
             📝 セルをタップで編集できます
           </p>
-        )}
+        ) : isFairwayEditable ? (
+          <p className="text-[10px] text-green-500 text-center mb-2">
+            📝 FW欄はタップで編集できます
+          </p>
+        ) : null}
         {holes.length > 9 ? (
           <div className="grid grid-cols-2">
             <div className="pr-2">
-              <ScoreColumn label="OUT" slice={holes.slice(0, 9)} pSum={outPar} sSum={out} ptSum={outPutts} />
+              <ScoreColumn
+                label="OUT" slice={holes.slice(0, 9)} pSum={outPar} sSum={out} ptSum={outPutts}
+                fwKept={outFairway.kept} fwInput={outFairway.input}
+              />
             </div>
             <div className="pl-2 border-l border-green-100">
-              <ScoreColumn label="IN" slice={holes.slice(9)} pSum={innPar} sSum={inn} ptSum={innPutts} />
+              <ScoreColumn
+                label="IN" slice={holes.slice(9)} pSum={innPar} sSum={inn} ptSum={innPutts}
+                fwKept={innFairway.kept} fwInput={innFairway.input}
+              />
             </div>
           </div>
         ) : (
-          <ScoreColumn label="OUT" slice={holes} pSum={outPar} sSum={out} ptSum={outPutts} />
+          <ScoreColumn
+            label="OUT" slice={holes} pSum={outPar} sSum={out} ptSum={outPutts}
+            fwKept={outFairway.kept} fwInput={outFairway.input}
+          />
         )}
         <p className="text-[11px] text-gray-600 text-center mt-2 leading-relaxed">
           「計」の数字の色：
@@ -4134,21 +4235,48 @@ function ActiveShotPanel({
 
 // ── CompactScoreEntry: tap value → numeric keypad modal ──────────────
 
+// FW／左／右の3択。par4以上のホールでのみ表示（Par3には出さない）。
+const FAIRWAY_ENTRY_OPTIONS: { value: FairwayResult; label: string }[] = [
+  { value: "hit",   label: "FW ◯" },
+  { value: "left",  label: "左" },
+  { value: "right", label: "右" },
+];
+
 function CompactScoreEntry({
-  par, score, putts, onParChange, onScoreChange, onPuttsChange,
+  par, score, putts, fairwayResult, onParChange, onScoreChange, onPuttsChange, onFairwayChange,
 }: {
   par: number | null;
   score: number | null;
   putts: number | null;
+  fairwayResult: FairwayResult | null;
   onParChange: (par: number) => void;
   onScoreChange: (score: number) => void;
   onPuttsChange: (putts: number) => void;
+  onFairwayChange: (value: FairwayResult) => void;
 }) {
   return (
     <div className="card !p-2 grid grid-cols-3 gap-2">
       <KeypadEntryRow label="パー"   value={par}   min={3} max={7}  onChange={onParChange} />
       <KeypadEntryRow label="打数"   value={score} min={1} max={99} onChange={onScoreChange} />
       <KeypadEntryRow label="パット" value={putts} min={0} max={99} onChange={onPuttsChange} />
+      {par != null && par >= 4 && (
+        <div className="col-span-3 grid grid-cols-3 gap-2 pt-2 mt-1 border-t border-green-100">
+          {FAIRWAY_ENTRY_OPTIONS.map((opt) => (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => onFairwayChange(opt.value)}
+              className={`h-10 rounded-lg border-2 text-sm font-bold transition-colors active:scale-95 ${
+                fairwayResult === opt.value
+                  ? "bg-green-600 border-green-600 text-white"
+                  : "bg-white border-green-200 text-green-600 hover:bg-green-50"
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
