@@ -3904,16 +3904,19 @@ function RoundComplete({
             label="OUT" slice={holes} pSum={outPar} sSum={out} ptSum={outPutts}
           />
         )}
-        {/* 凡例：色（getScoreColor）＋記号（getScoreSymbol）を1行に。項目単位で折り返す。 */}
-        <p className="text-[11px] text-gray-600 text-center mt-2 leading-relaxed">
-          {SCORE_LEGEND.map((item, i) => (
-            <span key={item.label} className="whitespace-nowrap">
-              {i > 0 && "・"}
-              <span style={{ color: item.color }} className="font-bold">■{item.symbol}</span>
-              {item.label}
-            </span>
+        {/* 凡例：記号（getScoreSymbol）を getScoreColor の色・太字で表示。3項目ずつ2行に固定。 */}
+        <div className="text-[11px] text-gray-600 text-center mt-2 leading-relaxed">
+          {[SCORE_LEGEND.slice(0, 3), SCORE_LEGEND.slice(3)].map((row, r) => (
+            <p key={r}>
+              {row.map((item) => (
+                <span key={item.label} className="inline-block whitespace-nowrap mx-1.5">
+                  <span style={{ color: item.color }} className="font-bold">{item.symbol}</span>
+                  {" "}{item.label}
+                </span>
+              ))}
+            </p>
           ))}
-        </p>
+        </div>
       </div>
 
       {fairwaySheetHole && (
@@ -3934,7 +3937,7 @@ const SCORE_LEGEND: { color: string; symbol: string; label: string }[] = [
   { color: "#000000", symbol: "－", label: "パー" },
   { color: "#1E88E5", symbol: "△",  label: "ボギー" },
   { color: "#1A237E", symbol: "□",  label: "ダブルボギー" },
-  { color: "#1A237E", symbol: "+3", label: "〜トリプル以上" },
+  { color: "#1A237E", symbol: "+3", label: "トリプル以上" },
 ];
 
 // ── FairwayEditSheet: 過去ラウンドのホール行タップで開く FW 編集 ─────────
