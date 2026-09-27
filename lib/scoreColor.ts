@@ -8,3 +8,16 @@ export function getScoreColor(total: number | null, par: number): string {
   if (diff === 1) return "#1E88E5"; // ボギー：青
   return "#1A237E"; // ダブルボギー以上：濃い青
 }
+
+// スコアカード「結果」列の記号。境界は getScoreColor と同じ「total − par」。
+// 未入力(null)は空文字。トリプルボギー以上は「+3」「+4」のように差をそのまま出す。
+export function getScoreSymbol(total: number | null, par: number): string {
+  if (total === null || total === undefined) return "";
+  const diff = total - par;
+  if (diff <= -2) return "◎"; // イーグル以上
+  if (diff === -1) return "○"; // バーディー
+  if (diff === 0) return "－"; // パー
+  if (diff === 1) return "△"; // ボギー
+  if (diff === 2) return "□"; // ダブルボギー
+  return `+${diff}`; // トリプルボギー以上
+}

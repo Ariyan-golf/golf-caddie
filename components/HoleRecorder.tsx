@@ -10,7 +10,7 @@ import { calculateDistance, metersToYards } from "@/lib/distance";
 import { stopGpsTracking, getBestShotPosition, startShotWatch, stopShotWatch, awaitHighAccuracyFix, getShotWatchTimeoutMs, type GpsPoint } from "@/lib/gps";
 import { acquireWakeLock, releaseWakeLock, softReleaseWakeLock } from "@/lib/wakeLock";
 import { isBetaMode } from "@/lib/betaMode";
-import { getScoreColor } from "@/lib/scoreColor";
+import { getScoreColor, getScoreSymbol } from "@/lib/scoreColor";
 import { putHole, putShot, putScoreUpdate, putShotUpdate, putRoundUpdate, putShotDistance, deleteShot as deletePendingShot } from "@/lib/offline/db";
 import { saveActiveRound, clearActiveRound, readActiveRound, type ActiveRoundSnapshot } from "@/lib/activeRound";
 import Link from "next/link";
@@ -3599,36 +3599,38 @@ function RoundComplete({
   const innPar     = holes.slice(9).reduce((s, h)  => s + h.par, 0);
 
   // FWキープ率：分母は par4以上・fairway_result 入力済みのホールのみ。
+  // left / right は上部サマリーの「左n・右n」表示用。
   function fairwayCounts(slice: Hole[]) {
     const eligible = slice.filter((h) => h.par >= 4 && h.fairway_result != null);
-    const kept = eligible.filter((h) => h.fairway_result === "hit").length;
-    return { kept, input: eligible.length };
+    const kept  = eligible.filter((h) => h.fairway_result === "hit").length;
+    const left  = eligible.filter((h) => h.fairway_result === "left").length;
+    const right = eligible.filter((h) => h.fairway_result === "right").length;
+    return { kept, left, right, input: eligible.length };
   }
-  const outFairway   = fairwayCounts(holes.slice(0, 9));
-  const innFairway   = fairwayCounts(holes.slice(9));
   const totalFairway = fairwayCounts(holes);
   const fairwayRate  = totalFairway.input > 0
     ? Math.round((totalFairway.kept / totalFairway.input) * 100)
     : null;
 
   const isEditable = pastView && mode === "score" && !!onUpdateHole;
-  // FW列だけは mode を問わない（shotモードのラウンドも過去表示から直せるように）。
+  // FW編集だけは mode を問わない（shotモードのラウンドも過去表示から直せるように）。
   const isFairwayEditable = pastView && !!onUpdateHole;
 
-  // FWセルは par4以上のみタップ可。未入力→hit→left→right→未入力 の順に巡回する。
-  async function cycleFairway(hole: Hole) {
-    if (!isFairwayEditable || !onUpdateHole || hole.par < 4) return;
-    const order: (FairwayResult | null)[] = [null, "hit", "left", "right"];
-    const next = order[(order.indexOf(hole.fairway_result) + 1) % order.length];
-    await onUpdateHole(hole.id, { fairway_result: next });
+  // FW編集シート：par4以上のホール行タップで開く。表示中の値は holes から引き直すので
+  // 保存後（handleUpdateHole が holes を更新）の選択状態もそのまま反映される。
+  const [fairwaySheetHoleId, setFairwaySheetHoleId] = useState<string | null>(null);
+  const fairwaySheetHole = holes.find((h) => h.id === fairwaySheetHoleId) ?? null;
+
+  function openFairwaySheet(hole: Hole) {
+    if (!isFairwayEditable || hole.par < 4) return;
+    setFairwaySheetHoleId(hole.id);
   }
 
-  function fairwayCellLabel(hole: Hole): string {
-    if (hole.par < 4) return "-";
-    if (hole.fairway_result === "hit") return "◯";
-    if (hole.fairway_result === "left") return "←";
-    if (hole.fairway_result === "right") return "→";
-    return "";
+  // CompactScoreEntry と同じく、選択中のボタンを再度押すと未入力に戻す。
+  async function selectFairway(hole: Hole, value: FairwayResult) {
+    if (!onUpdateHole) return;
+    const next = hole.fairway_result === value ? null : value;
+    await onUpdateHole(hole.id, { fairway_result: next });
   }
 
   // ── Inline edit state（セルタップ → input → blur で保存） ─────────────
@@ -3704,9 +3706,10 @@ function RoundComplete({
     baseClass: string;
   }) {
     const isThisEditing = editing?.holeId === hole.id && editing?.field === field;
+    // セル編集は行タップ（FW編集シート）より優先。クリックを行へ伝播させない。
     if (isThisEditing) {
       return (
-        <td className="py-0.5 text-center">
+        <td className="py-0.5 text-center" onClick={(ev) => ev.stopPropagation()}>
           <input
             type="number"
             inputMode="numeric"
@@ -3730,7 +3733,7 @@ function RoundComplete({
       <td className={baseClass}>
         <button
           type="button"
-          onClick={() => startEdit(hole, field)}
+          onClick={(ev) => { ev.stopPropagation(); startEdit(hole, field); }}
           className="w-full rounded hover:bg-green-50 active:bg-green-100"
         >
           {displayValue}
@@ -3740,20 +3743,18 @@ function RoundComplete({
   }
 
   function ScoreColumn({
-    label, slice, pSum, sSum, ptSum, fwKept, fwInput,
+    label, slice, pSum, sSum, ptSum,
   }: {
     label: string;
     slice: Hole[];
     pSum: number;
     sSum: number;
     ptSum: number;
-    fwKept: number;
-    fwInput: number;
   }) {
     return (
       <div>
         <p className="text-center text-[11px] font-bold text-green-700 mb-1">{label}</p>
-        {/* FW列追加につき text-[11px]→[10px] / header [10px]→[9px] に縮小し、
+        {/* 5列目（旧FW列→現・結果列）につき text-[11px]→[10px] / header [10px]→[9px] に縮小し、
             OUT/IN横並び（grid-cols-2）がスマホ幅で崩れないようにしている。 */}
         <table className="w-full text-[10px] tabular-nums">
           <thead>
@@ -3762,12 +3763,19 @@ function RoundComplete({
               <th className="text-center py-0.5">Par</th>
               <th className="text-center py-0.5">計</th>
               <th className="text-center py-0.5">パ</th>
-              <th className="text-center py-0.5">FW</th>
+              <th className="text-center py-0.5">結果</th>
             </tr>
           </thead>
           <tbody>
-            {slice.map((hole) => (
-              <tr key={hole.id} className="border-b border-green-50">
+            {slice.map((hole) => {
+              // par4以上は行タップで FW 編集シートを開く（セル編集ボタンは stopPropagation 済み）。
+              const rowTappable = isFairwayEditable && hole.par >= 4;
+              return (
+              <tr
+                key={hole.id}
+                onClick={rowTappable ? () => openFairwaySheet(hole) : undefined}
+                className={`border-b border-green-50${rowTappable ? " cursor-pointer active:bg-green-100" : ""}`}
+              >
                 <td className="py-1 text-green-700 font-medium">{hole.hole_number}</td>
                 <EditableCell
                   hole={hole} field="par"
@@ -3784,27 +3792,21 @@ function RoundComplete({
                   displayValue={hole.putts ?? "—"}
                   baseClass="py-1 text-center text-green-500"
                 />
-                <td className="py-1 text-center text-green-600">
-                  {isFairwayEditable && hole.par >= 4 ? (
-                    <button
-                      type="button"
-                      onClick={() => cycleFairway(hole)}
-                      className="w-full rounded hover:bg-green-50 active:bg-green-100"
-                    >
-                      {fairwayCellLabel(hole)}
-                    </button>
-                  ) : (
-                    fairwayCellLabel(hole)
-                  )}
+                <td
+                  className="py-1 text-center font-bold"
+                  style={{ color: getScoreColor(hole.score, hole.par) }}
+                >
+                  {getScoreSymbol(hole.score, hole.par)}
                 </td>
               </tr>
-            ))}
+              );
+            })}
             <tr className="border-t-2 border-green-200 bg-green-50 font-bold text-green-700">
               <td className="py-1 text-left">{label}</td>
               <td className="py-1 text-center">{pSum || "—"}</td>
               <td className="py-1 text-center">{sSum || "—"}</td>
               <td className="py-1 text-center">{ptSum || "—"}</td>
-              <td className="py-1 text-center">{fwInput > 0 ? `${fwKept}/${fwInput}` : "—"}</td>
+              <td className="py-1 text-center"></td>
             </tr>
           </tbody>
         </table>
@@ -3839,6 +3841,7 @@ function RoundComplete({
         {fairwayRate != null && (
           <p className="text-sm opacity-70 mt-1">
             ⛳ FWキープ {totalFairway.kept}/{totalFairway.input}（{fairwayRate}%）
+            <span className="ml-1">左{totalFairway.left}・右{totalFairway.right}</span>
           </p>
         )}
       </div>
@@ -3876,11 +3879,11 @@ function RoundComplete({
       <div className="card">
         {isEditable ? (
           <p className="text-[10px] text-green-500 text-center mb-2">
-            📝 セルをタップで編集できます
+            📝 数字タップで修正・ホール行タップでFW編集
           </p>
         ) : isFairwayEditable ? (
           <p className="text-[10px] text-green-500 text-center mb-2">
-            📝 FW欄はタップで編集できます
+            📝 ホール行をタップでFWを編集できます
           </p>
         ) : null}
         {holes.length > 9 ? (
@@ -3888,30 +3891,101 @@ function RoundComplete({
             <div className="pr-2">
               <ScoreColumn
                 label="OUT" slice={holes.slice(0, 9)} pSum={outPar} sSum={out} ptSum={outPutts}
-                fwKept={outFairway.kept} fwInput={outFairway.input}
               />
             </div>
             <div className="pl-2 border-l border-green-100">
               <ScoreColumn
                 label="IN" slice={holes.slice(9)} pSum={innPar} sSum={inn} ptSum={innPutts}
-                fwKept={innFairway.kept} fwInput={innFairway.input}
               />
             </div>
           </div>
         ) : (
           <ScoreColumn
             label="OUT" slice={holes} pSum={outPar} sSum={out} ptSum={outPutts}
-            fwKept={outFairway.kept} fwInput={outFairway.input}
           />
         )}
+        {/* 凡例：色（getScoreColor）＋記号（getScoreSymbol）を1行に。項目単位で折り返す。 */}
         <p className="text-[11px] text-gray-600 text-center mt-2 leading-relaxed">
-          「計」の数字の色：
-          <span style={{ color: "#FFD700" }} className="font-bold">■</span>イーグル以上 ·{" "}
-          <span style={{ color: "#E53935" }} className="font-bold">■</span>バーディー ·{" "}
-          <span style={{ color: "#000000" }} className="font-bold">■</span>パー ·{" "}
-          <span style={{ color: "#1E88E5" }} className="font-bold">■</span>ボギー ·{" "}
-          <span style={{ color: "#1A237E" }} className="font-bold">■</span>ダブルボギー以上
+          {SCORE_LEGEND.map((item, i) => (
+            <span key={item.label} className="whitespace-nowrap">
+              {i > 0 && "・"}
+              <span style={{ color: item.color }} className="font-bold">■{item.symbol}</span>
+              {item.label}
+            </span>
+          ))}
         </p>
+      </div>
+
+      {fairwaySheetHole && (
+        <FairwayEditSheet
+          hole={fairwaySheetHole}
+          onSelect={(value) => selectFairway(fairwaySheetHole, value)}
+          onClose={() => setFairwaySheetHoleId(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+// 完了画面スコアカードの凡例。色は getScoreColor、記号は getScoreSymbol と一致させる。
+const SCORE_LEGEND: { color: string; symbol: string; label: string }[] = [
+  { color: "#FFD700", symbol: "◎",  label: "イーグル以上" },
+  { color: "#E53935", symbol: "○",  label: "バーディー" },
+  { color: "#000000", symbol: "－", label: "パー" },
+  { color: "#1E88E5", symbol: "△",  label: "ボギー" },
+  { color: "#1A237E", symbol: "□",  label: "ダブルボギー" },
+  { color: "#1A237E", symbol: "+3", label: "〜トリプル以上" },
+];
+
+// ── FairwayEditSheet: 過去ラウンドのホール行タップで開く FW 編集 ─────────
+// ボタン構成は CompactScoreEntry と同じ FAIRWAY_ENTRY_OPTIONS。選択中を再押下で未入力に戻す
+// （その判定は呼び出し側の selectFairway）。外側タップ or 閉じるボタンで閉じる。
+function FairwayEditSheet({
+  hole, onSelect, onClose,
+}: {
+  hole: Hole;
+  onSelect: (value: FairwayResult) => void;
+  onClose: () => void;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 px-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-sm bg-white rounded-2xl shadow-xl p-4 space-y-3"
+        onClick={(ev) => ev.stopPropagation()}
+      >
+        <div className="flex items-center justify-between">
+          <p className="text-sm font-bold text-green-800">
+            {hole.hole_number}番ホール（Par{hole.par}）のFW
+          </p>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="閉じる"
+            className="w-8 h-8 rounded-full text-green-600 hover:bg-green-50 active:bg-green-100 text-lg leading-none"
+          >
+            ×
+          </button>
+        </div>
+        <div className="grid grid-cols-3 gap-2">
+          {FAIRWAY_ENTRY_OPTIONS.map((opt) => (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => onSelect(opt.value)}
+              className={`h-10 rounded-lg border-2 text-sm font-bold transition-colors active:scale-95 ${
+                hole.fairway_result === opt.value
+                  ? "bg-green-600 border-green-600 text-white"
+                  : "bg-white border-green-200 text-green-600 hover:bg-green-50"
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+        <p className="text-[10px] text-gray-500 text-center">選択中のボタンをもう一度押すと未入力に戻ります</p>
       </div>
     </div>
   );
