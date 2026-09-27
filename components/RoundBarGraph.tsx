@@ -29,6 +29,13 @@ export function RoundBarGraph({ data }: { data: RoundData[] }) {
 
   if (chartData.length === 0) return null;
 
+  // 縦軸は表示データから算出（最低-5 を10刻みで切り下げ〜最高+5 を10刻みで切り上げ）。
+  const scores = chartData.map((d) => d.score);
+  const yMin = Math.floor((Math.min(...scores) - 5) / 10) * 10;
+  const yMax = Math.ceil((Math.max(...scores) + 5) / 10) * 10;
+  const yTicks: number[] = [];
+  for (let v = yMin; v <= yMax; v += 10) yTicks.push(v);
+
   return (
     <div className="card space-y-3">
       <h2 className="font-semibold text-green-800">直近ラウンドの推移</h2>
@@ -45,7 +52,9 @@ export function RoundBarGraph({ data }: { data: RoundData[] }) {
           <YAxis
             orientation="left"
             tick={{ fontSize: 10, fill: COLOR_SCORE }}
-            domain={[60, 120]}
+            domain={[yMin, yMax]}
+            ticks={yTicks}
+            allowDecimals={false}
             width={36}
           />
           {/* スマホでタップ後に残る灰色の帯を出さないよう cursor は細い縦線。

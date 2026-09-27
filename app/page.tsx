@@ -344,28 +344,6 @@ export default async function HomePage() {
         {/* Score & putts bar graph */}
         <RoundBarGraph data={graphData} />
 
-        {/* Announcement Banner */}
-        <div className="bg-gradient-to-r from-green-600 to-emerald-500 rounded-xl p-4 shadow-md space-y-3">
-          <div className="flex gap-3 items-start">
-            <span className="text-xl flex-shrink-0 mt-0.5">📢</span>
-            <div className="space-y-1">
-              <p className="text-white font-bold text-sm tracking-wide">
-                まもなく正式リリース ― Coming Soon
-              </p>
-              <p className="text-green-100 text-xs leading-relaxed">
-                現在はテスト期間中で無料でご利用いただけます。
-                <span className="font-semibold text-white">正式リリース日は公式SNSでお知らせします！</span>
-              </p>
-            </div>
-          </div>
-          <Link
-            href="/plan"
-            className="block w-full text-center bg-white text-green-700 font-semibold text-sm py-2.5 rounded-lg hover:bg-green-50 transition-colors"
-          >
-            プランを変更する →
-          </Link>
-        </div>
-
         {/* Plan status (v4: 月額サブスク利用中 or 無料体験中) */}
         {isSubscriber ? (
           <div className="card bg-green-50 border-green-300">
@@ -522,6 +500,30 @@ export default async function HomePage() {
           </div>
           <span className="text-green-400 text-lg flex-shrink-0">→</span>
         </Link>
+
+        {/* Announcement Banner */}
+        {beta && !isSubscriber && (
+          <div className="bg-gradient-to-r from-green-600 to-emerald-500 rounded-xl p-4 shadow-md space-y-3">
+            <div className="flex gap-3 items-start">
+              <span className="text-xl flex-shrink-0 mt-0.5">📢</span>
+              <div className="space-y-1">
+                <p className="text-white font-bold text-sm tracking-wide">
+                  まもなく正式リリース ― Coming Soon
+                </p>
+                <p className="text-green-100 text-xs leading-relaxed">
+                  現在はテスト期間中で無料でご利用いただけます。
+                  <span className="font-semibold text-white">正式リリース日は公式SNSでお知らせします！</span>
+                </p>
+              </div>
+            </div>
+            <Link
+              href="/plan"
+              className="block w-full text-center bg-white text-green-700 font-semibold text-sm py-2.5 rounded-lg hover:bg-green-50 transition-colors"
+            >
+              プランを変更する →
+            </Link>
+          </div>
+        )}
 
         {/* 使い方ガイド */}
         <Link
