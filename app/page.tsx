@@ -148,10 +148,11 @@ export default async function HomePage() {
       supabase.from("profiles").select("display_name, plan, round_count, nickname, age_group").eq("id", user.id).single(),
       supabase
         .from("rounds")
-        .select("id, course_name, date, total_score, holes(putts)")
+        .select("id, course_name, date, total_score, holes(putts, score)")
         .eq("user_id", user.id)
         .order("date", { ascending: false })
-        .limit(10),
+        // グラフ・平均は18ホール完走ラウンドに絞るため、除外分を見越して多めに取得する。
+        .limit(40),
       // ドライバー(1W)平均は集計テーブル club_averages（削除/再割当てで減算されず過大になる）を
       // 使わず、球筋ページ app/(app)/swing/page.tsx と同じく生 shots から本人分を直接集計する。
       supabase
@@ -190,9 +191,9 @@ export default async function HomePage() {
 
   const tobashikkoConfigured = !!profile?.nickname && !!profile?.age_group;
 
-  // スコアあり10ラウンド分のグラフデータ
-  const graphData = (roundsRaw ?? []).map((r) => {
-    const holes = (r as { holes?: { putts: number | null }[] }).holes ?? [];
+  // 取得した全ラウンド（新しい順）。scoredHoles はスコア入力済みホール数。
+  const allRounds = (roundsRaw ?? []).map((r) => {
+    const holes = (r as { holes?: { putts: number | null; score: number | null }[] }).holes ?? [];
     const hasPutts = holes.some((h) => h.putts != null);
     return {
       id: r.id,
@@ -200,13 +201,20 @@ export default async function HomePage() {
       date: r.date,
       total_score: r.total_score,
       total_putts: hasPutts ? holes.reduce((s, h) => s + (h.putts ?? 0), 0) : null,
+      scoredHoles: holes.filter((h) => h.score != null).length,
     };
   });
 
-  const recentRounds = graphData.slice(0, 3);
+  // 最近のラウンド（3件）は従来どおり完走・途中を問わず新しい順。
+  const recentRounds = allRounds.slice(0, 3);
 
-  // 直近10ラウンドの平均スコア（total_score が null のラウンドは除外）
+  // 推移グラフ・平均スコアは18ホールすべてスコア入力済みのラウンドのみ（9H・途中終了を除外）。
+  // グラフは新しい順で最大20件。
+  const graphData = allRounds.filter((r) => r.scoredHoles >= 18).slice(0, 20);
+
+  // 直近10ラウンドの平均スコア（18H完走ラウンドの新しい順10件。total_score が null は除外）
   const validScores = graphData
+    .slice(0, 10)
     .map((r) => r.total_score)
     .filter((s): s is number => s != null);
   const avgScore: string | null =
@@ -262,58 +270,6 @@ export default async function HomePage() {
         <ActiveRoundBanner />
 
         <InstallPrompt />
-
-        {/* 飛ばしっこGO 導線 */}
-        {tobashikkoConfigured ? (
-          <div className="card border-2 border-amber-300 bg-gradient-to-r from-amber-50 to-orange-50 space-y-3">
-            <div className="flex items-center gap-3">
-              <span className="text-3xl flex-shrink-0">🚀</span>
-              <div>
-                <p className="font-bold text-amber-900 text-sm">飛ばしっこGO</p>
-                <p className="text-xs text-amber-600 mt-0.5">参加設定済み</p>
-              </div>
-            </div>
-            <div className="grid grid-cols-1 gap-2">
-              <Link
-                href="/event/tobashikko/ranking"
-                className="block w-full text-center bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold py-2.5 rounded-xl"
-              >
-                ランキングを見る →
-              </Link>
-              <Link
-                href="/event/tobashikko/entry"
-                className="block w-full text-center bg-white hover:bg-amber-50 border-2 border-amber-400 text-amber-700 text-sm font-semibold py-2.5 rounded-xl"
-              >
-                ショットをエントリーする →
-              </Link>
-            </div>
-          </div>
-        ) : (
-          <Link
-            href="/event/tobashikko/settings"
-            className="block card border-2 border-amber-300 bg-gradient-to-r from-amber-50 to-orange-50 hover:border-amber-400 transition-colors"
-          >
-            <div className="flex items-center gap-3">
-              <span className="text-3xl flex-shrink-0">🚀</span>
-              <div className="flex-1">
-                <p className="font-bold text-amber-900 text-sm">
-                  飛ばしっこGOに参加する（設定が必要です）
-                </p>
-                <p className="text-xs text-amber-600 mt-0.5">
-                  ニックネームと年代を設定してランキングに参加しよう
-                </p>
-              </div>
-              <span className="text-amber-500 text-lg flex-shrink-0">→</span>
-            </div>
-          </Link>
-        )}
-
-        {/* 開催中イベント（comp は自分が作成 or 参加済みのみ表示） */}
-        {visibleEventRankings.length > 0 && (
-          <div id="event-ranking">
-            <EventRankingSection events={visibleEventRankings} />
-          </div>
-        )}
 
         {/* 平均スコア / GCAハンディ */}
         <div className="card space-y-3 text-center">
@@ -375,6 +331,73 @@ export default async function HomePage() {
             <span className="font-semibold text-green-700 text-sm">AIキャディ</span>
           </Link>
         </div>
+
+        {/* 飛ばしっこGO 導線 */}
+        {tobashikkoConfigured ? (
+          <div className="card border-2 border-amber-300 bg-gradient-to-r from-amber-50 to-orange-50 space-y-3">
+            <div className="flex items-center gap-3">
+              <span className="text-3xl flex-shrink-0">🚀</span>
+              <div>
+                <p className="font-bold text-amber-900 text-sm">飛ばしっこGO</p>
+                <p className="text-xs text-amber-600 mt-0.5">参加設定済み</p>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 gap-2">
+              <Link
+                href="/event/tobashikko/ranking"
+                className="block w-full text-center bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold py-2.5 rounded-xl"
+              >
+                ランキングを見る →
+              </Link>
+              <Link
+                href="/event/tobashikko/entry"
+                className="block w-full text-center bg-white hover:bg-amber-50 border-2 border-amber-400 text-amber-700 text-sm font-semibold py-2.5 rounded-xl"
+              >
+                ショットをエントリーする →
+              </Link>
+            </div>
+          </div>
+        ) : (
+          <Link
+            href="/event/tobashikko/settings"
+            className="block card border-2 border-amber-300 bg-gradient-to-r from-amber-50 to-orange-50 hover:border-amber-400 transition-colors"
+          >
+            <div className="flex items-center gap-3">
+              <span className="text-3xl flex-shrink-0">🚀</span>
+              <div className="flex-1">
+                <p className="font-bold text-amber-900 text-sm">
+                  飛ばしっこGOに参加する（設定が必要です）
+                </p>
+                <p className="text-xs text-amber-600 mt-0.5">
+                  ニックネームと年代を設定してランキングに参加しよう
+                </p>
+              </div>
+              <span className="text-amber-500 text-lg flex-shrink-0">→</span>
+            </div>
+          </Link>
+        )}
+
+        {/* 開催中イベント（comp は自分が作成 or 参加済みのみ表示） */}
+        {visibleEventRankings.length > 0 && (
+          <div id="event-ranking">
+            <EventRankingSection events={visibleEventRankings} />
+          </div>
+        )}
+
+        {/* コンペ幹事への導線（ドラコン設定） */}
+        <Link
+          href="/compe"
+          className="card flex items-center gap-3 hover:border-green-300 transition-colors"
+        >
+          <span className="text-2xl flex-shrink-0">🏆</span>
+          <div className="flex-1">
+            <p className="font-semibold text-green-800 text-sm">あなたのコンペのドラコンを設定する</p>
+            <p className="text-xs text-green-500 mt-0.5">
+              コンペを作成して参加コードを共有しましょう
+            </p>
+          </div>
+          <span className="text-green-400 text-lg flex-shrink-0">→</span>
+        </Link>
 
         {/* Score & putts bar graph */}
         <RoundBarGraph data={graphData} />
@@ -497,21 +520,6 @@ export default async function HomePage() {
             </div>
           </div>
         )}
-
-        {/* コンペ幹事への導線（ドラコン設定） */}
-        <Link
-          href="/compe"
-          className="card flex items-center gap-3 hover:border-green-300 transition-colors"
-        >
-          <span className="text-2xl flex-shrink-0">🏆</span>
-          <div className="flex-1">
-            <p className="font-semibold text-green-800 text-sm">あなたのコンペのドラコンを設定する</p>
-            <p className="text-xs text-green-500 mt-0.5">
-              コンペを作成して参加コードを共有しましょう
-            </p>
-          </div>
-          <span className="text-green-400 text-lg flex-shrink-0">→</span>
-        </Link>
 
         {/* 使い方ガイド */}
         <Link
