@@ -13,6 +13,7 @@ import { EventRankingSection, type EventRankingData } from "@/components/EventRa
 import ConsentGate from "@/components/ConsentGate";
 import { getNeedsConsent } from "@/lib/consent";
 import { isBetaMode } from "@/lib/betaMode";
+import { todayJST, jstDayStartISO, addDaysToDate } from "@/lib/day-pass";
 import { CLUB_LABELS, type Club } from "@/types";
 
 // v4: 無料体験は3ラウンドまで（app/(app)/round/new/page.tsx と同値）
@@ -39,7 +40,8 @@ export default async function HomePage() {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
-  const todayStr = new Date().toISOString().split("T")[0];
+  // イベントの開催判定は日本時間の日付で行う。
+  const todayStr = todayJST();
 
   // 飛ばしっこGO（tobashikko）は専用の /event/tobashikko/ranking で表示するため除外。
   // ここでは monthly / comp のホール限定イベントだけを集計対象にする。
@@ -53,9 +55,9 @@ export default async function HomePage() {
 
   const eventRankings: EventRankingData[] = await Promise.all(
     (activeEvents ?? []).map(async (event) => {
-      const endExclusive = new Date(event.end_date);
-      endExclusive.setDate(endExclusive.getDate() + 1);
-      const endStr = endExclusive.toISOString().split("T")[0];
+      // ショット期間は「開始日の日本時間0:00〜終了日翌日の日本時間0:00未満」。
+      const startISO = jstDayStartISO(event.start_date);
+      const endISO = jstDayStartISO(addDaysToDate(event.end_date, 1));
 
       let participantIds: string[] | null = null;
       let isParticipant = false;
@@ -76,8 +78,8 @@ export default async function HomePage() {
         .from("shot_distances")
         .select("user_id, distance_meters, distance_yards")
         .is("deleted_at", null)
-        .gte("created_at", event.start_date)
-        .lt("created_at", endStr);
+        .gte("created_at", startISO)
+        .lt("created_at", endISO);
 
       const { data: shots } =
         participantIds !== null

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import { fetchTobashikkoRanking } from "@/lib/tobashikko/ranking";
+import { jstDayStartISO, addDaysToDate } from "@/lib/day-pass";
 
 const ADMIN_EMAIL = "t.a.0903076959@i.softbank.jp";
 
@@ -95,10 +96,9 @@ export async function GET(
   }
 
   // ── monthly / comp（既存ロジック・shot_distances ベース） ─────
-  // 終了日の翌日（exclusive upper bound）
-  const endExclusive = new Date(event.end_date);
-  endExclusive.setDate(endExclusive.getDate() + 1);
-  const endStr = endExclusive.toISOString().split("T")[0];
+  // ショット期間は「開始日の日本時間0:00〜終了日翌日の日本時間0:00未満」（exclusive upper bound）
+  const startISO = jstDayStartISO(event.start_date);
+  const endISO = jstDayStartISO(addDaysToDate(event.end_date, 1));
 
   // コンペイベントの場合は参加者のみ対象
   let participantIds: string[] | null = null;
@@ -114,8 +114,8 @@ export async function GET(
   const baseQuery = admin
     .from("shot_distances")
     .select("user_id, distance_meters, distance_yards, created_at")
-    .gte("created_at", event.start_date)
-    .lt("created_at", endStr);
+    .gte("created_at", startISO)
+    .lt("created_at", endISO);
 
   const { data: shots, error: shotErr } =
     participantIds !== null && participantIds.length > 0

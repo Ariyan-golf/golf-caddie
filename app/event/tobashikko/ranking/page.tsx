@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
 import { fetchTobashikkoRanking, joinBrandModel, type TobashikkoRankingRow, type TobashikkoMyRank, type TobashikkoRankingFilter } from "@/lib/tobashikko/ranking";
 import { ShareCardButton } from "@/components/ShareCardButton";
+import { todayJST } from "@/lib/day-pass";
 
 export const dynamic = "force-dynamic";
 
@@ -62,7 +63,8 @@ export default async function PublicTobashikkoRankingPage({
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
 
-  const todayStr = new Date().toISOString().split("T")[0];
+  // 開催中判定は日本時間の日付で行う。
+  const todayStr = todayJST();
 
   // ── 開催中の飛ばしっこGOイベントを取得 ─────────────────────────
   const { data: events } = await admin

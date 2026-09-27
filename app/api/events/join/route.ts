@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
+import { todayJST } from "@/lib/day-pass";
 
 function adminDb() {
   return createAdminClient(
@@ -22,7 +23,7 @@ export async function POST(req: Request) {
   }
 
   const admin = adminDb();
-  const today = new Date().toISOString().split("T")[0];
+  const today = todayJST(); // 受付期間は日本時間の日付で判定
 
   const { data: event, error: evErr } = await admin
     .from("events")

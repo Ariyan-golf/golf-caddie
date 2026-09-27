@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { todayJST } from "@/lib/day-pass";
 
 // 参加コードだけでコンペに参加する。
 // 既存の /api/events/join（event_id 指定・サービスロール）とは別物。
@@ -18,7 +19,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "参加コードを入力してください" }, { status: 400 });
   }
 
-  const today = new Date().toISOString().split("T")[0];
+  const today = todayJST(); // 受付期間は日本時間の日付で判定
 
   // 開催中の comp を event_code で1件検索。
   // events の SELECT は「認証ユーザーは閲覧可」なのでユーザーセッションで取得できる。

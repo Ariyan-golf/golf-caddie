@@ -7,6 +7,7 @@ import { fetchWeather } from "@/lib/weather";
 import { startGpsTracking } from "@/lib/gps";
 import { acquireWakeLock } from "@/lib/wakeLock";
 import { clearActiveRound } from "@/lib/activeRound";
+import { todayJST } from "@/lib/day-pass";
 import { GeoPermissionGuide } from "@/components/GeoPermissionGuide";
 import type { StartHole, Weather, WindSpeed, WindDirection } from "@/types";
 import { WEATHER_OPTIONS, WIND_SPEED_OPTIONS } from "@/types";
@@ -117,7 +118,8 @@ export function NewRoundForm({ linkedCourseId }: { linkedCourseId?: string }) {
   const [inSection, setInSection]     = useState("");
 
   // ラウンド情報
-  const [date, setDate]               = useState(new Date().toISOString().split("T")[0]);
+  // 初期値は日本時間の今日（UTC だと早朝 0:00〜8:59 に前日の日付になっていた）。
+  const [date, setDate]               = useState(todayJST);
   const [startHole, setStartHole]     = useState<StartHole>(1);
   const mode = "score" as const;
   const [loading, setLoading]         = useState(false);

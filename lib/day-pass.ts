@@ -5,6 +5,19 @@ export function todayJST(): string {
   );
 }
 
+// YYYY-MM-DD を「その日の日本時間 0:00」の ISO 文字列にする（timestamptz 比較用）。
+// 例: "2026-10-01" → "2026-10-01T00:00:00+09:00"
+export function jstDayStartISO(date: string): string {
+  return `${date}T00:00:00+09:00`;
+}
+
+// YYYY-MM-DD に日数を足した YYYY-MM-DD を返す。UTC で計算するので実行環境の
+// タイムゾーンに左右されない（月末・年末の繰り上がりも Date.UTC が処理する）。
+export function addDaysToDate(date: string, days: number): string {
+  const [y, m, d] = date.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
+}
+
 export function hasActiveDayPass(dayPassDate: string | null | undefined): boolean {
   return !!dayPassDate && dayPassDate === todayJST();
 }
