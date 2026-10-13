@@ -5,14 +5,6 @@
       "schedule": "0 2 * * *"
     },
     {
-      "path": "/api/cron/cleanup-pending-rounds",
-      "schedule": "30 15 * * *"
-    },
-    {
-      "path": "/api/cron/cleanup-free-trial-rounds",
-      "schedule": "0 16 * * *"
-    },
-    {
       "path": "/api/cron/keepalive",
       "schedule": "0 3 * * *"
     }

@@ -14,7 +14,7 @@
  * （round_payments は rounds を参照していないため連動削除の対象外。）
  * ベータモード時はスキップ（既存 cleanup-pending-rounds と同じ方針）。
  *
- * Vercel Cron から毎日 JST 1:00 (UTC 16:00) に呼ばれる（vercel.json に登録済み）。
+ * 旧: Vercel Cron から毎日 JST 1:00 (UTC 16:00) に呼ばれていた（現在は停止中・vercel.json から登録解除）。
  */
 
 import { createClient as createAdminClient } from "@supabase/supabase-js";
@@ -23,7 +23,16 @@ import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
 
+// 停止中：全員無料化のため、無料ユーザーのラウンド自動削除を止めている（vercel.json の Cron 登録も解除済み）。
+// 再開する場合は、無料・有料の仕様を決めてから外すこと。
+const CLEANUP_SUSPENDED = true;
+
 export async function GET(request: Request) {
+  if (CLEANUP_SUSPENDED) {
+    console.log("[cleanup-free-trial-rounds] suspended — skipping deletion");
+    return NextResponse.json({ ok: true, skipped: "suspended", deleted: 0 });
+  }
+
   const authHeader = request.headers.get("authorization");
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
