@@ -268,6 +268,9 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
   }, [showPaymentModal]);
   const [confirmEarlyEnd, setConfirmEarlyEnd] = useState(false);
   const [endedEarly, setEndedEarly] = useState(false);
+  // 打数を新規入力したホールで、続けて開くパット入力が終わるまで待つ対象のホールID。
+  // パット確定 or 入力せず閉じた時点で null に戻し、そこで初めて終了画面へ進める。
+  const [puttPromptHoleId, setPuttPromptHoleId] = useState<string | null>(null);
   const [showBetaModal, setShowBetaModal] = useState(false);
 
   // ── Step 2-1 unified-screen state ───────────────────────────────────
@@ -417,6 +420,10 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
   const totalScore     = completedHoles.reduce((s, h) => s + (h.score ?? 0), 0);
   const totalPar       = completedHoles.reduce((s, h) => s + h.par, 0);
   const isRoundDone    = holes.length === 18 && holes.every((h) => h.score !== null);
+  // 最後に打数が入ったホールのパット入力中は、打数がそろっていても終了画面を出さない。
+  // 現在ホール以外のIDが残っていても終了を妨げないよう、現在ホールと一致する時だけ待つ。
+  const awaitingPutts  = puttPromptHoleId !== null && puttPromptHoleId === currentHole?.id;
+  const isRoundOver    = (isRoundDone && !awaitingPutts) || endedEarly;
 
   // GPS is released by ShotRecorder unmount.
   // 風コンパスの ON/OFF は localStorage に持たなくなったため（毎ラウンドOFF始まり）、
@@ -1593,6 +1600,17 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
     }
   }
 
+  // 打数キーパッドの確定。未入力だった打数を新規に入れ、パットも未入力なら
+  // 続けてパット入力を開く（打数の修正時は開かない）。setHoles と同じ操作内で
+  // 待ち状態を立てるので、最終ホールでも終了画面が先に出ることはない。
+  function handleScoreEntered(score: number) {
+    if (!currentHole) return;
+    if (currentHole.score === null && currentHole.putts === null) {
+      setPuttPromptHoleId(currentHole.id);
+    }
+    void updateHoleScoreUnified(score);
+  }
+
   async function updateHolePutts(putts: number | null) {
     if (!currentHole) return;
     const holeId = currentHole.id;
@@ -1718,10 +1736,10 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
     }
   }
 
-  if ((isRoundDone || endedEarly) && !roundEndConfirmed) {
+  if (isRoundOver && !roundEndConfirmed) {
     return <RoundEndScreen onConfirm={handleRoundEndConfirm} confirming={confirmLoading} />;
   }
-  if (isRoundDone || endedEarly) {
+  if (isRoundOver) {
     return (
       <>
         <RoundComplete
@@ -1819,9 +1837,11 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
         putts={currentHole?.putts ?? null}
         fairwayResult={currentHole?.fairway_result ?? null}
         onParChange={updateHolePar}
-        onScoreChange={updateHoleScoreUnified}
+        onScoreChange={handleScoreEntered}
         onPuttsChange={updateHolePutts}
         onFairwayChange={updateHoleFairway}
+        autoOpenPutts={awaitingPutts}
+        onPuttsKeypadClosed={() => setPuttPromptHoleId(null)}
       />
 
       {/* Compact wind compass — half-height. Always rendered so the green-direction
@@ -4321,6 +4341,7 @@ const FAIRWAY_ENTRY_OPTIONS: { value: FairwayResult; label: string }[] = [
 
 function CompactScoreEntry({
   par, score, putts, fairwayResult, onParChange, onScoreChange, onPuttsChange, onFairwayChange,
+  autoOpenPutts, onPuttsKeypadClosed,
 }: {
   par: number | null;
   score: number | null;
@@ -4330,12 +4351,17 @@ function CompactScoreEntry({
   onScoreChange: (score: number) => void;
   onPuttsChange: (putts: number) => void;
   onFairwayChange: (value: FairwayResult) => void;
+  autoOpenPutts: boolean;
+  onPuttsKeypadClosed: () => void;
 }) {
   return (
     <div className="card !p-2 grid grid-cols-3 gap-2">
       <KeypadEntryRow label="パー"   value={par}   min={3} max={7}  onChange={onParChange} />
       <KeypadEntryRow label="打数"   value={score} min={1} max={99} onChange={onScoreChange} />
-      <KeypadEntryRow label="パット" value={putts} min={0} max={99} onChange={onPuttsChange} />
+      <KeypadEntryRow
+        label="パット" value={putts} min={0} max={99} onChange={onPuttsChange}
+        forceOpen={autoOpenPutts} onClosed={onPuttsKeypadClosed}
+      />
       {par != null && par >= 4 && (
         <div className="col-span-3 grid grid-cols-3 gap-2 pt-2 mt-1 border-t border-green-100">
           {FAIRWAY_ENTRY_OPTIONS.map((opt) => (
@@ -4359,22 +4385,31 @@ function CompactScoreEntry({
 }
 
 // One row: label + current-value chip. Tap the chip to open the keypad.
+// forceOpen: 親からキーパッドを開かせる（打数確定後のパット自動入力）。
+// onClosed: 確定・キャンセルどちらで閉じても呼ぶ（入力完了の合図）。
 function KeypadEntryRow({
-  label, value, min, max, onChange,
+  label, value, min, max, onChange, forceOpen = false, onClosed,
 }: {
   label: string;
   value: number | null;
   min: number;
   max: number;
   onChange: (n: number) => void;
+  forceOpen?: boolean;
+  onClosed?: () => void;
 }) {
-  const [open, setOpen] = useState(false);
+  const [manualOpen, setManualOpen] = useState(false);
+  const open = manualOpen || forceOpen;
+  function close() {
+    setManualOpen(false);
+    onClosed?.();
+  }
   return (
     <>
       <div className="flex flex-col items-center gap-1">
         <span className="text-base font-semibold text-green-700">{label}</span>
         <button
-          onClick={() => setOpen(true)}
+          onClick={() => setManualOpen(true)}
           className="w-full h-12 rounded-xl border-2 border-green-300 bg-white hover:bg-green-50
                      active:bg-green-100 active:scale-[0.98] text-2xl font-bold text-green-700
                      tabular-nums transition-colors"
@@ -4388,8 +4423,8 @@ function KeypadEntryRow({
           initialValue={value}
           min={min}
           max={max}
-          onConfirm={(n) => { onChange(n); setOpen(false); }}
-          onClose={() => setOpen(false)}
+          onConfirm={(n) => { onChange(n); close(); }}
+          onClose={close}
         />
       )}
     </>
