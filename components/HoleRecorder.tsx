@@ -11,7 +11,7 @@ import { stopGpsTracking, getBestShotPosition, startShotWatch, stopShotWatch, aw
 import { acquireWakeLock, releaseWakeLock, softReleaseWakeLock } from "@/lib/wakeLock";
 import { isBetaMode } from "@/lib/betaMode";
 import { getScoreColor, getScoreSymbol } from "@/lib/scoreColor";
-import { putHole, putShot, putScoreUpdate, putShotUpdate, putRoundUpdate, putShotDistance, deleteShot as deletePendingShot } from "@/lib/offline/db";
+import { putHole, putShot, putScoreUpdate, putShotUpdate, putRoundUpdate, putShotDistance, deleteShot as deletePendingShot, deleteShotUpdate as deletePendingShotUpdate } from "@/lib/offline/db";
 import { saveActiveRound, clearActiveRound, readActiveRound, type ActiveRoundSnapshot } from "@/lib/activeRound";
 import Link from "next/link";
 import { GpsIndicator } from "./GpsIndicator";
@@ -24,6 +24,7 @@ interface Shot {
   id: string;
   shot_number: number;
   club: string | null;
+  club_auto_set?: boolean | null;
   distance_yards: number | null;
   lie_type: string | null;
   ball_shape: string | null;
@@ -86,6 +87,10 @@ interface LastShotMemo {
   // オンライン INSERT にもオフラインバッファにも同じ id を渡す。
   shotId: string;
   holeId: string;
+  // 保存した番手（パー4/5の第1打は自動で "1w"、それ以外は null）。
+  // 「1W（自動）▸変更」で付け替えるとここも更新し、clubAutoSet は false になる。
+  club: string | null;
+  clubAutoSet: boolean;
   // true = まだサーバーへ送っていない（端末バッファのみに存在する）状態。
   // 取り消し方が変わる：サーバー行は論理削除、未送信分はバッファから取り下げる。
   pendingOffline: boolean;
@@ -151,6 +156,24 @@ function parseLieParts(lieType: string | null): { s1: LieS1 | null; s2: LieS2 | 
   const s2 = parts[1] && LIE_S2.includes(parts[1] as LieS2) ? (parts[1] as LieS2) : null;
   const count = parts[2] ? parseInt(parts[2]) : null;
   return { s1, s2, count };
+}
+
+// パー4・パー5の第1打を自動で1W（ドライバー）として保存するかどうか。
+//   - 対象はアプリ上で「第1打」として保存されるショット（shot_number=1）のみ。
+//   - パーが仮の初期値のときは自動設定しない。holes.par はコースデータ（course_holes）
+//     があればその値、無ければ 4 で作られるため、「コースデータ無し かつ パー4」は
+//     ユーザーが変更していない仮の値とみなす（ユーザーが4を選び直した場合も区別できず、
+//     自動設定しない側に倒す）。
+function shouldAutoSetDriver(
+  shotNumber: number,
+  hole: { hole_number: number; par: number },
+  courseHoles: CourseHole[] | undefined,
+): boolean {
+  if (shotNumber !== 1) return false;
+  if (hole.par !== 4 && hole.par !== 5) return false;
+  const hasCoursePar = courseHoles?.some((c) => c.hole_number === hole.hole_number) ?? false;
+  if (!hasCoursePar && hole.par === 4) return false;
+  return true;
 }
 
 function scoreLabel(score: number, par: number) {
@@ -864,21 +887,38 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
   }
 
   async function updateClub(shotId: string, club: Club) {
-    // 先回り：圏外なら通信せず shot 部分更新をバッファへ。1W暫定順位（通信）も呼ばない。
-    if (isOffline()) {
-      void putShotUpdate({ id: shotId, club });
+    // 手動で番手を選んだ時点で「自動設定（パー4/5の第1打＝1W）」ではなくなる。
+    const applyLocal = () => {
       setHoles((prev) => prev.map((h) => ({
-        ...h, shots: h.shots.map((s) => s.id === shotId ? { ...s, club } : s),
+        ...h, shots: h.shots.map((s) => s.id === shotId ? { ...s, club, club_auto_set: false } : s),
       })));
+      setLastShot((prev) => (prev && prev.shotId === shotId ? { ...prev, club, clubAutoSet: false } : prev));
       setEditing(null);
+    };
+    // 先回り：圏外なら通信せず shot 部分更新をバッファへ。1W暫定順位（通信）も呼ばない。
+    // オフライン保存した直前のショット（本体がまだ端末バッファにあり未送信）も同様。
+    // サーバーに行が無く更新が空振りするため、バッファへ積んで本体の同期後に反映させる
+    // （sync.ts は shots 本体 → 部分更新の順で送る）。
+    const targetPendingOffline = lastShot?.shotId === shotId && lastShot.pendingOffline;
+    if (isOffline() || targetPendingOffline) {
+      void putShotUpdate({ id: shotId, club, club_auto_set: false });
+      applyLocal();
       return;
     }
     const supabase = createClient();
-    await supabase.from("shots").update({ club }).eq("id", shotId);
-    setHoles((prev) => prev.map((h) => ({
-      ...h, shots: h.shots.map((s) => s.id === shotId ? { ...s, club } : s),
-    })));
-    setEditing(null);
+    const { error } = await supabase.from("shots").update({ club, club_auto_set: false }).eq("id", shotId);
+    if (error) {
+      if (isNetworkFailure(error)) {
+        // 通信失敗：圏外時と同じく端末バッファへ積み、電波復帰時に同期する。
+        void putShotUpdate({ id: shotId, club, club_auto_set: false });
+        applyLocal();
+      } else {
+        console.error("[update-club] update error:", error.message);
+        setShotError(`番手の変更に失敗しました：${error.message}`);
+      }
+      return;
+    }
+    applyLocal();
 
     // 追加の副作用：1W タグ付け時だけ暫定順位を取得して小トースト表示。
     // 記録（上記 update）の後段で fire-and-forget。記録の成否・UIはブロックしない。
@@ -1379,13 +1419,19 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
     // id を端末側で先に決める。オンライン INSERT にもオフラインバッファにも
     // 同じ id を渡すことで、どちらの経路でも「直前の1件」を取り消せる。
     const shotId = crypto.randomUUID();
+    const shotNumber = currentHole.shots.length + 1;
+    // パー4・パー5の第1打は自動で1W（ドライバー）として保存する（判定は shouldAutoSetDriver）。
+    const clubAutoSet = shouldAutoSetDriver(shotNumber, currentHole, courseHoles);
+    const autoClub: string | null = clubAutoSet ? "1w" : null;
     const snapshot: LastShotMemo = {
       holeNumber: currentHole.hole_number,
-      shotNumber: currentHole.shots.length + 1,
+      shotNumber,
       distanceYards: dist.yards,
       distanceMeters: dist.meters,
       shotId,
       holeId,
+      club: autoClub,
+      clubAutoSet,
       pendingOffline: false,
     };
     // Eagerly show the feedback panel; idle reset is guaranteed by the finally below.
@@ -1419,6 +1465,8 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
             distance_meters: dist.meters,
             distance_yards: dist.yards,
             club_input_at: inputMode === "realtime" ? "当日" : "事後",
+            club: autoClub,
+            club_auto_set: clubAutoSet,
           }),
           new Promise<void>((r) => setTimeout(r, 2000)),
         ]);
@@ -1451,6 +1499,8 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
           distance_meters: dist.meters,
           distance_yards: dist.yards,
           club_input_at: inputMode === "realtime" ? "当日" : "事後",
+          club: autoClub,
+          club_auto_set: clubAutoSet,
           created_at: new Date().toISOString(),
         });
         setHoles((prev) =>
@@ -1463,7 +1513,8 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
                     {
                       id: shotId,
                       shot_number: snapshot.shotNumber,
-                      club: null,
+                      club: autoClub,
+                      club_auto_set: clubAutoSet,
                       distance_yards: dist.yards,
                       lie_type: null,
                       ball_shape: null,
@@ -1515,6 +1566,8 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
     try {
       if (target.pendingOffline) {
         await deletePendingShot(target.shotId);
+        // 「1W（自動）▸変更」で積んだ番手の変更も一緒に取り下げる（本体が無いと永久に再送待ちになる）。
+        await deletePendingShotUpdate(target.shotId);
       } else {
         if (isOffline()) {
           setShotError("オフラインでは取り消せません。電波が戻ってからやり直してください");
@@ -1874,6 +1927,7 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
             error={shotError}
             onUndoLastShot={handleUndoLastShot}
             undoing={undoingShot}
+            onChangeClub={(club) => { if (lastShot) void updateClub(lastShot.shotId, club); }}
           />
           {/* 同伴者を測る — 保存なしの計測専用モードに入る。
               DBには一切書かないのでオフラインでもそのまま使える。 */}
@@ -4142,7 +4196,7 @@ function ScoreTable({
 // ── IdleShotSection: collapsed-state entry + last-shot memo + club hint ──
 
 function IdleShotSection({
-  disabled, onStart, lastShot, error, onUndoLastShot, undoing,
+  disabled, onStart, lastShot, error, onUndoLastShot, undoing, onChangeClub,
 }: {
   disabled: boolean;
   onStart: () => void;
@@ -4150,7 +4204,11 @@ function IdleShotSection({
   error: string | null;
   onUndoLastShot: () => void;
   undoing: boolean;
+  onChangeClub: (club: Club) => void;
 }) {
+  // 番手の選択パネルの開閉。次の計測に入るとこのコンポーネントごと外れるため自然に閉じる。
+  const [clubPickerOpen, setClubPickerOpen] = useState(false);
+  const clubLabel = lastShot?.club ? (CLUB_LABELS[lastShot.club as Club] ?? lastShot.club) : null;
   return (
     <div className="space-y-1.5">
       {error && (
@@ -4165,6 +4223,44 @@ function IdleShotSection({
           <p className="text-center text-lg text-green-800 tabular-nums font-bold">
             ✅ 第{lastShot.shotNumber}打 {lastShot.distanceYards}ヤード（{lastShot.distanceMeters}m）を記録しました
           </p>
+          {/* 番手（パー4/5の第1打は自動で1W）。その場で付け替えられる。 */}
+          {clubLabel && (
+            <button
+              onClick={() => setClubPickerOpen((v) => !v)}
+              className={`block mx-auto text-base font-bold px-4 py-2 rounded-lg border transition-colors ${
+                clubPickerOpen
+                  ? "bg-green-700 border-green-700 text-white"
+                  : "bg-white border-green-400 text-green-800 hover:bg-green-100"
+              }`}
+            >
+              {clubLabel}{lastShot.clubAutoSet ? "（自動）" : ""}▸変更
+            </button>
+          )}
+          {clubLabel && clubPickerOpen && (
+            <div className="pt-1 pb-1 space-y-1.5">
+              {[WOOD_CLUBS, UTIL_CLUBS, IRON_CLUBS, WEDGE_CLUBS].map((row, i) => (
+                <div
+                  key={i}
+                  className="grid gap-1.5"
+                  style={{ gridTemplateColumns: `repeat(${row.length}, minmax(0, 1fr))` }}
+                >
+                  {row.map((c) => (
+                    <button
+                      key={c}
+                      onClick={() => { setClubPickerOpen(false); onChangeClub(c); }}
+                      className={`py-3 rounded-lg text-sm font-bold border transition-colors ${
+                        lastShot.club === c
+                          ? "bg-green-600 border-green-600 text-white"
+                          : "bg-white border-green-200 text-green-800 hover:bg-green-50"
+                      }`}
+                    >
+                      {CLUB_LABELS[c]}
+                    </button>
+                  ))}
+                </div>
+              ))}
+            </div>
+          )}
           <button
             onClick={onUndoLastShot}
             disabled={undoing}
@@ -4185,7 +4281,9 @@ function IdleShotSection({
         ⛳ 飛距離を測る
       </button>
       <p className="text-center text-base text-gray-500 mt-2">
-        使ったクラブは「スタッツ」画面で後から記録できます
+        パー4・パー5の第1打は自動で1W（ドライバー）として記録します。
+        <br />
+        番手は「スタッツ」画面で後から記録・変更できます
       </p>
     </div>
   );

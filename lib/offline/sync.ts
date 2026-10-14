@@ -71,6 +71,7 @@ export async function flush(supabase: SupabaseClient): Promise<void> {
       try {
         const payload: {
           club?: string | null;
+          club_auto_set?: boolean;
           lie_type?: string | null;
           ball_shape?: string | null;
           end_lat?: number | null;
@@ -79,6 +80,7 @@ export async function flush(supabase: SupabaseClient): Promise<void> {
           distance_yards?: number | null;
         } = {};
         if (su.club !== undefined) payload.club = su.club;
+        if (su.club_auto_set !== undefined) payload.club_auto_set = su.club_auto_set;
         if (su.lie_type !== undefined) payload.lie_type = su.lie_type;
         if (su.ball_shape !== undefined) payload.ball_shape = su.ball_shape;
         if (su.end_lat !== undefined) payload.end_lat = su.end_lat;

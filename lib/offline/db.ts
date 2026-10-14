@@ -38,6 +38,10 @@ export interface PendingShot {
   distance_meters: number | null;
   distance_yards: number | null;
   club_input_at: string | null;
+  // パー4/5の第1打の自動1W設定。任意項目にしているのは、この項目が無い時代に
+  // 端末へ溜まった未送信分もそのまま同期できるようにするため。
+  club?: string | null;
+  club_auto_set?: boolean;
   created_at: string;
 }
 
@@ -56,6 +60,7 @@ export interface PendingScoreUpdate {
 export interface PendingShotUpdate {
   id: string;
   club?: string | null;
+  club_auto_set?: boolean;
   lie_type?: string | null;
   ball_shape?: string | null;
   end_lat?: number | null;

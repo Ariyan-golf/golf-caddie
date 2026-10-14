@@ -132,6 +132,8 @@ export interface Shot {
   lie_horizontal: string | null;   // フラット / 爪先上がり / 爪先下がり
   note: string | null;             // 自由記述メモ（旧 notes とは別列）
   club_input_at: string | null;    // 当日 / 事後
+  // 20261014120000_add_club_auto_set_to_shots.sql
+  club_auto_set: boolean;          // true = パー4/5の第1打を自動で1Wにした / false = 手動選択または未設定
   // 20260629000000_add_soft_delete_and_distance_source.sql
   deleted_at: string | null;       // 論理削除タイムスタンプ（NULL = 生存）
   distance_source: DistanceSource; // gps（GPS計測）/ manual（手入力）。default 'gps'

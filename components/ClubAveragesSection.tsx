@@ -476,7 +476,8 @@ export function ClubAveragesSection({
     const supabase = createClient();
     const { error } = await supabase
       .from("shots")
-      .update({ club: newClub, club_input_at: "事後" })
+      // 手動で付け替えた時点で「自動設定（パー4/5の第1打＝1W）」ではなくなる。
+      .update({ club: newClub, club_input_at: "事後", club_auto_set: false })
       .eq("id", shot.id);
 
     if (error) {
@@ -503,6 +504,8 @@ export function ClubAveragesSection({
       // 既に "事後" を付けているのと挙動を揃え、初回割り当てだけ空になる食い違いを防ぐ。
       // （保存ボタンは番手選択時のみ活性なので、保存時は必ず club が入っている）
       club_input_at: "事後",
+      // 手動での番手割り当て（自動設定ではない）。
+      club_auto_set: false,
       ball_shape: draft.ball_shape ?? shot.ball_shape,
       ball_direction: draft.ball_direction ?? shot.ball_direction,
       lie_vertical: draft.lie_vertical ?? shot.lie_vertical,
