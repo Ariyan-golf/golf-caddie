@@ -1,10 +1,6 @@
 {
   "crons": [
     {
-      "path": "/api/cleanup-cancelled",
-      "schedule": "0 2 * * *"
-    },
-    {
       "path": "/api/cron/keepalive",
       "schedule": "0 3 * * *"
     }

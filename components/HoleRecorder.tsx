@@ -59,7 +59,6 @@ interface HoleRecorderProps {
   courseRating?: number | null;
   slopeRating?: number | null;
   courseHoles?: CourseHole[];
-  paymentStatus?: "pending" | "paid";
   golfCourseName?: string;
   inputMode?: "post_round" | "realtime";
   golfCourseId?: string | null;
@@ -228,7 +227,7 @@ function mergeRestoredHoles(server: Hole[], snap: ActiveRoundSnapshot | null): H
 
 // ── Main component ──────────────────────────────────────────────────
 
-export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "shot", windDirection, windSpeed, courseRating, slopeRating, courseHoles, paymentStatus = "paid", golfCourseName = "", inputMode = "post_round", golfCourseId = null, greenType = "main", initialGreenCenters = {}, pastView = false, roundDate = "", avgDriverYards = null, maxDriverYards = null }: HoleRecorderProps) {
+export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "shot", windDirection, windSpeed, courseRating, slopeRating, courseHoles, golfCourseName = "", inputMode = "post_round", golfCourseId = null, greenType = "main", initialGreenCenters = {}, pastView = false, roundDate = "", avgDriverYards = null, maxDriverYards = null }: HoleRecorderProps) {
   const betaMode = isBetaMode();
   const router = useRouter();
 
@@ -276,19 +275,6 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
   const [roundEndConfirmed, setRoundEndConfirmed] = useState(pastView);
   const [handicapDiff, setHandicapDiff] = useState<number | null>(null);
   const [confirmLoading, setConfirmLoading] = useState(false);
-  const [showPaymentModal, setShowPaymentModal] = useState(false);
-  const [payLoading, setPayLoading] = useState(false);
-  const [payError, setPayError] = useState("");
-  // 連打ガード：再レンダ前の同フレーム連打で二重決済リクエストが飛ばないよう、
-  // 同期的に判定できる ref を使う。
-  const payProcessingRef = useRef(false);
-  // 二重請求防止トークン：決済モーダルが開くたびに1つ生成し、閉じたら破棄する。
-  // 同じ試行のやり直し（連打・決済画面から戻っての再押下）では同じトークンを使い回し、
-  // API 側で冪等キーになる。再度モーダルを開けば新しいトークンになり別ラウンドの支払いは通る。
-  const paymentTokenRef = useRef<string>("");
-  useEffect(() => {
-    paymentTokenRef.current = showPaymentModal ? crypto.randomUUID() : "";
-  }, [showPaymentModal]);
   const [confirmEarlyEnd, setConfirmEarlyEnd] = useState(false);
   const [endedEarly, setEndedEarly] = useState(false);
   // 打数を新規入力したホールで、続けて開くパット入力が終わるまで待つ対象のホールID。
@@ -1745,35 +1731,9 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
     setConfirmLoading(false);
     setRoundEndConfirmed(true);
     if (!isRoundDone) setEndedEarly(true);
+    // 現在の全機能を無料で提供しているため、ラウンド終了時の決済案内は出さない。
     if (betaMode) {
       setShowBetaModal(true);
-    } else if (paymentStatus === "pending") {
-      setShowPaymentModal(true);
-    }
-  }
-
-  async function handlePayNow() {
-    if (payProcessingRef.current) return;
-    payProcessingRef.current = true;
-    setPayLoading(true);
-    setPayError("");
-    try {
-      const res = await fetch("/api/stripe/checkout-once", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ golf_course: golfCourseName, payment_token: paymentTokenRef.current }),
-      });
-      const data = await res.json();
-      if (data.url) {
-        window.location.href = data.url;
-      } else {
-        throw new Error(data.error ?? "no url");
-      }
-    } catch {
-      setPayError("決済の開始に失敗しました。もう一度お試しください。");
-      setPayLoading(false);
-    } finally {
-      payProcessingRef.current = false;
     }
   }
 
@@ -1801,21 +1761,11 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
           totalPar={totalPar}
           mode={mode}
           handicapDiff={handicapDiff}
-          paymentPending={!betaMode && paymentStatus === "pending"}
-          onPayNow={() => setShowPaymentModal(true)}
           pastView={pastView}
           onUpdateHole={handleUpdateHole}
           avgDriverYards={avgDriverYards}
           maxDriverYards={maxDriverYards}
         />
-        {!betaMode && showPaymentModal && (
-          <PaymentRequiredModal
-            onPay={handlePayNow}
-            onClose={() => setShowPaymentModal(false)}
-            loading={payLoading}
-            error={payError}
-          />
-        )}
         {betaMode && showBetaModal && (
           <BetaCompleteModal onClose={() => setShowBetaModal(false)} />
         )}
@@ -3565,7 +3515,7 @@ function FinalConfirmModal({
   );
 }
 
-// ── Beta-period completion modal (replaces payment modal while NEXT_PUBLIC_BETA_MODE=true) ─
+// ── Beta-period completion modal (shown while NEXT_PUBLIC_BETA_MODE=true) ─
 
 function BetaCompleteModal({ onClose }: { onClose: () => void }) {
   return (
@@ -3595,60 +3545,10 @@ function BetaCompleteModal({ onClose }: { onClose: () => void }) {
   );
 }
 
-// ── Payment required modal (post-pay round flow) ────────────────────
-
-function PaymentRequiredModal({
-  onPay, onClose, loading, error,
-}: {
-  onPay: () => void;
-  onClose: () => void;
-  loading: boolean;
-  error: string;
-}) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="bg-white rounded-2xl max-w-sm w-full p-6 space-y-4 shadow-xl">
-        <div className="text-center space-y-2">
-          <span className="text-4xl">💳</span>
-          <h2 className="text-lg font-bold text-green-800">決済のお願い</h2>
-        </div>
-        <p className="text-sm text-gray-700 leading-relaxed">
-          本日のラウンドデータを保存するには、<strong>本日23:59まで</strong>の決済が必要です。
-          未決済の場合、<strong>明日午前0:30にデータは自動削除</strong>されます。
-        </p>
-        <div className="bg-green-50 rounded-lg p-3 text-center">
-          <p className="text-xs text-green-700">ラウンド利用料</p>
-          <p className="text-2xl font-bold text-green-800">220円</p>
-        </div>
-        {error && (
-          <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
-            ⚠️ {error}
-          </p>
-        )}
-        <button
-          onClick={onPay}
-          disabled={loading}
-          className="w-full py-3 rounded-xl bg-green-600 hover:bg-green-700 active:bg-green-800
-                     text-white text-sm font-bold transition-colors disabled:opacity-60"
-        >
-          {loading ? "決済ページへ移動中..." : "今すぐ決済する"}
-        </button>
-        <button
-          onClick={onClose}
-          disabled={loading}
-          className="w-full text-xs text-gray-500 underline"
-        >
-          あとで決済する
-        </button>
-      </div>
-    </div>
-  );
-}
-
 // ── Round complete ──────────────────────────────────────────────────
 
 function RoundComplete({
-  holes, totalScore, totalPar, mode, handicapDiff, paymentPending, onPayNow,
+  holes, totalScore, totalPar, mode, handicapDiff,
   pastView = false, onUpdateHole, avgDriverYards = null, maxDriverYards = null,
 }: {
   holes: Hole[];
@@ -3656,8 +3556,6 @@ function RoundComplete({
   totalPar: number;
   mode: "shot" | "score";
   handicapDiff?: number | null;
-  paymentPending?: boolean;
-  onPayNow?: () => void;
   pastView?: boolean;
   onUpdateHole?: (holeId: string, update: Partial<Hole>) => Promise<void>;
   avgDriverYards?: number | null;
@@ -3919,25 +3817,6 @@ function RoundComplete({
           </p>
         )}
       </div>
-
-      {paymentPending && onPayNow && (
-        <div className="bg-amber-50 border-2 border-amber-300 rounded-2xl p-4 space-y-3">
-          <div className="flex items-start gap-2">
-            <span className="text-xl">⚠️</span>
-            <p className="text-sm text-amber-900 leading-relaxed">
-              <strong>未決済です。</strong>本日23:59までに決済を完了してください。
-              未決済の場合、明日午前0:30にこのラウンドのデータは自動削除されます。
-            </p>
-          </div>
-          <button
-            onClick={onPayNow}
-            className="w-full py-3 rounded-xl bg-amber-600 hover:bg-amber-700 active:bg-amber-800
-                       text-white text-sm font-bold transition-colors"
-          >
-            今すぐ220円を決済する
-          </button>
-        </div>
-      )}
 
       {handicapDiff != null && (
         <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-center space-y-1">

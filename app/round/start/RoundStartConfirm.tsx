@@ -60,7 +60,8 @@ export function RoundStartConfirm({
         date:           todayJST(),
         start_hole:     1,
         mode:           "score",
-        payment_status: "pending",
+        // 現在の全機能を無料で提供しているため、決済待ち（pending）では作らない。
+        payment_status: "paid",
         ...(tee ? {
           course_tee_id: tee.id,
           course_rating: tee.course_rating ?? null,
@@ -143,23 +144,6 @@ export function RoundStartConfirm({
         </dl>
       </div>
 
-      {/* 課金注意 */}
-      <div className="card space-y-3 border-2 border-amber-200 bg-amber-50">
-        <div className="flex items-start gap-3">
-          <span className="text-2xl flex-shrink-0">💳</span>
-          <div className="space-y-2">
-            <p className="font-semibold text-amber-900 text-sm">本日中の課金が必要です</p>
-            <p className="text-amber-800 text-sm leading-relaxed">
-              ラウンド終了後、<strong>本日23:59まで</strong>に決済を完了してください。
-              未課金の場合、<strong>翌日午前0:30に本ラウンドのデータは自動削除</strong>されます。
-            </p>
-            <p className="text-amber-700 text-xs">
-              利用料：220円（決済はラウンド終了後にご案内します）
-            </p>
-          </div>
-        </div>
-      </div>
-
       {error && (
         <div className="bg-red-50 border border-red-200 text-red-600 rounded-xl p-3 text-sm">
           {error}
@@ -172,7 +156,7 @@ export function RoundStartConfirm({
         className="w-full py-4 rounded-2xl bg-green-600 hover:bg-green-700 active:bg-green-800
                    text-white text-base font-bold transition-colors shadow-md disabled:opacity-60"
       >
-        {creating ? "作成中..." : "同意してラウンド開始"}
+        {creating ? "作成中..." : "ラウンド開始"}
       </button>
 
       <p className="text-center text-xs text-green-500">

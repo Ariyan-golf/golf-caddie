@@ -44,7 +44,7 @@ export function CancelButton() {
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 space-y-5">
             <h2 className="text-base font-bold text-gray-800">退会の確認</h2>
             <p className="text-sm text-gray-600 leading-relaxed">
-              退会してよろしいですか？退会後30日間は引き続きご利用いただけます。翌月の請求は発生しません。
+              退会してよろしいですか？退会後30日間は引き続きご利用いただけます。
             </p>
             <div className="flex gap-3">
               <button

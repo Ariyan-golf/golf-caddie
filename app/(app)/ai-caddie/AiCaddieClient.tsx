@@ -394,12 +394,11 @@ export function AiCaddieClient({ clubAverages, hasAccess, initialContext = null 
       {/* ② もっと詳しく */}
       {quickText && (
         <div className="space-y-3">
+          {/* 現在の全機能を無料で提供しているため hasAccess は常に true（lib/day-pass.ts の hasFullAccess）。
+              判定が false を返した場合の保険として、料金に触れない案内だけを残す。 */}
           {!hasAccess ? (
             <div className="card bg-amber-50 border-amber-200 text-center space-y-2 py-4">
-              <p className="text-sm font-semibold text-amber-800">🔒 詳細アドバイスはサブスク会員限定</p>
-              <p className="text-xs text-amber-700 leading-relaxed">
-                月額サブスク（330円/月）または当日のラウンド利用料でご利用いただけます。
-              </p>
+              <p className="text-sm font-semibold text-amber-800">詳細アドバイスは現在ご利用いただけません</p>
             </div>
           ) : (
             <>

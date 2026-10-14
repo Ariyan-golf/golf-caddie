@@ -16,9 +16,6 @@ import { isBetaMode } from "@/lib/betaMode";
 import { todayJST, jstDayStartISO, addDaysToDate } from "@/lib/day-pass";
 import { CLUB_LABELS, type Club } from "@/types";
 
-// v4: 無料体験は3ラウンドまで（app/(app)/round/new/page.tsx と同値）
-const FREE_ROUND_LIMIT = 3;
-
 export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
@@ -173,12 +170,8 @@ export default async function HomePage() {
         .limit(20),
     ]);
 
-  // v4: 月額サブスク会員かどうかの判定。
-  // standard は v4 で廃止済みだが既存ユーザー保護のためサブスク扱い。
-  const isSubscriber = profile?.plan === "premium" || profile?.plan === "premium_paid" || profile?.plan === "standard";
-  const roundCount = profile?.round_count ?? 0;
-  const remainingFree = Math.max(FREE_ROUND_LIMIT - roundCount, 0);
-  // ベータ中（プレオープン）は回数無制限・cronも停止のため、残りN/3や「30日閲覧」は表示しない。
+  // ベータ中（プレオープン）のみ「まもなく正式リリース」のお知らせを出す。
+  // 料金表示はベータの有無にかかわらず「現在の全機能を無料でご利用いただけます」で統一。
   const beta = isBetaMode();
 
   // ドライバー(1W)平均飛距離（生 shots を本人分で集計）。距離は distance_yards をそのまま使用。
@@ -344,42 +337,16 @@ export default async function HomePage() {
         {/* Score & putts bar graph */}
         <RoundBarGraph data={graphData} />
 
-        {/* Plan status (v4: 月額サブスク利用中 or 無料体験中) */}
-        {isSubscriber ? (
-          <div className="card bg-green-50 border-green-300">
-            <div className="flex items-center gap-3">
-              <span className="text-2xl">✅</span>
-              <div>
-                <p className="font-semibold text-green-800 text-sm">月額サブスク利用中</p>
-                <p className="text-xs text-green-600">全機能利用可・データ永続保持</p>
-              </div>
+        {/* Plan status: 現在の全機能を無料で提供 */}
+        <div className="card bg-green-50 border-green-300">
+          <div className="flex items-center gap-3">
+            <span className="text-2xl">✅</span>
+            <div>
+              <p className="font-semibold text-green-800 text-sm">現在の全機能を無料でご利用いただけます</p>
+              <p className="text-xs text-green-600">ラウンド数の上限やデータの自動削除はありません</p>
             </div>
           </div>
-        ) : (
-          <div className="card bg-amber-50 border-amber-200 space-y-3">
-            <div className="flex items-start gap-3">
-              <span className="text-2xl flex-shrink-0">⛳</span>
-              <div className="flex-1">
-                <p className="font-semibold text-amber-800 text-sm">{beta ? "プレオープン中" : "無料体験中"}</p>
-                <p className="text-xs text-amber-700 mt-0.5 leading-relaxed">
-                  {beta ? (
-                    "無制限でお試しいただけます"
-                  ) : (
-                    <>
-                      残り <span className="font-bold">{remainingFree}</span> / {FREE_ROUND_LIMIT} ラウンド・データはプレー日から30日間閲覧できます
-                    </>
-                  )}
-                </p>
-              </div>
-            </div>
-            <Link
-              href="/plan"
-              className="block w-full text-center py-2.5 rounded-xl bg-green-600 hover:bg-green-700 text-white text-sm font-semibold transition-colors"
-            >
-              月額サブスクに登録する（330円/月）→
-            </Link>
-          </div>
-        )}
+        </div>
 
         {/* Recent rounds */}
         <div className="card">
@@ -502,7 +469,7 @@ export default async function HomePage() {
         </Link>
 
         {/* Announcement Banner */}
-        {beta && !isSubscriber && (
+        {beta && (
           <div className="bg-gradient-to-r from-green-600 to-emerald-500 rounded-xl p-4 shadow-md space-y-3">
             <div className="flex gap-3 items-start">
               <span className="text-xl flex-shrink-0 mt-0.5">📢</span>
@@ -511,17 +478,11 @@ export default async function HomePage() {
                   まもなく正式リリース ― Coming Soon
                 </p>
                 <p className="text-green-100 text-xs leading-relaxed">
-                  現在はテスト期間中で無料でご利用いただけます。
+                  現在の全機能を無料でご利用いただけます。
                   <span className="font-semibold text-white">正式リリース日は公式SNSでお知らせします！</span>
                 </p>
               </div>
             </div>
-            <Link
-              href="/plan"
-              className="block w-full text-center bg-white text-green-700 font-semibold text-sm py-2.5 rounded-lg hover:bg-green-50 transition-colors"
-            >
-              プランを変更する →
-            </Link>
           </div>
         )}
 

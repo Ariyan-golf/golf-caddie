@@ -29,11 +29,14 @@ export function isSubscriber(plan: string | null | undefined): boolean {
   return plan === "premium" || plan === "premium_paid" || plan === "standard";
 }
 
-// サブスク会員 or 本日のday_pass を持っているか。
-// 1回ごとのround_payments課金は別軸なので呼び出し側で必要に応じて確認する。
-export function hasFullAccess(profile: {
+// 全機能を使えるかどうか（AIキャディ詳細・GPSアドバイス・ルール判定・AIマネージャーの判定に使用）。
+// 現在の全機能を無料で提供しているため、プランや day_pass に関係なく常に true を返す。
+// ベータモード（NEXT_PUBLIC_BETA_MODE）の有無にも依存しない。
+// 将来、有料の追加機能を設ける場合は、その機能専用の判定を別に用意すること
+// （この関数を有料判定に戻すと、現在無料の機能まで再びロックされる）。
+export function hasFullAccess(_profile: {
   plan?: string | null;
   day_pass_date?: string | null;
 }): boolean {
-  return isSubscriber(profile.plan) || hasActiveDayPass(profile.day_pass_date);
+  return true;
 }

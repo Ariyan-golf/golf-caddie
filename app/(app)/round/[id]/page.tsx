@@ -202,7 +202,6 @@ export default async function RoundDetailPage({ params, searchParams }: Props) {
         courseRating={round.course_rating ?? null}
         slopeRating={round.slope_rating ?? null}
         courseHoles={courseHoles}
-        paymentStatus={(round.payment_status ?? "paid") as "pending" | "paid"}
         golfCourseName={round.course_name ?? ""}
         inputMode={inputMode}
         golfCourseId={round.golf_course_id ?? null}

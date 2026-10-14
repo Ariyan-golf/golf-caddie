@@ -8,7 +8,18 @@ function todayJST(): string {
   const jstMs = now.getTime() + 9 * 60 * 60 * 1000;
   return new Date(jstMs).toISOString().slice(0, 10); }
 
+// 停止中：現在の全機能を無料で提供しているため、1日パス（220円/280円）の新規申し込みを受け付けない。
+// 画面のボタンも撤去済み。古い画面やURL直叩きからの申し込みもここで止める。
+const NEW_SIGNUPS_SUSPENDED = true;
+
 export async function POST(request: Request) {
+  if (NEW_SIGNUPS_SUSPENDED) {
+    return NextResponse.json(
+      { error: "現在の全機能を無料でご利用いただけます（新規のお申し込みは受け付けていません）" },
+      { status: 410 }
+    );
+  }
+
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

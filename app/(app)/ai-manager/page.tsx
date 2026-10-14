@@ -1,27 +1,8 @@
-import { createClient } from "@/lib/supabase/server";
-import { hasFullAccess } from "@/lib/day-pass";
-import { isBetaMode } from "@/lib/betaMode";
-import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { AiManagerClient } from "./AiManagerClient";
 
-export default async function AiManagerPage() {
-  const supabase = await createClient();
-  // middleware が認証検証済 → Cookie 読みのみの getSession() で高速化。
-  const { data: { session } } = await supabase.auth.getSession();
-  const user = session?.user ?? null;
-
-  const admin = createAdminClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
-  const { data: profile } = await admin
-    .from("profiles")
-    .select("plan, day_pass_date")
-    .eq("id", user!.id)
-    .single();
-
-  const canAccess = hasFullAccess(profile ?? {}) || isBetaMode();
-
+// 現在の全機能を無料で提供しているため、会員限定のロック表示は持たない。
+// （ベータモードの有無にかかわらず誰でも利用可。API 側の判定も lib/day-pass.ts の hasFullAccess で常に許可）
+export default function AiManagerPage() {
   return (
     <div className="max-w-lg mx-auto p-4 space-y-4">
       <div className="pt-4">
@@ -34,48 +15,7 @@ export default async function AiManagerPage() {
         </p>
       </div>
 
-      {canAccess ? (
-        <AiManagerClient />
-      ) : (
-        <PremiumGate />
-      )}
-    </div>
-  );
-}
-
-function PremiumGate() {
-  return (
-    <div className="card space-y-5 text-center py-8">
-      <div className="text-5xl">🔒</div>
-      <div className="space-y-2">
-        <h2 className="text-xl font-bold text-green-800">月額サブスク会員限定</h2>
-        <p className="text-base text-green-600 leading-relaxed">
-          AIマネージャーは月額サブスク会員（330円/月）のみご利用いただける機能です。
-        </p>
-      </div>
-      <div className="bg-green-50 rounded-xl p-4 text-left space-y-2">
-        <p className="text-base font-semibold text-green-700">月額サブスクの特典</p>
-        <ul className="space-y-1.5 text-base text-green-700">
-          <li className="flex items-center gap-2">
-            <span className="text-green-500">✓</span> AIマネージャー（コース情報案内）
-          </li>
-          <li className="flex items-center gap-2">
-            <span className="text-green-500">✓</span> 番手アドバイス（無制限）
-          </li>
-          <li className="flex items-center gap-2">
-            <span className="text-green-500">✓</span> スイング分析（無制限）
-          </li>
-          <li className="flex items-center gap-2">
-            <span className="text-green-500">✓</span> 全機能利用可・データ永続保持
-          </li>
-        </ul>
-      </div>
-      <a
-        href="/plan"
-        className="inline-block w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-3 rounded-xl text-base transition-colors"
-      >
-        月額サブスクに登録（330円/月）
-      </a>
+      <AiManagerClient />
     </div>
   );
 }
