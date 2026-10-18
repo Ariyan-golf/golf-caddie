@@ -71,6 +71,17 @@ function recalcStat(stat: ClubStat, shots: ShotRecord[]): ClubStat {
   };
 }
 
+// shots 更新結果の判定。成功なら null、失敗なら画面表示用の理由を返す。
+// RLS で弾かれた／対象が無い場合は error にならず更新0件で返るため、0件も失敗扱いにする。
+function updateFailureReason(
+  error: { message: string } | null,
+  rows: unknown[] | null
+): string | null {
+  if (error) return error.message;
+  if (!rows || rows.length === 0) return "対象のショットが見つからないか、権限がありません";
+  return null;
+}
+
 // shots 由来は削除API（API側で論理削除）、shot_distances 由来は本人RLSで直接 論理削除。
 async function deleteShot(shotId: string): Promise<boolean> {
   const res = await fetch("/api/stats/delete-shot", {
@@ -113,11 +124,13 @@ function ShotList({
   stat: ClubStat;
   onShotDeleted: (club: string, shotId: string) => void;
   // ラウンド分(source==='shot')の番手付け替え。未分類行などでは未指定＝付け替え不可。
-  onClubChange?: (fromClub: string, shot: ShotRecord, newClub: string) => Promise<boolean>;
+  // 成功なら null、失敗なら理由を返す。
+  onClubChange?: (fromClub: string, shot: ShotRecord, newClub: string) => Promise<string | null>;
 }) {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [errorId, setErrorId] = useState<string | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   async function handleDeleteShot(shot: ShotRecord) {
     if (!confirm("このショットデータを削除しますか？")) return;
@@ -137,9 +150,13 @@ function ShotList({
     if (!onClubChange || newClub === stat.club) return;
     setSavingId(shot.id);
     setErrorId(null);
-    const ok = await onClubChange(stat.club, shot, newClub);
+    setErrorMsg(null);
+    const reason = await onClubChange(stat.club, shot, newClub);
     setSavingId(null);
-    if (!ok) setErrorId(shot.id);
+    if (reason) {
+      setErrorId(shot.id);
+      setErrorMsg(reason);
+    }
   }
 
   if (stat.shots.length === 0) {
@@ -152,10 +169,8 @@ function ShotList({
         // 付け替えselectはラウンド分(source==='shot')かつ付け替え可の番手行のみ。
         const canChangeClub = !!onClubChange && shot.source === "shot";
         return (
-          <div
-            key={shot.id}
-            className="flex items-center gap-2 py-1 border-b border-green-50 last:border-0"
-          >
+          <div key={shot.id} className="py-1 border-b border-green-50 last:border-0">
+          <div className="flex items-center gap-2">
             <span className="text-xs text-green-400 tabular-nums w-10 shrink-0">
               {formatDate(shot.created_at)}
             </span>
@@ -184,9 +199,6 @@ function ShotList({
             {savingId === shot.id && (
               <span className="text-xs text-green-400 shrink-0">保存中</span>
             )}
-            {errorId === shot.id && savingId !== shot.id && (
-              <span className="text-xs text-red-500 shrink-0">失敗</span>
-            )}
             <button
               onClick={() => handleDeleteShot(shot)}
               disabled={deletingId === shot.id}
@@ -195,6 +207,10 @@ function ShotList({
             >
               {deletingId === shot.id ? "削除中" : "削除"}
             </button>
+          </div>
+          {errorId === shot.id && savingId !== shot.id && (
+            <p className="text-xs text-red-500 mt-1">保存に失敗しました：{errorMsg}</p>
+          )}
           </div>
         );
       })}
@@ -211,7 +227,7 @@ function ClubRow({
   stat: ClubStat;
   maxYards: number;
   onShotDeleted: (club: string, shotId: string) => void;
-  onClubChange: (fromClub: string, shot: ShotRecord, newClub: string) => Promise<boolean>;
+  onClubChange: (fromClub: string, shot: ShotRecord, newClub: string) => Promise<string | null>;
 }) {
   const [expanded, setExpanded] = useState(false);
   const label = CLUB_LABELS[stat.club as Club] ?? stat.club;
@@ -305,7 +321,7 @@ function ChipRow({
 // 編集中の値と各種 state（drafts / expanded / saving / deleting）は親
 // ClubAveragesSection が単一 state で保持し、本コンポーネントは表示と通知のみ担う。
 function UnassignedShotRow({
-  shot, draft, expanded, saving, deleting,
+  shot, draft, expanded, saving, deleting, saveError,
   onToggleExpand, onDraftChange, onSave, onDelete,
 }: {
   shot: UnassignedShot;
@@ -313,6 +329,7 @@ function UnassignedShotRow({
   expanded: boolean;
   saving: boolean;
   deleting: boolean;
+  saveError: string | null;
   onToggleExpand: () => void;
   onDraftChange: (patch: Partial<UnassignedShot>) => void;
   onSave: () => void;
@@ -406,6 +423,9 @@ function UnassignedShotRow({
           {deleting ? "削除中" : "削除"}
         </button>
       </div>
+      {saveError && !saving && (
+        <p className="text-xs text-red-500">保存に失敗しました：{saveError}</p>
+      )}
     </div>
   );
 }
@@ -429,6 +449,8 @@ export function ClubAveragesSection({
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [savingId, setSavingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  // 未分類ショットの保存失敗理由（ショットID → 理由）。
+  const [saveErrors, setSaveErrors] = useState<Record<string, string>>({});
 
   const totalClubs = stats.length;
   const recordedCount = stats.filter((s) => s.shot_count > 0).length;
@@ -449,12 +471,13 @@ export function ClubAveragesSection({
   }
 
   // ラウンド分(source==='shot')の番手付け替え。楽観更新＋失敗時ロールバック。
+  // 成功なら null、失敗なら理由を返す。
   async function handleClubChange(
     fromClub: string,
     shot: ShotRecord,
     newClub: string
-  ): Promise<boolean> {
-    if (newClub === fromClub) return true;
+  ): Promise<string | null> {
+    if (newClub === fromClub) return null;
     const snapshot = stats;
 
     // 楽観更新：元番手から外し、新番手へ移し、両番手を再計算。
@@ -474,18 +497,20 @@ export function ClubAveragesSection({
     );
 
     const supabase = createClient();
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from("shots")
       // 手動で付け替えた時点で「自動設定（パー4/5の第1打＝1W）」ではなくなる。
       .update({ club: newClub, club_input_at: "事後", club_auto_set: false })
-      .eq("id", shot.id);
+      .eq("id", shot.id)
+      .select("id");
 
-    if (error) {
-      console.error("[stats] club change error:", error.message);
+    const reason = updateFailureReason(error, data);
+    if (reason) {
+      console.error("[stats] club change error:", reason);
       setStats(snapshot);
-      return false;
+      return reason;
     }
-    return true;
+    return null;
   }
 
   // ── 未分類ショットの編集（旧 UnfilledShotsSection から移植）─────────────
@@ -497,6 +522,7 @@ export function ClubAveragesSection({
   async function saveUnassigned(shot: UnassignedShot) {
     const draft = drafts[shot.id] ?? {};
     setSavingId(shot.id);
+    setSaveErrors((prev) => { const n = { ...prev }; delete n[shot.id]; return n; });
     const supabase = createClient();
     const payload = {
       club: draft.club ?? shot.club,
@@ -512,10 +538,17 @@ export function ClubAveragesSection({
       lie_horizontal: draft.lie_horizontal ?? shot.lie_horizontal,
       note: draft.note ?? shot.note,
     };
-    const { error } = await supabase.from("shots").update(payload).eq("id", shot.id);
+    const { data, error } = await supabase
+      .from("shots")
+      .update(payload)
+      .eq("id", shot.id)
+      .select("id");
     setSavingId(null);
-    if (error) {
-      console.error("[unassigned] save error:", error.message);
+    // 失敗（error あり・更新0件）は画面に理由を出し、一覧からは消さない。
+    const reason = updateFailureReason(error, data);
+    if (reason) {
+      console.error("[unassigned] save error:", reason);
+      setSaveErrors((prev) => ({ ...prev, [shot.id]: reason }));
       return;
     }
     if (payload.club) {
@@ -606,6 +639,7 @@ export function ClubAveragesSection({
               expanded={!!expanded[shot.id]}
               saving={savingId === shot.id}
               deleting={deletingId === shot.id}
+              saveError={saveErrors[shot.id] ?? null}
               onToggleExpand={() => setExpanded((prev) => ({ ...prev, [shot.id]: !prev[shot.id] }))}
               onDraftChange={(patch) => setDraft(shot.id, patch)}
               onSave={() => saveUnassigned(shot)}
