@@ -892,7 +892,11 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
       return;
     }
     const supabase = createClient();
-    const { error } = await supabase.from("shots").update({ club, club_auto_set: false }).eq("id", shotId);
+    const { data, error } = await supabase
+      .from("shots")
+      .update({ club, club_auto_set: false })
+      .eq("id", shotId)
+      .select("id");
     if (error) {
       if (isNetworkFailure(error)) {
         // 通信失敗：圏外時と同じく端末バッファへ積み、電波復帰時に同期する。
@@ -902,6 +906,13 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
         console.error("[update-club] update error:", error.message);
         setShotError(`番手の変更に失敗しました：${error.message}`);
       }
+      return;
+    }
+    // RLS で弾かれた／対象が無い場合は error にならず更新0件で返るため、失敗として扱う。
+    // 画面の番手は applyLocal 前なので変更前のまま。1W暫定順位も呼ばない。
+    if (!data || data.length === 0) {
+      console.error("[update-club] update error: 0 rows updated", shotId);
+      setShotError("番手の変更に失敗しました：対象のショットが見つからないか、権限がありません");
       return;
     }
     applyLocal();
