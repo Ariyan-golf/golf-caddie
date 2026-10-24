@@ -21,6 +21,9 @@ export interface ClubShotRecord {
   distance_meters: number;
   created_at: string;
   source: "shot" | "distance";
+  // ラウンドのショット（source==='shot'）のみ。距離計測（shot_distances）はコース・ホールを持たないので null。
+  course_name: string | null;
+  hole_number: number | null;
 }
 
 export interface ClubStat {
@@ -47,7 +50,7 @@ export async function getClubStats(
   const [shotsRes, distancesRes] = await Promise.all([
     supabase
       .from("shots")
-      .select("id, club, distance_yards, distance_meters, created_at, holes!inner(rounds!inner(user_id))")
+      .select("id, club, distance_yards, distance_meters, created_at, holes!inner(hole_number, rounds!inner(user_id, course_name))")
       .eq("holes.rounds.user_id", userId)
       .not("club", "is", null)
       .not("distance_meters", "is", null)
@@ -69,6 +72,8 @@ export async function getClubStats(
     distance_yards: number | null;
     distance_meters: number | null;
     created_at: string;
+    // shots のみ（holes→rounds の埋め込み）。shot_distances には無い。
+    holes?: { hole_number: number; rounds: { course_name: string } | null } | null;
   };
 
   const pushRecords = (rows: RawRow[], source: "shot" | "distance") => {
@@ -82,11 +87,14 @@ export async function getClubStats(
         distance_meters: Number(row.distance_meters),
         created_at: row.created_at,
         source,
+        course_name: row.holes?.rounds?.course_name ?? null,
+        hole_number: row.holes?.hole_number ?? null,
       });
     }
   };
 
-  pushRecords((shotsRes.data ?? []) as RawRow[], "shot");
+  // 埋め込み（holes→rounds）は多対一なので実データは単一オブジェクト。推論型は配列になるため unknown 経由で変換。
+  pushRecords((shotsRes.data ?? []) as unknown as RawRow[], "shot");
   pushRecords((distancesRes.data ?? []) as RawRow[], "distance");
 
   // CLUBS の並び順で全番手を返す。各番手内は新しい順。

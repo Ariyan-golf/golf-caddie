@@ -13,11 +13,20 @@ export async function DELETE(req: Request) {
   // RLS enforces ownership via holes→rounds.user_id, so an explicit user_id
   // filter is not possible (shots has no user_id column). RLS will silently
   // drop attempts to update other users' shots.
-  const { error } = await supabase
+  // RLS で弾かれた／対象が無い場合は error にならず更新0件で返るため、
+  // .select("id") で更新件数を確かめ、0件も失敗として返す。
+  const { data, error } = await supabase
     .from("shots")
     .update({ deleted_at: new Date().toISOString() })
-    .eq("id", shotId);
+    .eq("id", shotId)
+    .select("id");
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (!data || data.length === 0) {
+    return NextResponse.json(
+      { error: "対象のショットが見つからないか、権限がありません" },
+      { status: 404 },
+    );
+  }
   return NextResponse.json({ ok: true });
 }

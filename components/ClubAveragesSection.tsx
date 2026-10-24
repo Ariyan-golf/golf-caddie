@@ -42,6 +42,9 @@ interface ShotRecord {
   distance_meters: number;
   created_at: string;
   source: "shot" | "distance";
+  // ラウンドのショットのみ。距離計測（source==='distance'）は null。
+  course_name: string | null;
+  hole_number: number | null;
 }
 
 interface ClubStat {
@@ -83,22 +86,30 @@ function updateFailureReason(
 }
 
 // shots 由来は削除API（API側で論理削除）、shot_distances 由来は本人RLSで直接 論理削除。
-async function deleteShot(shotId: string): Promise<boolean> {
-  const res = await fetch("/api/stats/delete-shot", {
-    method: "DELETE",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ shotId }),
-  });
-  return res.ok;
+// どちらも成功なら null、失敗なら画面表示用の理由を返す（更新0件も失敗）。
+async function deleteShot(shotId: string): Promise<string | null> {
+  try {
+    const res = await fetch("/api/stats/delete-shot", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ shotId }),
+    });
+    if (res.ok) return null;
+    const body = (await res.json().catch(() => null)) as { error?: string } | null;
+    return body?.error ?? `通信エラー（${res.status}）`;
+  } catch {
+    return "通信できませんでした";
+  }
 }
 
-async function deleteDistance(id: string): Promise<boolean> {
+async function deleteDistance(id: string): Promise<string | null> {
   const supabase = createClient();
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("shot_distances")
     .update({ deleted_at: new Date().toISOString() })
-    .eq("id", id);
-  return !error;
+    .eq("id", id)
+    .select("id");
+  return updateFailureReason(error, data);
 }
 
 function SourceTag({ source }: { source: "shot" | "distance" }) {
@@ -135,12 +146,21 @@ function ShotList({
   async function handleDeleteShot(shot: ShotRecord) {
     if (!confirm("このショットデータを削除しますか？")) return;
     setDeletingId(shot.id);
+    setErrorId(null);
+    setErrorMsg(null);
     try {
-      const ok =
+      const reason =
         shot.source === "distance"
           ? await deleteDistance(shot.id)
           : await deleteShot(shot.id);
-      if (ok) onShotDeleted(stat.club, shot.id);
+      // 失敗（エラー・更新0件）は理由を出し、一覧からは消さない。
+      if (reason) {
+        console.error("[stats] delete error:", reason);
+        setErrorId(shot.id);
+        setErrorMsg(`削除に失敗しました：${reason}`);
+        return;
+      }
+      onShotDeleted(stat.club, shot.id);
     } finally {
       setDeletingId(null);
     }
@@ -155,7 +175,7 @@ function ShotList({
     setSavingId(null);
     if (reason) {
       setErrorId(shot.id);
-      setErrorMsg(reason);
+      setErrorMsg(`保存に失敗しました：${reason}`);
     }
   }
 
@@ -208,8 +228,15 @@ function ShotList({
               {deletingId === shot.id ? "削除中" : "削除"}
             </button>
           </div>
-          {errorId === shot.id && savingId !== shot.id && (
-            <p className="text-xs text-red-500 mt-1">保存に失敗しました：{errorMsg}</p>
+          {/* どのラウンドの記録か見分けられるよう、コース名とホール番号を添える（距離計測分は無し）。 */}
+          {shot.course_name && (
+            <p className="text-[11px] text-green-400 mt-0.5 truncate">
+              {shot.course_name}
+              {shot.hole_number != null && ` H${shot.hole_number}`}
+            </p>
+          )}
+          {errorId === shot.id && savingId !== shot.id && deletingId !== shot.id && (
+            <p className="text-xs text-red-500 mt-1">{errorMsg}</p>
           )}
           </div>
         );
@@ -423,8 +450,9 @@ function UnassignedShotRow({
           {deleting ? "削除中" : "削除"}
         </button>
       </div>
-      {saveError && !saving && (
-        <p className="text-xs text-red-500">保存に失敗しました：{saveError}</p>
+      {/* 保存・削除の失敗理由（文言の頭に「保存に失敗」「削除に失敗」を含む）。 */}
+      {saveError && !saving && !deleting && (
+        <p className="text-xs text-red-500">{saveError}</p>
       )}
     </div>
   );
@@ -548,7 +576,7 @@ export function ClubAveragesSection({
     const reason = updateFailureReason(error, data);
     if (reason) {
       console.error("[unassigned] save error:", reason);
-      setSaveErrors((prev) => ({ ...prev, [shot.id]: reason }));
+      setSaveErrors((prev) => ({ ...prev, [shot.id]: `保存に失敗しました：${reason}` }));
       return;
     }
     if (payload.club) {
@@ -563,12 +591,17 @@ export function ClubAveragesSection({
   async function deleteUnassigned(shot: UnassignedShot) {
     if (!confirm("このショットデータを削除しますか？")) return;
     setDeletingId(shot.id);
-    const ok = await deleteShot(shot.id);
+    setSaveErrors((prev) => { const n = { ...prev }; delete n[shot.id]; return n; });
+    const reason = await deleteShot(shot.id);
     setDeletingId(null);
-    if (ok) {
-      setUnassigned((prev) => prev.filter((x) => x.id !== shot.id));
-      setDrafts((prev) => { const n = { ...prev }; delete n[shot.id]; return n; });
+    // 失敗（エラー・更新0件）は理由を出し、一覧からは消さない。
+    if (reason) {
+      console.error("[unassigned] delete error:", reason);
+      setSaveErrors((prev) => ({ ...prev, [shot.id]: `削除に失敗しました：${reason}` }));
+      return;
     }
+    setUnassigned((prev) => prev.filter((x) => x.id !== shot.id));
+    setDrafts((prev) => { const n = { ...prev }; delete n[shot.id]; return n; });
   }
 
   // 記録済みが0件のときだけ従来どおり全番手を最初から表示（空カード回避）。
@@ -584,7 +617,7 @@ export function ClubAveragesSection({
           {recordedCount} / {totalClubs} 番手 記録済み
         </span>
       </div>
-      <p className="text-xs text-green-400 mb-3">番手をタップすると個別記録が開きます</p>
+      <p className="text-xs text-green-400 mb-3">番手をタップすると、個別記録の確認・削除ができます</p>
       <div className="space-y-3">
         {recordedRows.map((stat) => (
           <ClubRow

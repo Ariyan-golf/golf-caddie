@@ -162,12 +162,13 @@ export async function GET(
     return NextResponse.json({ ok: true, event: eventInfo, holes: emptyHoles });
   }
 
-  // 4. 1w ショット（対象ラウンドのみ）。hole_number は holes 埋め込みから取得。
+  // 4. 1w ショット（対象ラウンドのみ・論理削除済みは除外）。hole_number は holes 埋め込みから取得。
   const { data: shots } = await admin
     .from("shots")
     .select("shot_number, distance_yards, round_id, holes!inner(hole_number)")
     .eq("club", "1w")
-    .in("round_id", roundIds);
+    .in("round_id", roundIds)
+    .is("deleted_at", null);
 
   interface ShotLike {
     shot_number:    number;
