@@ -320,6 +320,13 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
     shotModeRef.current = shotMode;
   }, [shotMode]);
 
+  // 計測途中の地点はホールごとに端末保存するため、タイマーや保存完了後の処理から
+  // 「今表示中のホール」を最新値で参照できるようにする（selectHole でも即時更新）。
+  const holeNumberRef = useRef(currentHoleNumber);
+  useEffect(() => {
+    holeNumberRef.current = currentHoleNumber;
+  }, [currentHoleNumber]);
+
   // 「打つ前」押下後2秒間はGPS精度安定化のために startPosition を確定させない
   // GPS精度±14mの状態で startPosition を記録すると、その後の位置取得との
   // 直線距離計算で 8〜14m の誤差が初期値として出てしまうため
@@ -328,6 +335,16 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
   const latestShotPositionRef  = useRef<GpsPoint | null>(null);
   const startPositionRef       = useRef<{ lat: number; lng: number } | null>(null);
   const startReadyRef          = useRef<boolean>(false);
+
+  // 計測地点の15分期限（「打つ前」で地点を登録した時刻が起点）。lib/gps の watch
+  // タイマーは張り直すたびに15分から数え直すため、ホール切替・再読込・取り消しから
+  // 復元した計測はこちらで「最初の登録時刻からの残り時間」を数える。
+  const inflightDeadlineTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const inflightStartedAtRef     = useRef<number | null>(null);
+
+  // キャンセル直後の「元に戻す」用に約10秒だけ手元に残す地点（端末保存からは外してある）。
+  const [cancelUndo, setCancelUndo] = useState<{ holeNumber: number; entry: DmInflightEntry } | null>(null);
+  const cancelUndoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Per-hole green direction (absolute heading 0-359°). Keyed by hole number;
   // automatically "cleared" on hole switch because the key just isn't present yet
@@ -451,43 +468,18 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
     return () => {
       clearShotStartGraceTimer();
       stopShotWatch();
+      if (cancelUndoTimerRef.current) clearTimeout(cancelUndoTimerRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // A: バックグラウンドでページが破棄→再読込されたとき、保存済みの計測途中状態
-  // （始点・shotMode）を復元する。今読み込んでいる round / hole が一致し、かつ
-  // startedAt から15分以内（既存 resolveShotTimeoutMs と同じ猶予）のときだけ復元。
-  // 条件に合わなければ（別round / 別hole / 期限切れ）キーを削除して復元しない。
+  // A: バックグラウンドでページが破棄→再読込されたとき、保存済みの計測途中状態を
+  // 復元する。先に別ラウンドのデータと15分を過ぎた地点をまとめて捨て、今表示する
+  // ホールに地点が残っていれば計測中の画面に戻す（ホール切替時の復元は selectHole）。
   // マウント時に一度だけ実行。
   useEffect(() => {
-    const inflight = readDmInflight();
-    if (!inflight) return;
-
-    const sameRound = inflight.roundId === roundId;
-    const sameHole = inflight.holeNumber === currentHoleNumber;
-    const withinWindow = Date.now() - inflight.startedAt <= getShotWatchTimeoutMs();
-
-    if (!sameRound || !sameHole || !withinWindow) {
-      clearDmInflight();
-      return;
-    }
-
-    // 始点確定済みの状態に戻す（復元後は2秒猶予は不要なので startReadyRef を立てる）。
-    startPositionRef.current = inflight.start;
-    startReadyRef.current = true;
-    latestShotPositionRef.current = null;
-    setDmStart(inflight.start);
-    setDmEnd(null);
-    setDmDistance({ yards: 0, meters: 0 });
-    setShotNextAction("after");
-    setShotMode("recording");
-
-    // 計測を続けられるよう GPS監視と Wake Lock を張り直す。
-    // 二重 watch は startShotWatch 内の再入ガード、Wake Lock 二重取得は
-    // lib/wakeLock の tryAcquire ガードが防ぐ。
-    beginShotWatch();
-    void acquireWakeLock();
+    pruneDmInflight(roundId);
+    restoreInflight(currentHoleNumber);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -521,6 +513,12 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
       if (document.visibilityState !== "visible") return;
       if (shotModeRef.current !== "recording") return;
       if (!startReadyRef.current || !startPositionRef.current) return;
+      // 画面OFFの間に登録から15分を過ぎていたら、張り直さずに計測を破棄する。
+      const startedAt = inflightStartedAtRef.current;
+      if (startedAt !== null && isInflightExpired(startedAt)) {
+        expireShotMeasure();
+        return;
+      }
       // startShotWatch 内の再入ガードで重複 watch にはならない。
       beginShotWatch();
       void acquireWakeLock();
@@ -590,6 +588,7 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
 
   // 2秒待機タイマーと関連 ref をまとめて掃除するヘルパー。
   // handleCancelShot / selectHole / unmount / 15分タイムアウト等から呼ぶ。
+  // 計測の後始末なので、15分期限タイマーもここで畳む（地点の端末保存は消さない）。
   function clearShotStartGraceTimer() {
     if (shotStartGraceTimerRef.current) {
       clearTimeout(shotStartGraceTimerRef.current);
@@ -598,6 +597,26 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
     latestShotPositionRef.current = null;
     startPositionRef.current = null;
     startReadyRef.current = false;
+    clearInflightDeadline();
+  }
+
+  // 15分期限タイマーを「登録時刻 startedAt からの残り時間」で張る。
+  function armInflightDeadline(startedAt: number) {
+    clearInflightDeadline();
+    inflightStartedAtRef.current = startedAt;
+    const remaining = Math.max(0, startedAt + getShotWatchTimeoutMs() - Date.now());
+    inflightDeadlineTimerRef.current = setTimeout(() => {
+      inflightDeadlineTimerRef.current = null;
+      expireShotMeasure();
+    }, remaining);
+  }
+
+  function clearInflightDeadline() {
+    if (inflightDeadlineTimerRef.current) {
+      clearTimeout(inflightDeadlineTimerRef.current);
+      inflightDeadlineTimerRef.current = null;
+    }
+    inflightStartedAtRef.current = null;
   }
 
   // 15分タイムアウトのトーストを3秒で自動消去。
@@ -1148,11 +1167,12 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
   }, [currentHoleNumber]);
 
   function selectHole(n: number) {
-    // Drop uncommitted shot state + collapse the recording panel
-    // ホール切替時に watch / 2秒待機タイマーが走っていれば停止（測定中の切替を許す）。
+    // Collapse the recording panel. 計測中にホールを切り替えても（誤タップ対策で）
+    // 地点の端末保存は消さず、watch / 2秒待機タイマーだけ止める。戻ってきたら下の
+    // restoreInflight で計測を再開する。2秒待機中（始点未確定）の計測は保存前なので破棄。
     clearShotStartGraceTimer();
     stopShotWatch();
-    clearDmInflight();
+    discardCancelUndo();
     setDmStart(null);
     setDmEnd(null);
     setDmDistance(null);
@@ -1167,6 +1187,9 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
     setRemainingDistanceError(null);
     setRemainingDistanceLoading(false);
     setCurrentHoleNumber(n);
+    holeNumberRef.current = n;
+    // 切替先のホールに15分以内の地点があれば計測中の画面に戻す。
+    restoreInflight(n);
   }
 
   function handleEnterRecordingMode() {
@@ -1196,7 +1219,16 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
     // ペア未完了でキャンセルされたケースに備え watch / 2秒待機タイマーを必ず停止。
     clearShotStartGraceTimer();
     stopShotWatch();
-    clearDmInflight();
+    // 自分の計測で地点を登録済みなら、端末保存からは外しつつ約10秒だけ手元に残し、
+    // 「元に戻す」で再開できるようにする（誤タップ対策）。同伴者の計測は保存しないので対象外。
+    // 「打った後」の終点待ち中（dmLoading==="end"）は保存がそのまま進むため、戻すと
+    // 同じ地点で二重に記録できてしまう。この間のキャンセルでは「元に戻す」を出さない。
+    if (!guestMeasuring) {
+      const holeNumber = holeNumberRef.current;
+      const entry = getHoleInflight(roundId, holeNumber);
+      clearHoleInflight(roundId, holeNumber);
+      if (entry && dmLoading !== "end") holdCancelUndo(holeNumber, entry);
+    }
     setDmStart(null);
     setDmEnd(null);
     setDmDistance(null);
@@ -1206,10 +1238,84 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
     setGuestMeasuring(false);
   }
 
+  // ── キャンセルの取り消し（約10秒）──────────────────────────────────
+  function holdCancelUndo(holeNumber: number, entry: DmInflightEntry) {
+    discardCancelUndo();
+    setCancelUndo({ holeNumber, entry });
+    cancelUndoTimerRef.current = setTimeout(() => {
+      cancelUndoTimerRef.current = null;
+      setCancelUndo(null);
+    }, CANCEL_UNDO_MS);
+  }
+
+  // 「元に戻す」を消す（地点は端末保存から既に外してあるので、これで完全に消える）。
+  function discardCancelUndo() {
+    if (cancelUndoTimerRef.current) {
+      clearTimeout(cancelUndoTimerRef.current);
+      cancelUndoTimerRef.current = null;
+    }
+    setCancelUndo(null);
+  }
+
+  function handleUndoCancel() {
+    const pending = cancelUndo;
+    discardCancelUndo();
+    if (!pending || pending.holeNumber !== holeNumberRef.current) return;
+    if (isInflightExpired(pending.entry.startedAt)) {
+      setShotTimeoutToast("15分経過したので計測をリセットしました");
+      return;
+    }
+    saveHoleInflight(roundId, pending.holeNumber, pending.entry);
+    restoreInflight(pending.holeNumber);
+  }
+
+  // 指定ホールに端末保存した地点（15分以内）があれば、始点確定済みの計測中状態に戻す。
+  // 再読込からの復元（マウント時）・ホール切替（selectHole）・キャンセルの取り消しで共通。
+  function restoreInflight(holeNumber: number): boolean {
+    const inflight = getHoleInflight(roundId, holeNumber);
+    if (!inflight) return false;
+
+    // 復元後は2秒猶予は不要なので startReadyRef を立てる。
+    startPositionRef.current = inflight.start;
+    startReadyRef.current = true;
+    latestShotPositionRef.current = null;
+    setDmStart(inflight.start);
+    setDmEnd(null);
+    setDmDistance({ yards: 0, meters: 0 });
+    setShotNextAction("after");
+    setShotMode("recording");
+    setDmLoading("idle");
+
+    // 15分は最初に地点を登録した時刻から数える（復元のたびに数え直さない）。
+    armInflightDeadline(inflight.startedAt);
+    // 計測を続けられるよう GPS監視と Wake Lock を張り直す。
+    // 二重 watch は startShotWatch 内の再入ガード、Wake Lock 二重取得は
+    // lib/wakeLock の tryAcquire ガードが防ぐ。
+    beginShotWatch();
+    void acquireWakeLock();
+    return true;
+  }
+
+  // 15分経過 → 押し忘れと判定して計測を破棄し、そのホールの保存地点も消す。
+  // lib/gps の watch タイマー（onTimeout）と、登録時刻起点の期限タイマーの両方から呼ぶ。
+  function expireShotMeasure() {
+    stopShotWatch();
+    clearShotStartGraceTimer();
+    clearHoleInflight(roundId, holeNumberRef.current);
+    setDmStart(null);
+    setDmEnd(null);
+    setDmDistance(null);
+    setShotNextAction("before");
+    setShotMode("idle");
+    setDmLoading("idle");
+    setGuestMeasuring(false);
+    setShotTimeoutToast("15分経過したので計測をリセットしました");
+  }
+
   // pair-scoped watchPosition を標準ハンドラで開く共通処理。
-  // 新規計測（handleShotStart）・再読込からの復元（マウント時）・visibilitychange
+  // 新規計測（handleShotStart）・復元（restoreInflight）・visibilitychange
   // からの再開で同一ロジックを使うために切り出した（挙動は従来の inline と同じ。
-  // onTimeout に clearDmInflight を追加した点のみ新規＝計測破棄時の保存も消す）。
+  // onTimeout は expireShotMeasure＝計測破棄時にそのホールの保存地点も消す）。
   // startShotWatch 内に再入ガードがあるため、既に watch が走っていれば張り直す。
   function beginShotWatch(): boolean {
     return startShotWatch({
@@ -1231,18 +1337,12 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
         });
       },
       onTimeout: () => {
-        // 15分経過 → 押し忘れと判定して計測を破棄。
-        // 15分カウントは「打つ前」押下時刻が起点（2秒待機含む）。
-        clearShotStartGraceTimer();
-        clearDmInflight();
-        setDmStart(null);
-        setDmEnd(null);
-        setDmDistance(null);
-        setShotNextAction("before");
-        setShotMode("idle");
-        setDmLoading("idle");
-        setGuestMeasuring(false);
-        setShotTimeoutToast("15分経過したので計測をリセットしました");
+        // 地点を登録済み（期限タイマーあり）なら、期限は登録時刻起点のタイマーに任せる。
+        // watch タイマーは「打つ前」押下（登録の2秒前）や再開のたびに15分から数え直すため。
+        // watch はここで既に止まっているが、期限までの残りは最大でも2秒程度。
+        if (inflightDeadlineTimerRef.current !== null) return;
+        // 期限タイマーが無い計測（同伴者の計測）は従来どおり15分で破棄。
+        expireShotMeasure();
       },
     });
   }
@@ -1253,7 +1353,9 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
     // 直線距離計算で 8〜14m の誤差が初期値として出てしまうため
     // 2秒待機して GPS が安定した位置を起点とすることで、正確な飛距離を測定する
     clearShotStartGraceTimer();
-    clearDmInflight();
+    clearHoleInflight(roundId, holeNumberRef.current);
+    // 新しく「打つ前」を押したら、キャンセルした地点の「元に戻す」は完全に消す。
+    discardCancelUndo();
     setDmLoading("start");
     setDmStart(null);
     setDmEnd(null);
@@ -1296,20 +1398,20 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
       startReadyRef.current = true;
       setDmStart(start);
       setDmLoading("idle");
-      // A: 始点確定 → 端末に保存。ポケットで画面が消える→ページ破棄→再読込で
-      // 揮発する始点を、復帰時にこのキーから復元して計測を再開する。
+      // A: 始点確定 → ラウンド・ホールごとに端末へ保存。ページ破棄→再読込や
+      // 誤ったホール切替で揮発する始点を、同じホールに戻ったとき復元して計測を再開する。
       // 同伴者の計測中は保存しない：復元後は「同伴者の計測中」という文脈が
       // 失われ、続きの「打った後」が自分のショットとして保存されてしまうため。
       // （同伴者の計測は保存が目的ではないので、途中で消えても実害はない）
       if (currentHole && !guestMeasuring) {
-        saveDmInflight({
-          roundId,
+        const startedAt = Date.now();
+        saveHoleInflight(roundId, currentHole.hole_number, {
           holeId: currentHole.id,
-          holeNumber: currentHole.hole_number,
           start,
-          startedAt: Date.now(),
-          shotMode: "recording",
+          startedAt,
         });
+        // 15分期限は、この登録時刻から数える。
+        armInflightDeadline(startedAt);
       }
     }, 2000);
   }
@@ -1332,16 +1434,23 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
     }
     if (!dmStart) return;
     const start = dmStart;
+    // 終点の確定を待つ間（最大10秒）にホールを切り替えられても、この計測の
+    // 後始末は計測したホールに対して行う。
+    const holeNumber = holeNumberRef.current;
     setDmLoading("end");
     try {
-      // ライブ計測終了 → watch を停止して電池を節約。
+      // ライブ計測終了 → watch を停止して電池を節約。終点待ちの間に15分期限で
+      // 計測が破棄されないよう、期限タイマーも畳む（地点の端末保存は確定まで残す）。
       stopShotWatch();
+      clearInflightDeadline();
       // 仕様書 v1.3 章6: 飛距離測定の終点は accuracy ≤ 5m を確定条件にする。
       // 10秒待っても達しなければショットペアを破棄して再計測を促す。
       const fix = await awaitHighAccuracyFix();
       if (!fix) {
         // ペア破棄 → 保存済み始点も消す（復帰で陳腐な計測を復元しないため）。
-        clearDmInflight();
+        clearHoleInflight(roundId, holeNumber);
+        // 待っている間に別ホールへ切り替えていたら、そちらの表示（復元した計測など）は触らない。
+        if (holeNumberRef.current !== holeNumber) return;
         setDmStart(null);
         setDmEnd(null);
         setDmDistance(null);
@@ -1361,8 +1470,9 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
       setDmDistance(dist);
 
       // 同伴者の計測：DBには一切書かず、数字だけ全画面で見せて終わる。
+      // 待っている間に別ホールへ切り替えていたら（同伴者の計測は切替で終了済み）何もしない。
       if (guestMeasuring) {
-        finishGuestMeasure(dist);
+        if (holeNumberRef.current === holeNumber) finishGuestMeasure(dist);
         return;
       }
 
@@ -1383,9 +1493,9 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
     setGuestResult({ yards: dist.yards, meters: dist.meters });
     // 自分のショットと同じ後始末（watch 停止・計測状態のリセット）。
     // lastShot（＝自分の「直前のショット」表示）は触らない。
+    // 同伴者の計測は地点を端末保存しないので、保存の後始末は不要。
     clearShotStartGraceTimer();
     stopShotWatch();
-    clearDmInflight();
     setDmStart(null);
     setDmEnd(null);
     setDmDistance(null);
@@ -1533,18 +1643,21 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
         setLastShot(null);
         setShotError(insertErrMsg ? `保存に失敗しました：${insertErrMsg}` : "保存に失敗しました");
       }
+      // 計測完了（成功・失敗いずれも）→ 計測したホールの保存済み始点を消す。
+      clearHoleInflight(roundId, snapshot.holeNumber);
+      setConfirmingShot(false);
       // ALWAYS unwind to idle so the user is never stuck on the panel.
       // 念のため watch / 2秒待機 ref を再度クリア（handleShotEnd で既に止めているはず）。
-      // 計測完了（成功・失敗いずれも）→ 保存済み始点を消す。
-      clearShotStartGraceTimer();
-      stopShotWatch();
-      clearDmInflight();
-      setDmStart(null);
-      setDmEnd(null);
-      setDmDistance(null);
-      setShotNextAction("before");
-      setConfirmingShot(false);
-      setShotMode("idle");
+      // 保存待ちの間に別ホールへ切り替えていたら、そちらの表示（復元した計測など）は触らない。
+      if (holeNumberRef.current === snapshot.holeNumber) {
+        clearShotStartGraceTimer();
+        stopShotWatch();
+        setDmStart(null);
+        setDmEnd(null);
+        setDmDistance(null);
+        setShotNextAction("before");
+        setShotMode("idle");
+      }
     }
   }
 
@@ -1737,6 +1850,8 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
     // ラウンドを正常に終了／保存できた → 端末スナップショットを破棄（C）。
     // 以後ホームを開いても自動復帰しない。
     clearActiveRound();
+    // 計測途中の地点もラウンド全体（全ホール分）を消す。
+    clearDmInflight();
 
     setHandicapDiff(diff);
     setConfirmLoading(false);
@@ -1889,6 +2004,8 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
             onUndoLastShot={handleUndoLastShot}
             undoing={undoingShot}
             onChangeClub={(club) => { if (lastShot) void updateClub(lastShot.shotId, club); }}
+            cancelUndo={cancelUndo?.holeNumber === currentHoleNumber}
+            onUndoCancel={handleUndoCancel}
           />
           {/* 同伴者を測る — 保存なしの計測専用モードに入る。
               DBには一切書かないのでオフラインでもそのまま使える。 */}
@@ -3224,40 +3341,113 @@ const WAKE_LOCK_IDLE_MS = (() => {
 })();
 
 // ── 計測途中状態の永続化（A）──────────────────────────────────────────
-// ポケットで画面が消える→バックグラウンドでページ破棄→再読込、で揮発する
-// React state（始点・shotMode）を端末に退避し、復帰時に計測を再開するためのキー。
-// 既存の UNFINISHED_ROUND_FLAG（lib/gps.ts）とは別物。beforeunload では消さない。
+// ポケットで画面が消える→バックグラウンドでページ破棄→再読込、誤ってホールを
+// 切り替える、で揮発する「打つ前」の地点を端末に退避し、同じホールに戻ったときに
+// 計測を再開するためのキー。1つのキーに「進行中ラウンド1つ分・ホール番号ごとの地点」を
+// まとめて持つ。既存の UNFINISHED_ROUND_FLAG（lib/gps.ts）とは別物。beforeunload では消さない。
+// 旧形式（ラウンド・ホール1件だけを持つ形）は version が無いので読み込まずに捨てる。
 const DM_INFLIGHT_KEY = "golf_caddie_dm_inflight";
+const DM_INFLIGHT_VERSION = 2;
 
-type DmInflight = {
-  roundId: string;
+// キャンセル後に「元に戻す」を出しておく時間。
+const CANCEL_UNDO_MS = 10 * 1000;
+
+type DmInflightEntry = {
   holeId: string;
-  holeNumber: number;
   start: { lat: number; lng: number };
-  startedAt: number; // ミリ秒（Date.now()）
-  shotMode: "recording";
+  startedAt: number; // 地点を登録した時刻（ミリ秒・Date.now()）。15分期限の起点
 };
 
-function saveDmInflight(data: DmInflight): void {
-  if (typeof window === "undefined") return;
-  try {
-    localStorage.setItem(DM_INFLIGHT_KEY, JSON.stringify(data));
-  } catch {
-    // ignore storage failures
-  }
+type DmInflightStore = {
+  version: typeof DM_INFLIGHT_VERSION;
+  roundId: string;
+  holes: Record<string, DmInflightEntry>; // キーはホール番号
+};
+
+function isInflightExpired(startedAt: number): boolean {
+  return Date.now() - startedAt > getShotWatchTimeoutMs();
 }
 
-function readDmInflight(): DmInflight | null {
+function readDmInflightStore(): DmInflightStore | null {
   if (typeof window === "undefined") return null;
   try {
     const raw = localStorage.getItem(DM_INFLIGHT_KEY);
     if (!raw) return null;
-    return JSON.parse(raw) as DmInflight;
+    const store = JSON.parse(raw) as Partial<DmInflightStore> | null;
+    if (
+      !store ||
+      store.version !== DM_INFLIGHT_VERSION ||
+      typeof store.roundId !== "string" ||
+      !store.holes ||
+      typeof store.holes !== "object"
+    ) {
+      // 旧形式・壊れたデータは捨てる。
+      localStorage.removeItem(DM_INFLIGHT_KEY);
+      return null;
+    }
+    return store as DmInflightStore;
   } catch {
     return null;
   }
 }
 
+function writeDmInflightStore(store: DmInflightStore): void {
+  if (typeof window === "undefined") return;
+  try {
+    if (Object.keys(store.holes).length === 0) {
+      localStorage.removeItem(DM_INFLIGHT_KEY);
+    } else {
+      localStorage.setItem(DM_INFLIGHT_KEY, JSON.stringify(store));
+    }
+  } catch {
+    // ignore storage failures
+  }
+}
+
+// 指定ラウンド・ホールの地点を返す。15分を過ぎていればその場で消して null。
+function getHoleInflight(roundId: string, holeNumber: number): DmInflightEntry | null {
+  const store = readDmInflightStore();
+  if (!store || store.roundId !== roundId) return null;
+  const entry = store.holes[String(holeNumber)];
+  if (!entry) return null;
+  if (isInflightExpired(entry.startedAt)) {
+    delete store.holes[String(holeNumber)];
+    writeDmInflightStore(store);
+    return null;
+  }
+  return entry;
+}
+
+// 別ラウンドのデータが残っていれば捨ててから書く（保持するのは常に1ラウンド分）。
+function saveHoleInflight(roundId: string, holeNumber: number, entry: DmInflightEntry): void {
+  const store = readDmInflightStore();
+  const holes = store && store.roundId === roundId ? store.holes : {};
+  holes[String(holeNumber)] = entry;
+  writeDmInflightStore({ version: DM_INFLIGHT_VERSION, roundId, holes });
+}
+
+function clearHoleInflight(roundId: string, holeNumber: number): void {
+  const store = readDmInflightStore();
+  if (!store || store.roundId !== roundId) return;
+  delete store.holes[String(holeNumber)];
+  writeDmInflightStore(store);
+}
+
+// 起動時の掃除：別ラウンドのデータと15分を過ぎた地点をまとめて消す。
+function pruneDmInflight(roundId: string): void {
+  const store = readDmInflightStore();
+  if (!store) return;
+  if (store.roundId !== roundId) {
+    clearDmInflight();
+    return;
+  }
+  for (const [holeNumber, entry] of Object.entries(store.holes)) {
+    if (isInflightExpired(entry.startedAt)) delete store.holes[holeNumber];
+  }
+  writeDmInflightStore(store);
+}
+
+// 全ホール分を消す（ラウンド終了時など）。
 function clearDmInflight(): void {
   if (typeof window === "undefined") return;
   try {
@@ -4087,6 +4277,7 @@ function ScoreTable({
 
 function IdleShotSection({
   disabled, onStart, lastShot, error, onUndoLastShot, undoing, onChangeClub,
+  cancelUndo, onUndoCancel,
 }: {
   disabled: boolean;
   onStart: () => void;
@@ -4095,6 +4286,9 @@ function IdleShotSection({
   onUndoLastShot: () => void;
   undoing: boolean;
   onChangeClub: (club: Club) => void;
+  // 計測をキャンセルした直後（約10秒）だけ true。「元に戻す」で計測中に戻す。
+  cancelUndo: boolean;
+  onUndoCancel: () => void;
 }) {
   // 番手の選択パネルの開閉。次の計測に入るとこのコンポーネントごと外れるため自然に閉じる。
   const [clubPickerOpen, setClubPickerOpen] = useState(false);
@@ -4158,6 +4352,20 @@ function IdleShotSection({
                        py-1 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {undoing ? "取り消し中..." : "↩ 直前の記録を取り消す"}
+          </button>
+        </div>
+      )}
+      {/* キャンセルの取り消し（誤タップ対策）。見た目は「直前の記録を取り消す」に合わせる。 */}
+      {cancelUndo && (
+        <div className="rounded-xl bg-green-50 border border-green-200 px-3 py-2 space-y-1">
+          <p className="text-center text-lg text-green-800 font-bold">
+            計測をキャンセルしました
+          </p>
+          <button
+            onClick={onUndoCancel}
+            className="block mx-auto text-base text-blue-600 hover:text-blue-800 underline py-1"
+          >
+            ↩ 元に戻す
           </button>
         </div>
       )}
