@@ -8,7 +8,6 @@ import type { Club, FairwayResult } from "@/types";
 import { CLUBS, CLUB_LABELS } from "@/types";
 import { calculateDistance, metersToYards } from "@/lib/distance";
 import { stopGpsTracking, getBestShotPosition, startShotWatch, stopShotWatch, awaitHighAccuracyFix, getShotWatchTimeoutMs, type GpsPoint } from "@/lib/gps";
-import { acquireWakeLock, releaseWakeLock, softReleaseWakeLock } from "@/lib/wakeLock";
 import { isBetaMode } from "@/lib/betaMode";
 import { getScoreColor, getScoreSymbol } from "@/lib/scoreColor";
 import { putHole, putShot, putScoreUpdate, putShotUpdate, putRoundUpdate, putShotDistance, deleteShot as deletePendingShot, deleteShotUpdate as deletePendingShotUpdate } from "@/lib/offline/db";
@@ -484,7 +483,9 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
   }, []);
 
   // C: 画面が再表示されたとき、計測中ならバックグラウンドで止まっている可能性の
-  // ある GPS監視を張り直し、Wake Lock を取り直して計測を継続できる状態にする。
+  // ある GPS監視を張り直して計測を継続できる状態にする。
+  // （画面スリープ防止＝Wake Lock は電池消耗の主因だったため廃止し、画面の消灯は
+  // iPhone 本体の自動ロックに任せる。消えても計測地点は端末保存から復元される）
   // ページ自体の再読込は A の復元が担当。ここは「ページは生存しているが
   // バックグラウンドで watch が止まった」取りこぼしを拾う。
   //
@@ -497,7 +498,7 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
   // だけで決まり、途中の watch はライブ距離表示専用だから。dmStart / startPositionRef
   // は state と ref に残るので watch を止めても失われない。
   // ただし「打つ前」直後の2秒待機中だけは止めない：始点がまだ確定しておらず、
-  // ここで watch を落とすと起点を取り逃す（Wake Lock のアイドル解除と同じ判断）。
+  // ここで watch を落とすと起点を取り逃す。
   // stopShotWatch は15分タイマーも畳むが、復帰時の beginShotWatch が張り直す
   // （＝従来から visible のたびにタイマーは再スタートしていたので挙動は変わらない）。
   useEffect(() => {
@@ -521,70 +522,11 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
       }
       // startShotWatch 内の再入ガードで重複 watch にはならない。
       beginShotWatch();
-      void acquireWakeLock();
     };
     document.addEventListener("visibilitychange", onVisibilityChange);
     return () => document.removeEventListener("visibilitychange", onVisibilityChange);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  // ── Wake Lock 無操作オートオフ（発熱・電池消耗対策）──────────────────
-  // ラウンド画面で WAKE_LOCK_IDLE_MS 無操作になったら Wake Lock を「ソフト解除」
-  // して画面スリープを許可（食事・組待ち中の発熱と電池消耗を止める）。
-  // 操作が戻れば取り直す。画面が一度スリープ→再点灯した場合は lib/wakeLock の
-  // visibilitychange 再取得が担当し、tryAcquire の二重取得ガードで競合しない。
-  // ラウンド終了（roundEndConfirmed）後は監視を畳む（リーク防止）。
-  const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const wakeSoftReleasedRef = useRef(false);
-
-  useEffect(() => {
-    if (roundEndConfirmed) return;
-    if (typeof window === "undefined") return;
-
-    const armTimer = () => {
-      if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
-      idleTimerRef.current = setTimeout(() => {
-        // GPS安定化中（「打つ前」押下直後の起点確定待ちの数秒）だけは解除しない。
-        // 起点がブレると飛距離がずれるため、安定化が終わるまで再アームして待つ。
-        // 安定化後は計測中でも通常どおり解除してよい：画面が消えても進行中ラウンドは
-        // 端末保存（lib/activeRound.ts）と「打つ前」地点（DM_INFLIGHT）から復元され、
-        // 計測・スコアは失われない。
-        if (shotStartGraceTimerRef.current !== null) {
-          armTimer();
-          return;
-        }
-        // 無操作タイムアウト → sentinel だけ release（requested は維持）。
-        wakeSoftReleasedRef.current = true;
-        void softReleaseWakeLock();
-      }, WAKE_LOCK_IDLE_MS);
-    };
-
-    const onActivity = () => {
-      // ソフト解除中だったときだけ取り直す。visibilitychange 側が画面再点灯時に
-      // 既に取り直していれば tryAcquire の二重取得ガードで no-op になる。
-      if (wakeSoftReleasedRef.current) {
-        wakeSoftReleasedRef.current = false;
-        void acquireWakeLock();
-      }
-      armTimer();
-    };
-
-    // 「打つ前」「止まった場所」「残り距離」「グリーン方向」等のボタン押下も
-    // pointerdown として window に伝播するため、個別配線なしでここで拾える。
-    const ACTIVITY_EVENTS = ["pointerdown", "touchstart", "scroll", "keydown"] as const;
-    ACTIVITY_EVENTS.forEach((ev) =>
-      window.addEventListener(ev, onActivity, { passive: true }),
-    );
-    armTimer();
-
-    return () => {
-      ACTIVITY_EVENTS.forEach((ev) => window.removeEventListener(ev, onActivity));
-      if (idleTimerRef.current) {
-        clearTimeout(idleTimerRef.current);
-        idleTimerRef.current = null;
-      }
-    };
-  }, [roundEndConfirmed]);
 
   // 2秒待機タイマーと関連 ref をまとめて掃除するヘルパー。
   // handleCancelShot / selectHole / unmount / 15分タイムアウト等から呼ぶ。
@@ -1288,11 +1230,8 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
 
     // 15分は最初に地点を登録した時刻から数える（復元のたびに数え直さない）。
     armInflightDeadline(inflight.startedAt);
-    // 計測を続けられるよう GPS監視と Wake Lock を張り直す。
-    // 二重 watch は startShotWatch 内の再入ガード、Wake Lock 二重取得は
-    // lib/wakeLock の tryAcquire ガードが防ぐ。
+    // 計測を続けられるよう GPS監視を張り直す（二重 watch は startShotWatch 内の再入ガードが防ぐ）。
     beginShotWatch();
-    void acquireWakeLock();
     return true;
   }
 
@@ -1846,7 +1785,6 @@ export function HoleRecorder({ roundId, initialHoles, startHole = 1, mode = "sho
     }
 
     stopGpsTracking();
-    void releaseWakeLock();
     // ラウンドを正常に終了／保存できた → 端末スナップショットを破棄（C）。
     // 以後ホームを開いても自動復帰しない。
     clearActiveRound();
@@ -3326,19 +3264,6 @@ function ScoreEntryCard({
 }
 
 // ── Wind compass ──────────────────────────────────────────────────────
-
-// 無操作で Wake Lock をソフト解除するまでの時間。食事・組待ち・歩行中の
-// 発熱と電池消耗を止めるための値。
-// 画面の点灯維持はスマホ最大の電力消費源。屋外は高輝度になるため、
-// 最後の操作から60秒で画面を消して電池を温存する。ゴルフは「見る→しまう」の
-// 繰り返しで、1分あれば操作に十分。画面が消えても進行中ラウンドは端末保存から
-// 復元されるため、計測・スコアは失われない。
-// テスト時は NEXT_PUBLIC_WAKELOCK_TIMEOUT_MS で上書き可能（無ければ60秒）。
-const WAKE_LOCK_IDLE_MS = (() => {
-  const raw = process.env.NEXT_PUBLIC_WAKELOCK_TIMEOUT_MS;
-  const parsed = raw ? parseInt(raw, 10) : NaN;
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 60_000;
-})();
 
 // ── 計測途中状態の永続化（A）──────────────────────────────────────────
 // ポケットで画面が消える→バックグラウンドでページ破棄→再読込、誤ってホールを

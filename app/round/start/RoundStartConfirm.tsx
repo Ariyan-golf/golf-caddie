@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { todayJST } from "@/lib/day-pass";
 import { startGpsTracking } from "@/lib/gps";
-import { acquireWakeLock } from "@/lib/wakeLock";
 import { clearActiveRound } from "@/lib/activeRound";
 
 interface CourseTee {
@@ -83,7 +82,6 @@ export function RoundStartConfirm({
     // 残っていると次回起動時に古いラウンドへ誤って自動復帰してしまうため。
     clearActiveRound();
     void startGpsTracking();
-    void acquireWakeLock();
 
     router.push(`/round/${data.id}`);
   }
